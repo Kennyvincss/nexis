@@ -4,15 +4,24 @@ Nexis lets you trade Panta prediction markets with your own Solana wallet, follo
 
 **Nexis has no mock, demo or simulated data.** If an integration isn't configured or can't be reached, the page shows a **Connect API** or **Data unavailable** state instead of inventing numbers.
 
+## Hosting
+
+Nexis runs on **Netlify** or **Vercel** with no build step.
+
+- **Netlify:** `netlify.toml` publishes the repo root and rewrites `/api/*` to `netlify/functions/api.js`, which runs the same handlers as Vercel.
+- **Vercel:** files in `/api` are deployed as functions automatically.
+
 ## Where to add credentials
 
-All secrets live in serverless functions under `/api`, never in the browser.
+All secrets live in the server functions (`/api`), never in the browser.
 
 To add them:
 
-1. Open **Vercel → your project → Settings → Environment Variables**.
-2. Add the variables below for **Production** (and Preview if you use it).
-3. **Redeploy**. Environment variables only apply to new deployments.
+1. Open your host's environment variables:
+   - **Netlify:** Site configuration → Environment variables
+   - **Vercel:** Project → Settings → Environment Variables
+2. Add the variables below.
+3. **Redeploy.** Environment variables only apply to new deploys. On Netlify: Deploys → Trigger deploy → Deploy site.
 
 **Settings → Integrations** in the app, and the **Data sources** pill in the top bar, show which integrations are live.
 
@@ -52,6 +61,8 @@ api/rpc.js            Solana JSON-RPC proxy; allowlisted methods
 api/config.js         reports which integrations are configured (never the secrets)
 api/email.js          verification codes via Resend
 api/ai.js             Claude via the Anthropic SDK
+netlify/functions/api.js  Netlify adapter that runs the /api handlers
+netlify.toml          Netlify publish dir, functions dir and /api rewrite
 ```
 
 The services emit events on a small bus. `app.js` patches the visible page in place, so nothing needs a manual refresh: prices, scores, balances, transaction status, notifications and tapes all update live.

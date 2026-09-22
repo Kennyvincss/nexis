@@ -1,7 +1,7 @@
 // Panta API proxy. The browser never sees PANTA_API_KEY.
 //   GET  /api/panta?path=markets/&limit=50          -> GET  https://live-api.panta.market/api/v1/markets/?limit=50
 //   POST /api/panta?path=primaryorderquote/  {json} -> POST https://live-api.panta.market/api/v1/primaryorderquote/
-// Environment variables (Vercel → Project → Settings → Environment Variables):
+// Environment variables (Netlify: Site configuration → Environment variables; Vercel: Settings → Environment Variables):
 //   PANTA_API_KEY       required. pk_live_... for mainnet, pk_test_... returns Panta's sandbox fixtures.
 //   PANTA_API_BASE_URL  optional. Defaults to https://live-api.panta.market/api/v1
 //   PANTA_USER_ID       optional. Attribution id sent as X-User-Id.
@@ -16,7 +16,7 @@ module.exports = async (req, res) => {
   const key = env('PANTA_API_KEY');
   const mode = !key ? 'unconfigured' : key.startsWith('pk_test_') ? 'test' : 'live';
   res.setHeader('x-panta-mode', mode);
-  if (!key) return send(res, 503, { code: 'PANTA_NOT_CONFIGURED', message: 'Add PANTA_API_KEY in Vercel → Settings → Environment Variables, then redeploy.' });
+  if (!key) return send(res, 503, { code: 'PANTA_NOT_CONFIGURED', message: 'Add PANTA_API_KEY in your host’s environment variables (Netlify: Site configuration → Environment variables; Vercel: Settings → Environment Variables), then redeploy.' });
 
   let path = String(req.query.path || '').replace(/^\/+/, '');
   if (!path.endsWith('/')) path += '/';

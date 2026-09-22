@@ -1,4 +1,4 @@
-// Shared helpers for Nexis serverless functions (files starting with "_" are not routes on Vercel).
+// Shared helpers for Nexis serverless functions (files starting with "_" are not routes on Vercel; Netlify uses netlify/functions/api.js).
 
 function send(res, status, body, headers = {}) {
   res.setHeader('content-type', 'application/json; charset=utf-8');
