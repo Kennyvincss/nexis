@@ -28,7 +28,19 @@ const Net = {
     return j;
   },
   /** Public feeds (Polymarket, ESPN, CoinGecko…) through /api/data. */
-  data(url, opts) { return this.api('data?url=' + encodeURIComponent(url), opts); },
+  /** Public feeds through /api/data. Hosts that allow browser requests (ESPN) fall back to a direct
+      fetch when the server is blocked or unavailable, and stay direct once that works. */
+  DIRECT_OK: new Set(['site.api.espn.com']), direct: {},
+  async data(url, opts) {
+    const host = new URL(url).hostname; const canDirect = this.DIRECT_OK.has(host);
+    if (canDirect && this.direct[host]) return this.fetchDirect(url, opts);
+    try { return await this.api('data?url=' + encodeURIComponent(url), opts); }
+    catch (e) { if (!canDirect) throw e; const r = await this.fetchDirect(url, opts); this.direct[host] = true; return r; }
+  },
+  async fetchDirect(url, { timeout = 12000 } = {}) {
+    let r; try { r = await this._fetch(url, { headers: { accept: 'application/json' } }, timeout); } catch (e) { throw Object.assign(new Error('Network error — check your connection.'), { code: 'NETWORK' }); }
+    const j = await this.json(r); if (!r.ok) throw this.fail(r.status, j); return j;
+  },
 };
 
 const Config = {
