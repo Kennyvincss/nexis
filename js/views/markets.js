@@ -21,6 +21,7 @@ function pantaCard(m) {
   const ended = !m.tradable;
   return `<article class="mcard">
     <div class="mcard-top"><span class="tag">${esc(catLabel(m.category))}</span>${phaseTag(m)}${m.type === 'breaking' ? '<span class="tag amber">Breaking</span>' : ''}<span class="time">${ic('clock', 'sm')}${esc(endsLabel(m))}</span></div>
+    ${m.untitled && m.image ? `<a href="#/market/${m.id}" class="mcard-img" aria-label="Open market"><img src="${esc(m.image)}" alt="Market image from Panta" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.remove()"></a>` : ''}
     <h3><a href="#/market/${m.id}" ${m.untitled ? 'class="mut" title="Panta hasn’t published this market’s question yet"' : ''}>${esc(m.title)}</a></h3>
     <div class="mcard-mid"><div><div class="prob-big" data-ppct="${m.id}">${m.yes != null ? Math.round(m.yes * 100) + '%' : '—'}</div><div class="prob-lbl">${m.yes != null ? 'chance' : 'Loading price…'}</div></div>${Panta.hist(m.id).length > 2 ? sparkSvg(Panta.hist(m.id).map(x => x[1]).slice(-48)) : ''}</div>
     <div class="yn"><button class="btn btn-yes" data-action="quickTrade" data-id="${m.id}" data-side="YES" ${ended ? 'disabled' : ''}><span>Yes</span><span data-py="${m.id}">${m.yes != null ? cents(m.yes) : '—'}</span></button><button class="btn btn-no" data-action="quickTrade" data-id="${m.id}" data-side="NO" ${ended ? 'disabled' : ''}><span>No</span><span data-pn="${m.id}">${m.no != null ? cents(m.no) : '—'}</span></button></div>

@@ -44,7 +44,8 @@ const Panta = {
       volume: nz(raw.totalVolumeUsdc ?? raw.volumeUsdc, null),
       yes: yes ?? (prev ? prev.yes : null), no: no ?? (yes != null ? 1 - yes : prev ? prev.no : null),
       primaryYes: this.price(raw.primaryYesPrice), secondaryYes: this.price(raw.secondaryYesPrice),
-      rule: raw.resolutionRule || raw.rules || '', sources: raw.sourcesOfTruth || [],
+      rule: raw.resolutionRule || raw.rules || (prev && prev.rule) || this.cached(raw.marketId).r || '', sources: (raw.sourcesOfTruth && raw.sourcesOfTruth.length ? raw.sourcesOfTruth : (prev && prev.sources && prev.sources.length ? prev.sources : this.cached(raw.marketId).s)) || [],
+      txHash: raw.transactionHash || (prev && prev.txHash) || null, oracle: raw.oracle || (prev && prev.oracle) || null, creator: raw.creatorAddress || (prev && prev.creator) || null,
       createdByPartner: !!raw.createdByPartner, pricedAt: yes != null ? now() : prev ? prev.pricedAt : null,
     };
     m.tradable = !m.resolved && !m.cancelled && (m.phase === 'primary' || m.status === 'open' || m.phase === '') && (!m.end || m.end > now());
@@ -54,14 +55,15 @@ const Panta = {
       A known question is never replaced by an empty one, and questions are remembered in this browser. */
   titles: null,
   titleCache() { if (!this.titles) { try { this.titles = JSON.parse(localStorage.getItem('nexis-panta-titles') || '{}'); } catch (e) { this.titles = {}; } } return this.titles; },
-  rememberTitle(id, t) { const c = this.titleCache(); if (c[id] === t) return; c[id] = t; const keys = Object.keys(c); if (keys.length > 2000) keys.slice(0, keys.length - 2000).forEach(k => delete c[k]); try { localStorage.setItem('nexis-panta-titles', JSON.stringify(c)); } catch (e) {} },
+  cached(id) { const v = this.titleCache()[id]; return !v ? {} : typeof v === 'string' ? { t: v } : v; },
+  rememberTitle(id, t, extra) { const c = this.titleCache(); const v = extra ? { t, r: extra.rule || '', s: extra.sources || [] } : (typeof c[id] === 'object' && c[id].t === t ? c[id] : t); if (JSON.stringify(c[id]) === JSON.stringify(v)) return; c[id] = v; const keys = Object.keys(c); if (keys.length > 2000) keys.slice(0, keys.length - 2000).forEach(k => delete c[k]); try { localStorage.setItem('nexis-panta-titles', JSON.stringify(c)); } catch (e) {} },
   text(raw, prev) {
     const pick = (...v) => { for (const x of v) { const t = typeof x === 'string' ? x.trim() : ''; if (t) return t; } return ''; };
     const md = raw.metadata || {}, ev = raw.event || {};
     const q = pick(raw.title, raw.question, raw.name, raw.eventTitle, ev.title, ev.question, md.title, md.question);
     const description = pick(raw.description, md.description, ev.description) || (prev && prev.description) || '';
     if (q) this.rememberTitle(raw.marketId, q);
-    const known = q || (prev && !prev.untitled && prev.title) || this.titleCache()[raw.marketId] || '';
+    const known = q || (prev && !prev.untitled && prev.title) || this.cached(raw.marketId).t || '';
     const fromDesc = !known && description ? (description.length > 160 ? description.slice(0, 157).trimEnd() + '…' : description) : '';
     return { title: known || fromDesc || 'Untitled Panta market', description, untitled: !known && !fromDesc };
   },
@@ -72,8 +74,50 @@ const Panta = {
     try {
       const ids = this.order.map(id => this.markets.get(id)).filter(m => m && m.untitled && now() - (this.titleTried[m.id] || 0) > 30 * 60e3)
         .sort((a, b) => (b.tradable - a.tradable) || ((b.volume || 0) - (a.volume || 0))).slice(0, max).map(m => m.id);
-      for (const id of ids) { this.titleTried[id] = now(); try { const m = await this.detail(id); if (!m.untitled) changed++; } catch (e) { if (e.status === 429) break; } await delay(250); }
+      let rpcFails = 0;
+      for (const id of ids) {
+        this.titleTried[id] = now(); let m;
+        try { m = await this.detail(id); } catch (e) { if (e.status === 429) break; continue; }
+        if (m.untitled && m.txHash && rpcFails < 3) {
+          try { const t = await this.fromChain(m); rpcFails = 0; if (t) { m.title = t.title; m.untitled = false; this.rememberTitle(m.id, t.title, t); if (!m.rule && t.rule) m.rule = t.rule; if (!m.sources.length && t.sources.length) m.sources = t.sources; m.titleSource = 'chain'; } }
+          catch (e) { rpcFails++; }
+        }
+        if (!m.untitled) changed++;
+        await delay(250);
+      }
     } finally { this._filling = false; if (changed) Bus.emit('panta:catalog'); }
+  },
+  /* Panta's API ships empty titles for many markets, but the question is an argument of the on-chain
+     "create market" instruction. We load the market's creation transaction (transactionHash) through the
+     Solana RPC and read the length-prefixed UTF-8 strings (Borsh encoding) from its instruction data. */
+  b58dec(str) {
+    const A = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'; let n = 0n;
+    for (const c of String(str)) { const i = A.indexOf(c); if (i < 0) throw new Error('bad base58'); n = n * 58n + BigInt(i); }
+    const bytes = []; while (n > 0n) { bytes.unshift(Number(n & 255n)); n >>= 8n; }
+    for (const c of String(str)) { if (c !== '1') break; bytes.unshift(0); } return new Uint8Array(bytes);
+  },
+  strings(bytes) {
+    const out = []; const td = new TextDecoder('utf-8', { fatal: true });
+    for (let i = 0; i + 4 <= bytes.length; i++) {
+      const L = bytes[i] | (bytes[i + 1] << 8) | (bytes[i + 2] << 16) | (bytes[i + 3] << 24);
+      if (L < 8 || L > 2048 || i + 4 + L > bytes.length) continue;
+      let t; try { t = td.decode(bytes.subarray(i + 4, i + 4 + L)); } catch (e) { continue; }
+      if (/[\u0000-\u0008\u000E-\u001F]/.test(t) || !/[A-Za-z]{2}/.test(t) || !/\s|^https?:/.test(t)) continue;
+      out.push(t.trim()); i += 3 + L;
+    }
+    return out.filter(Boolean);
+  },
+  async fromChain(m) {
+    const tx = await Chain.rpc('getTransaction', [m.txHash, { encoding: 'json', maxSupportedTransactionVersion: 0, commitment: 'confirmed' }]);
+    if (!tx || !tx.transaction) return null;
+    const ixs = [...(tx.transaction.message.instructions || []), ...((tx.meta && tx.meta.innerInstructions) || []).flatMap(x => x.instructions || [])];
+    const strs = ixs.flatMap(ix => { try { return this.strings(this.b58dec(ix.data || '')); } catch (e) { return []; } });
+    const isUrl = (x) => /^https?:\/\//i.test(x); const plain = strs.filter(x => !isUrl(x) && x.length <= 2048);
+    const q = plain.find(x => x.length <= 512 && /\?$/.test(x)) || plain.find(x => x.length <= 512 && /^will\b/i.test(x)) || null;
+    if (!q) return null;
+    const rule = plain.filter(x => x !== q).sort((a, b) => b.length - a.length)[0] || '';
+    const sources = [...new Set(strs.filter(x => isUrl(x) && !/cloudinary|\.(png|jpe?g|webp|gif)(\?|$)/i.test(x)))].slice(0, 20);
+    return { title: q, rule: rule.length >= 20 ? rule : '', sources };
   },
   upsert(raw) {
     const prev = this.markets.get(raw.marketId); const m = this.norm(raw, prev);
