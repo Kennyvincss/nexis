@@ -34,6 +34,7 @@ To add them:
 | `COINGECKO_API_KEY` | Recommended | Raises CoinGecko rate limits for crypto prices and charts. Set `COINGECKO_PRO=1` if it's a Pro key. |
 | `ANTHROPIC_API_KEY` | Optional | Nexis AI: drafts markets from a post and lists factors for each side. Without it, drafting uses an on-device parser and analysis is hidden. |
 | `RESEND_API_KEY`, `EMAIL_FROM`, `AUTH_SECRET` | Optional | Email verification codes: passwordless sign-in and password reset. `AUTH_SECRET` is any long random string. |
+| `KV_REST_API_URL`, `KV_REST_API_TOKEN` | **Yes on Vercel, for accounts** | Stores accounts on the server so they work on every device. In Vercel open **Storage → Create Database → Upstash for Redis** (free), connect it to the project and the variables are added automatically; `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` also work. Not needed on Netlify, which uses Netlify Blobs. |
 | `GOOGLE_CLIENT_ID` | Optional | "Continue with Google". Create an OAuth Web client in Google Cloud and add your domain as an authorized JavaScript origin. |
 
 ## Architecture
@@ -130,7 +131,12 @@ Desktop notifications can be enabled in Settings.
 
 ## Accounts
 
-On **Netlify**, accounts are stored on the server with Netlify Blobs, which is built in and needs no setup. An account created on one device therefore works from any browser or phone. `/api/auth` checks every sign-in method:
+Accounts are stored on the server, so an account created on one device works from any browser or phone:
+
+- **Vercel:** Upstash Redis, added from the Storage tab (see the table above).
+- **Netlify:** Netlify Blobs, which is built in and needs no setup.
+
+`/api/auth` checks every sign-in method:
 
 - **Email + password:** passwords are hashed with scrypt on the server, and repeated failures lock the account for a minute.
 - **Wallet:** Sign-In With Solana. The server checks the wallet's Ed25519 signature and rejects replayed messages.
@@ -138,6 +144,6 @@ On **Netlify**, accounts are stored on the server with Netlify Blobs, which is b
 - **Email code and password reset:** these need Resend (`RESEND_API_KEY`, `EMAIL_FROM`, `AUTH_SECRET`).
 - **Two-factor authentication:** TOTP codes are verified on the server.
 
-Sessions are signed tokens that can be revoked. Settings → Security lists every signed-in device, and signing one out takes effect within a minute.
+Sessions are signed tokens that can be revoked. Settings → Security lists every signed-in device, and signing one out takes effect within a minute. Settings → Integrations shows whether the accounts database is connected.
 
-On a host without storage (Vercel as configured here), Nexis falls back to accounts kept in the browser. Wallet balances, positions and trades always come from the chain and Panta, not from the account.
+Without a database, Nexis falls back to accounts kept in the browser, which only work where they were created. Wallet balances, positions and trades always come from the chain and Panta, not from the account.
