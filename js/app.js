@@ -153,6 +153,7 @@ function bindView(route, arg, params) {
   }
   if (route === 'crypto' && !arg) { debounceInput('#cr-q', 200, (v) => { UI.crypto.q = v; refreshKeepFocus('#cr-q'); }); const s = $('#cr-sort'); s && s.addEventListener('change', () => { UI.crypto.sort = s.value; refresh(); }); }
   if (route === 'crypto' && arg) paintCryptoAbout(arg);
+  if (route === 'sports') { const on = $('.daystrip button.on'); if (on) on.scrollIntoView({ inline: 'center', block: 'nearest' }); }
   if (route === 'event' && arg) { paintEventSummary(arg); viewStops.push(Poller(() => paintEventSummary(arg), () => { const g = Sports.games.get(arg); return g && g.state === 'in' ? 12000 : 60000; }, { immediate: false })); }
   if (route === 'tracker' && !arg) {
     paintLeaderboard();
@@ -187,6 +188,7 @@ const A_APP = {
   trTab: (el) => { UI.tracker.tab = el.dataset.t; refresh(); },
   actTab: (el) => { UI.activity.tab = el.dataset.t; history.replaceState(null, '', '#/activity'); refresh(); },
   sportFilter: (el) => { UI.sports.filter = el.dataset.f; history.replaceState(null, '', '#/sports'); refresh(); },
+  sportDay: (el) => { UI.sports.day = el.dataset.day; history.replaceState(null, '', '#/sports'); $$('.daystrip button').forEach(b => { const on = b === el; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); }); refresh(); },
   quoteCreate: (el) => quoteCreate(el), confirmCreate: (el) => { el.disabled = true; confirmCreate(); }, draftAi: (el) => draftAi(el),
   track: (el) => { const id = el.dataset.id; Traders.track(id, el.dataset.name || undefined); closeModal(true); toast({ title: `Tracking @${Traders.name(id)}`, body: 'You’ll be notified when they open, change or close a position. Tracking never places trades.' }); refresh(); },
   untrack: (el) => { const id = el.dataset.id; Traders.untrack(id); toast({ title: `Stopped tracking @${Traders.name(id)}`, kind: 'info' }); refresh(); },

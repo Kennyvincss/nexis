@@ -13,8 +13,11 @@ const LEAGUES = [
   ['soccer', 'esp.1', 'La Liga', 'Football'], ['soccer', 'ita.1', 'Serie A', 'Football'], ['soccer', 'ger.1', 'Bundesliga', 'Football'], ['soccer', 'fra.1', 'Ligue 1', 'Football'], ['soccer', 'usa.1', 'MLS', 'Football'],
   ['basketball', 'nba', 'NBA', 'Basketball'], ['basketball', 'wnba', 'WNBA', 'Basketball'], ['football', 'nfl', 'NFL', 'American Football'], ['football', 'college-football', 'College Football', 'American Football'],
 ];
+/* Calendar days in the viewer's time zone, as ESPN's YYYYMMDD. */
+const ymd = (t) => { const d = new Date(t); return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`; };
+const dayStart = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
 const Sports = {
-  games: new Map(), state: 'idle', error: null, summaries: {}, anyLive: false,
+  games: new Map(), state: 'idle', error: null, summaries: {}, anyLive: false, ranges: {},
   team(c) {
     const t = c.team || {}; const col = String(t.color || '444444').replace('#', '');
     const lum = parseInt(col.slice(0, 2), 16) * .299 + parseInt(col.slice(2, 4), 16) * .587 + parseInt(col.slice(4, 6), 16) * .114;
@@ -83,6 +86,36 @@ const Sports = {
     const panta = [...Panta.markets.values()].filter(m => hit(m.title) >= 1 && !m.cancelled).sort((a, b) => hit(b.title) - hit(a.title)).slice(0, 8);
     const poly = [...Poly.markets.values()].filter(m => hit(m.q) >= 1).sort((a, b) => hit(b.q) - hit(a.q) || b.vol - a.vol).slice(0, 8);
     return { panta, poly };
+  },
+  /** Loads every league's schedule between two local days (inclusive). ESPN dates are US time, so we
+      ask for one extra day each side and filter by the viewer's local day. Cached: 10 min, 2 min for today. */
+  async loadRange(fromT, toT) {
+    const from = dayStart(fromT), to = dayStart(toT); const key = ymd(from) + '-' + ymd(to);
+    const today = dayStart(now()); const c = this.ranges[key];
+    if (c && (c.loading || now() - c.at < (to >= today && from <= today ? 2 : 10) * 60e3)) return c.loading || c;
+    const q = `${ymd(from - DAY)}-${ymd(to + DAY)}`;
+    const run = (async () => {
+      const res = await Promise.allSettled(LEAGUES.map(L => Net.data(`${ESPN}/${L[0]}/${L[1]}/scoreboard?dates=${q}&limit=500`)));
+      let ok = 0;
+      res.forEach((r, i) => { if (r.status !== 'fulfilled' || !r.value || !Array.isArray(r.value.events)) return; ok++;
+        r.value.events.forEach(e => { const g = this.parse(LEAGUES[i], e); if (!g) return; const prev = this.games.get(g.id); if (!prev || prev.state !== 'in') this.games.set(g.id, g); }); });
+      const out = { at: now(), ok, failed: LEAGUES.length - ok, error: ok ? null : ((res.find(r => r.status === 'rejected') || {}).reason || new Error('No schedule data returned')) };
+      this.ranges[key] = out; Bus.emit('sports'); return out;
+    })();
+    this.ranges[key] = { ...(c || {}), loading: run };
+    try { return await run; } catch (e) { delete this.ranges[key]; throw e; }
+  },
+  rangeState(fromT, toT) { return this.ranges[ymd(dayStart(fromT)) + '-' + ymd(dayStart(toT))] || null; },
+  between(fromT, toT) { const a = dayStart(fromT), b = dayStart(toT) + DAY; return [...this.games.values()].filter(g => g.start >= a && g.start < b); },
+  /** A single game by Nexis id (e.g. an old link), rebuilt from ESPN's summary header. */
+  async fetchGame(id) {
+    if (this.games.has(id)) return this.games.get(id);
+    const m = /^([a-z0-9]+)-(\d+)$/i.exec(id || ''); if (!m) return null;
+    const L = LEAGUES.find(x => x[1].replace(/[^a-z0-9]/gi, '') === m[1]); if (!L) return null;
+    const r = await Net.data(`${ESPN}/${L[0]}/${L[1]}/summary?event=${m[2]}`);
+    const h = r && r.header; const comp = h && (h.competitions || [])[0]; if (!comp) return null;
+    const g = this.parse(L, { id: m[2], date: comp.date, name: h.name || '', status: comp.status, competitions: [comp] });
+    if (g) this.games.set(g.id, g); return g;
   },
   list() { return [...this.games.values()].sort((a, b) => ({ in: 0, pre: 1, post: 2 }[a.state] - { in: 0, pre: 1, post: 2 }[b.state]) || (a.state === 'post' ? b.start - a.start : a.start - b.start)); },
   start() { Poller(() => this.poll(), () => this.anyLive ? 12000 : 60000); },
