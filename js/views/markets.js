@@ -12,7 +12,7 @@ function pantaModeBanner() {
   return '';
 }
 function pantaState(what = 'Panta markets') {
-  if (Panta.state === 'unconfigured' || Panta.mode === 'unconfigured' && Panta.error && Panta.error.code === 'PANTA_NOT_CONFIGURED') return unavailable('Connect the Panta API', `Nexis reads and trades ${what} through Panta. The site owner needs to add <code>PANTA_API_KEY</code> (from docs.panta.market) in Vercel → Settings → Environment Variables and redeploy.`, '<a class="btn btn-ghost sm" href="#/settings?tab=integrations">Integration status</a>');
+  if (Panta.state === 'unconfigured' || Panta.mode === 'unconfigured' && Panta.error && Panta.error.code === 'PANTA_NOT_CONFIGURED') return unavailable('Connect the Panta API', `Nexis reads and trades ${what} through Panta. The site owner needs to add <code>PANTA_API_KEY</code> (from docs.panta.market) in your host’s environment variables (Netlify: Site configuration → Environment variables; Vercel: Settings → Environment Variables) and redeploy.`, '<a class="btn btn-ghost sm" href="#/settings?tab=integrations">Integration status</a>');
   if (Panta.error && Panta.error.code === 'NO_API') return unavailable('Live data unavailable here', 'This copy of Nexis isn’t running on its server, so it can’t reach Panta. Open the deployed site to trade.');
   if (Panta.state === 'error') return unavailable('Panta is unreachable', esc(Panta.error ? Panta.error.message : 'Try again shortly.') + ' Nexis retries automatically.', '<button class="btn btn-ghost sm" data-action="retry">Retry now</button>');
   return null;
