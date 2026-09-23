@@ -38,6 +38,7 @@ function loadScript(src, globalName) { if (window[globalName]) return Promise.re
 const EmailCodes = {
   get configured() { return !!(Config.c && Config.c.email && Config.c.email.configured); },
   tokens: {},
+  token(purpose, email) { const t = this.tokens[purpose + ':' + String(email).toLowerCase()]; if (!t) throw aerr('NO_CODE', 'Request a code first.'); return t; },
   async send(email, purpose) { const r = await Net.api('email', { method: 'POST', body: { action: 'send', email, purpose } }); this.tokens[purpose + ':' + email.toLowerCase()] = r.token; return true; },
   async verify(email, purpose, code) { const token = this.tokens[purpose + ':' + email.toLowerCase()]; if (!token) throw aerr('NO_CODE', 'Request a code first.'); await Net.api('email', { method: 'POST', body: { action: 'verify', email, purpose, code, token } }); delete this.tokens[purpose + ':' + email.toLowerCase()]; return true; },
 };
@@ -105,6 +106,7 @@ const LocalAccounts = {
   linkWallet({ address, label }) { const u = this.me(); const o = this.findByWallet(address); if (o && o.id !== u.id) throw aerr('wallet_taken', 'This wallet is linked to another Nexis account on this device.'); if (o) throw aerr('wallet_linked', 'This wallet is already linked.'); u.wallets.push({ address, label, chain: 'Solana', primary: !u.wallets.length, linked: now() }); this.log(u, `Wallet linked · ${label}`); this.persist(); return u; },
   unlinkWallet(address) { const u = this.me(); if (this.methods(u).length <= 1) throw aerr('last_method', 'This wallet is your only way to sign in. Add another method first.'); const w = u.wallets.find(x => x.address === address); u.wallets = u.wallets.filter(x => x.address !== address); if (w && w.primary && u.wallets[0]) u.wallets[0].primary = true; this.log(u, `Wallet removed · ${w ? w.label : ''}`); this.persist(); },
   setPrimaryWallet(address) { const u = this.me(); u.wallets.forEach(w => w.primary = w.address === address); this.persist(); },
+  linkGoogle(p) { const u = this.me(); u.providers.google = { email: p.email, name: p.name, sub: p.sub, linked: now() }; if (!u.email) { u.email = p.email; u.emailVerified = true; } this.persist(); return u; },
   unlinkGoogle() { const u = this.me(); if (this.methods(u).length <= 1) throw aerr('last_method', 'Google is your only sign-in method. Add another first.'); u.providers.google = null; this.persist(); },
   setEmail(email) { const u = this.me(); const e = email.trim().toLowerCase(); const o = this.findByEmail(e); if (o && o.id !== u.id) throw aerr('email_in_use', 'That email is used by another account on this device.'); u.email = e; u.emailVerified = true; this.log(u, 'Email verified'); this.persist(); },
   start2FA() { const u = this.me(); u.twoFA = { enabled: false, pending: true, secret: b32enc(crypto.getRandomValues(new Uint8Array(20))) }; this.persist(); return u.twoFA; },
@@ -113,7 +115,59 @@ const LocalAccounts = {
   revokeSession(id) { const u = this.me(); u.sessions = u.sessions.filter(x => x.id !== id || x.current); this.persist(); },
   deleteAccount() { const u = this.me(); delete this.db.users[u.id]; this.db.session = null; this.persist(); try { localStorage.removeItem(LS_KEY + ':' + u.id); } catch (e) {} },
 };
-const Auth = { adapter: LocalAccounts, init() { this.adapter.load(); }, get user() { return this.adapter.current(); }, methods(u) { return this.adapter.methods(u || this.user); } };
+/* ---------- server accounts (/api/auth): work from any browser or device ---------- */
+const SESSION_KEY = 'nexis-session-v3';
+const RemoteAccounts = {
+  remote: true, db: null,
+  load() { try { this.db = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch (e) { this.db = null; } },
+  persist() { try { if (this.db) localStorage.setItem(SESSION_KEY, JSON.stringify(this.db)); else localStorage.removeItem(SESSION_KEY); } catch (e) {} },
+  current() { return (this.db && this.db.user) || null; },
+  methods(u) { return LocalAccounts.methods(u); },
+  async call(action, body = {}, authed = false) {
+    try { return await Net.api('auth', { method: 'POST', timeout: 20000, body: { action, device: deviceLabel(), ...body, ...(authed ? { token: this.db && this.db.token } : {}) } }); }
+    catch (e) {
+      if (authed && e.status === 401) { this.db = null; this.persist(); Bus.emit('auth:expired'); }
+      if (e.code === 'NO_API' || e.code === 'NETWORK') throw aerr(e.code, 'Can’t reach the Nexis server. Check your connection and try again.');
+      throw aerr(e.code || 'error', e.message);
+    }
+  },
+  take(r) { if (r.needs2FA) return { needs2FA: true, pending: r.pending, method: r.method }; this.db = { token: r.token, user: r.user }; this.persist(); return { user: r.user, session: { method: r.method }, isNew: r.isNew }; },
+  async authed(action, body) { const r = await this.call(action, body, true); if (r.user && this.db) { this.db.user = r.user; this.persist(); } return r; },
+  async signUp({ email, password }) { if (!emailOk(email)) throw aerr('invalid_email', 'Enter a valid email address.'); LocalAccounts.checkPw(password); return this.take(await this.call('signup', { email, password })); },
+  async signIn({ email, password, remember }) { if (!emailOk(String(email || '').trim())) throw aerr('invalid_email', 'Enter a valid email address.'); return this.take(await this.call('login', { email, password, remember })); },
+  async verify2FA({ pending, code }) { return this.take(await this.call('verify2fa', { pending, code })); },
+  async emailLogin(email, code, token) { return this.take(await this.call('emailLogin', { email, code, token })); },
+  async google({ credential }) { return this.take(await this.call('google', { credential })); },
+  async wallet({ address, label, message, signature }) { return this.take(await this.call('wallet', { address, label, message, signature })); },
+  async findByEmail(email) { const r = await this.call('exists', { email }); return r.exists ? r : null; },
+  async resetPassword({ email, password, code, token }) { LocalAccounts.checkPw(password); await this.call('reset', { email, password, code, token }); },
+  signOut() { const t = this.db && this.db.token; this.db = null; this.persist(); if (t) Net.api('auth', { method: 'POST', body: { action: 'logout', token: t } }).catch(() => {}); },
+  me() { const u = this.current(); if (!u) throw aerr('no_session', 'Your session has ended. Log in again.'); return u; },
+  async refresh() { if (!this.db) return null; const r = await this.authed('me'); return r.user; },
+  handleFree() { return true; }, // checked by the server when saved
+  async updateProfile(patch) { return (await this.authed('update', { patch })).user; },
+  async changePassword({ current, next }) { LocalAccounts.checkPw(next); return (await this.authed('changePassword', { current, next })).had; },
+  async removePassword() { await this.authed('removePassword'); },
+  async linkWallet({ address, label, message, signature }) { return (await this.authed('linkWallet', { address, label, message, signature })).user; },
+  async unlinkWallet(address) { await this.authed('unlinkWallet', { address }); },
+  async setPrimaryWallet(address) { await this.authed('setPrimary', { address }); },
+  async linkGoogle({ credential }) { return (await this.authed('linkGoogle', { credential })).user; },
+  async unlinkGoogle() { await this.authed('unlinkGoogle'); },
+  async setEmail(email, code, token) { await this.authed('setEmail', { email, code, token }); },
+  async start2FA() { return (await this.authed('start2fa')).user.twoFA; },
+  async confirm2FA(code) { await this.authed('confirm2fa', { code }); },
+  async disable2FA() { await this.authed('disable2fa'); },
+  async revokeSession(id) { await this.authed('revokeSession', { id }); },
+  async deleteAccount() { const u = this.current(); await this.call('deleteAccount', {}, true); this.db = null; this.persist(); try { if (u) localStorage.removeItem(LS_KEY + ':' + u.id); } catch (e) {} },
+};
+/* Server accounts when the host provides storage (Netlify Blobs); browser-only accounts otherwise. */
+const AUTH_MODE_KEY = 'nexis-auth-mode';
+const Auth = {
+  adapter: RemoteAccounts, mode: 'remote',
+  init() { LocalAccounts.load(); RemoteAccounts.load(); let m = 'remote'; try { m = localStorage.getItem(AUTH_MODE_KEY) || 'remote'; } catch (e) {} this.setMode(m, false); },
+  setMode(m, save = true) { this.mode = m === 'local' ? 'local' : 'remote'; this.adapter = this.mode === 'local' ? LocalAccounts : RemoteAccounts; if (save) { try { localStorage.setItem(AUTH_MODE_KEY, this.mode); } catch (e) {} } },
+  get user() { return this.adapter.current(); }, methods(u) { return this.adapter.methods(u || this.user); },
+};
 Auth.init();
 const meHandle = () => (Auth.user && Auth.user.handle) || 'you';
 const meName = () => { const u = Auth.user; if (!u) return 'Guest'; return u.name || u.handle || (u.email ? u.email.split('@')[0] : '') || (u.wallets[0] ? shortAddr(u.wallets[0].address) : 'You'); };
@@ -154,10 +208,11 @@ async function walletConnect(id) {
 }
 async function walletSign(btn) {
   const F = UI.walletFlow; const p = F.pending; setBusy(btn, true, 'Waiting for signature…');
-  try { await Wallets.signMessage(p.prov, p.msg); } catch (e) { setBusy(btn, false); return toast({ title: 'Signature declined', body: 'Nothing was signed.', kind: 'warn' }); }
+  let sig; try { sig = await Wallets.signMessage(p.prov, p.msg); } catch (e) { setBusy(btn, false); return toast({ title: 'Signature declined', body: 'Nothing was signed.', kind: 'warn' }); }
   try {
-    if (F.mode === 'login') return onAuthed(Auth.adapter.wallet({ address: p.address, label: p.W.name }));
-    Auth.adapter.linkWallet({ address: p.address, label: p.W.name }); Wallets.watch(); Balances.refresh();
+    const proof = { address: p.address, label: p.W.name, message: p.msg, signature: sig };
+    if (F.mode === 'login') return onAuthed(await Auth.adapter.wallet(proof));
+    await Auth.adapter.linkWallet(proof); Wallets.watch(); Balances.refresh();
     setModal(`${modalHead('Wallet linked')}<div class="modal-body"><div class="receipt"><div class="okc">${ic('check', 'lg')}</div><h3 style="font-size:18px">${p.W.name} · <span class="num">${shortAddr(p.address)}</span></h3><p class="dim" style="margin-top:4px">This wallet can sign in and sign your Panta trades.</p></div></div><div class="modal-foot"><button class="btn btn-primary" data-action="walletDone">Continue</button></div>`);
   } catch (e) { setBusy(btn, false); toast({ title: 'Couldn’t link wallet', body: esc(e.message), kind: 'err' }); }
 }
@@ -169,11 +224,12 @@ async function openGoogleFlow({ mode = 'login' } = {}) {
   openModal(`${modalHead(mode === 'login' ? 'Continue with Google' : 'Connect Google')}<div class="modal-body"><div id="gsi-btn" style="display:flex;justify-content:center;min-height:44px"><span class="spin"></span></div><p class="mut" style="font-size:12px;text-align:center">Google shares your name, email and profile picture with Nexis.</p><div data-err></div></div>`);
   try {
     const g = await loadScript('https://accounts.google.com/gsi/client', 'google');
-    g.accounts.id.initialize({ client_id: cid, callback: (resp) => {
+    g.accounts.id.initialize({ client_id: cid, callback: async (resp) => {
       try { const p = JSON.parse(decodeURIComponent(atob(resp.credential.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')));
         if (!p.email_verified) throw new Error('Your Google email isn’t verified.');
-        if (mode === 'link') { const u = Auth.adapter.me(); u.providers.google = { email: p.email, name: p.name, sub: p.sub, linked: now() }; if (!u.email) { u.email = p.email; u.emailVerified = true; } Auth.adapter.persist(); closeModal(); toast({ title: 'Google connected' }); refresh(); }
-        else onAuthed(Auth.adapter.google({ email: p.email, name: p.name, picture: p.picture, sub: p.sub }));
+        const g2 = { credential: resp.credential, email: p.email, name: p.name, picture: p.picture, sub: p.sub };
+        if (mode === 'link') { await Auth.adapter.linkGoogle(g2); closeModal(); toast({ title: 'Google connected' }); refresh(); }
+        else onAuthed(await Auth.adapter.google(g2));
       } catch (e) { const box = $('.overlay [data-err]'); if (box) box.innerHTML = authErrorHtml(e.message); }
     } });
     const el = $('#gsi-btn'); if (el) { el.innerHTML = ''; g.accounts.id.renderButton(el, { theme: 'filled_black', size: 'large', shape: 'pill', text: 'continue_with', width: 320 }); }
@@ -215,7 +271,7 @@ function authCard(mode) {
     </form>
     <p class="dim" style="font-size:13px;text-align:center">${isLogin ? 'New to Nexis? <a class="blue" href="#/signup">Create an account</a>' : 'Already have an account? <a class="blue" href="#/login">Log in</a>'}</p>`;
 }
-function authPage(mode) { return `<div class="auth">${authSide()}<main class="auth-main"><a class="logo auth-logo" href="#/">${logoMark}<span class="wm">NEXIS</span></a><div class="auth-card" id="auth-card">${authCard(mode)}</div><div class="auth-foot"><span class="mut">Your Nexis account is stored in this browser. Trades are signed by your own wallet.</span><a class="link" href="#/home">Explore without an account ${ic('arrowR', 'sm')}</a></div></main></div>`; }
+function authPage(mode) { return `<div class="auth">${authSide()}<main class="auth-main"><a class="logo auth-logo" href="#/">${logoMark}<span class="wm">NEXIS</span></a><div class="auth-card" id="auth-card">${authCard(mode)}</div><div class="auth-foot"><span class="mut">${Auth.mode === 'remote' ? 'Your Nexis account works on any device.' : 'Your Nexis account is stored in this browser.'} Trades are signed by your own wallet.</span><a class="link" href="#/home">Explore without an account ${ic('arrowR', 'sm')}</a></div></main></div>`; }
 function refreshAuth() { const c = $('#auth-card'); if (c) { c.innerHTML = authCard(current.route); const f = c.querySelector('[autofocus]'); f && f.focus(); } }
 Views.login = async () => { if (Auth.user && UI.auth.view !== 'twofa') { location.hash = '#/home'; return ''; } return authPage('login'); };
 Views.signup = async () => { if (Auth.user) { location.hash = '#/home'; return ''; } if (UI.auth.view === 'twofa') UI.auth.view = 'main'; return authPage('signup'); };
@@ -249,6 +305,7 @@ Views.onboarding = async () => {
 const SET_TABS = [['account', 'Account', 'user'], ['profile', 'Profile', 'edit'], ['wallets', 'Wallets', 'wallet'], ['security', 'Security', 'shield'], ['notifications', 'Notifications', 'bell'], ['integrations', 'Integrations', 'plug']];
 function methodRow(icon, title, sub, on, actions) { return `<div class="mrow2">${icon}<div style="flex:1;min-width:0"><b>${title}</b><div class="mut" style="font-size:12.5px">${sub}</div></div>${on ? '<span class="tag green">Connected</span>' : '<span class="tag">Not set up</span>'}${actions}</div>`; }
 Views.settings = async (params) => {
+  if (Auth.mode === 'remote' && Auth.user) { try { await RemoteAccounts.refresh(); } catch (e) { /* show cached data */ } if (!Auth.user) { location.hash = '#/login'; return ''; } }
   const u = Auth.user; if (!u) return ''; await Config.load();
   const tab = params.get('tab') || UI.setTab || 'account'; UI.setTab = tab; const st = Store.s.settings; const nM = Auth.methods(u).length; let body = '';
   if (tab === 'account') body = `<div class="card"><div class="card-head"><h3>Account</h3></div>
@@ -260,7 +317,7 @@ Views.settings = async (params) => {
       ${methodRow(`<span class="mi">${googleG}</span>`, 'Google', u.providers.google ? esc(u.providers.google.email) : (Config.c.google && Config.c.google.clientId ? 'Sign in with your Google account' : 'Not configured on this server'), !!u.providers.google, u.providers.google ? `<button class="btn btn-quiet sm" data-action="unlinkGoogle" ${nM <= 1 ? 'disabled' : ''}>Disconnect</button>` : `<button class="btn btn-ghost sm" data-action="linkGoogle" ${Config.c.google && Config.c.google.clientId ? '' : 'disabled'}>Connect</button>`)}
       ${methodRow(`<span class="mi">${ic('lock')}</span>`, 'Email + password', u.providers.password ? `Last changed ${agoT(u.providers.password.set)}` : 'Add a password to log in with your email', !!u.providers.password, `<a class="btn btn-ghost sm" href="#/settings?tab=security">${u.providers.password ? 'Change' : 'Add'}</a>`)}
       ${methodRow(`<span class="mi">${ic('wallet')}</span>`, 'Wallet', u.wallets.length ? `${u.wallets.length} linked · ${u.wallets.map(w => shortAddr(w.address)).join(', ')}` : 'Sign in with Phantom, Backpack or Solflare', u.wallets.length > 0, `<a class="btn btn-ghost sm" href="#/settings?tab=wallets">Manage</a>`)}</div>
-    <div class="card danger" style="margin-top:14px"><div class="card-head"><h3>Danger zone</h3></div><div class="kvrow"><span>Delete account</span><div class="dim" style="font-size:13px">Removes your Nexis account, tracked traders and settings from this browser. Your wallet and Panta positions are not affected.</div><button class="btn btn-no sm" data-action="deleteAccount">Delete account</button></div></div>`;
+    <div class="card danger" style="margin-top:14px"><div class="card-head"><h3>Danger zone</h3></div><div class="kvrow"><span>Delete account</span><div class="dim" style="font-size:13px">${Auth.mode === 'remote' ? 'Permanently removes your Nexis account and its sign-in methods.' : 'Removes your Nexis account, tracked traders and settings from this browser.'} Your wallet and Panta positions are not affected.</div><button class="btn btn-no sm" data-action="deleteAccount">Delete account</button></div></div>`;
   if (tab === 'profile') body = `<div class="card"><div class="card-head"><h3>Public profile</h3><a class="link" href="#/profile">View profile ${ic('chevRight', 'sm')}</a></div><form class="card-pad stack" style="gap:16px" data-form="profile" novalidate>
       <div class="row" style="gap:16px;align-items:center"><span class="avatar lg" id="prof-av" style="background:linear-gradient(135deg,hsl(${u.hue} 55% 42%),hsl(${(u.hue + 40) % 360} 50% 30%))">${esc(meName().slice(0, 2).toUpperCase())}</span><div><div class="label" style="margin-bottom:6px">Avatar colour</div><div class="row" style="gap:6px">${[215, 250, 280, 330, 15, 40, 150, 185].map(x => `<button type="button" class="swatch ${x === u.hue ? 'on' : ''}" data-action="profHue" data-h="${x}" style="background:hsl(${x} 55% 42%)" aria-label="Colour ${x}"></button>`).join('')}</div><input type="hidden" name="hue" value="${u.hue}"></div></div>
       <div class="grid g2"><label class="field"><span>Display name</span><input class="input" name="name" value="${esc(u.name || '')}" maxlength="40"></label><label class="field"><span>Handle</span><div class="input-at"><input class="input" name="handle" value="${esc(u.handle || '')}" maxlength="20" data-handle></div><span class="mut" style="font-size:12px" data-handle-msg>@${esc(u.handle || '')}</span></label></div>
@@ -279,7 +336,7 @@ Views.settings = async (params) => {
     <div class="card" style="margin-top:14px"><div class="card-head"><h3>${ic('shield', 'sm')}Two-factor authentication</h3>${u.twoFA.enabled ? '<span class="tag green">On</span>' : '<span class="tag">Off</span>'}</div><div class="card-pad">${u.twoFA.enabled ? `<p class="dim" style="font-size:13px">Your authenticator code is required when you log in with a password, email code or Google. Enabled ${agoT(u.twoFA.since)}.</p><button class="btn btn-ghost sm" style="margin-top:10px" data-action="disable2FA">Turn off 2FA</button>`
       : u.twoFA.pending ? `<div class="twofa"><div class="qr-box" id="totp-qr"><span class="spin"></span></div><div class="stack" style="gap:10px;flex:1"><p class="dim" style="font-size:13px">Scan the code with Google Authenticator, 1Password, Authy or similar — or enter the key manually.</p><div class="num sigmsg" style="padding:8px 10px">${u.twoFA.secret.match(/.{1,4}/g).join(' ')}</div><form class="row" data-form="twofaSetup" novalidate><input class="input otp num" name="code" inputmode="numeric" maxlength="6" placeholder="000000" style="max-width:150px"><button class="btn btn-primary" type="submit">Verify &amp; enable</button></form><div data-err></div></div></div>`
       : `<p class="dim" style="font-size:13px">Add a code from an authenticator app when logging in. Wallet sign-in already requires a signature.</p><button class="btn btn-primary sm" style="margin-top:10px" data-action="start2FA">Set up authenticator app</button>`}</div></div>
-    <div class="card" style="margin-top:14px"><div class="card-head"><h3>${ic('laptop', 'sm')}Sessions on this device</h3></div>${u.sessions.map(sn => `<div class="mrow2"><span class="mi">${ic(/iOS|Android/.test(sn.device) ? 'phone' : 'laptop')}</span><div style="flex:1"><b>${esc(sn.device)}</b> ${sn.current ? '<span class="tag green">Current</span>' : ''}<div class="mut" style="font-size:12.5px">${esc(sn.method || '')} · signed in ${agoT(sn.created)}</div></div>${sn.current ? '<button class="btn btn-ghost sm" data-action="logout">Log out</button>' : `<button class="btn btn-quiet sm" data-action="revokeSession" data-id="${sn.id}">Remove</button>`}</div>`).join('')}</div>
+    <div class="card" style="margin-top:14px"><div class="card-head"><h3>${ic('laptop', 'sm')}${Auth.mode === 'remote' ? 'Signed-in devices' : 'Sessions on this device'}</h3></div>${u.sessions.map(sn => `<div class="mrow2"><span class="mi">${ic(/iOS|Android/.test(sn.device) ? 'phone' : 'laptop')}</span><div style="flex:1"><b>${esc(sn.device)}</b> ${sn.current ? '<span class="tag green">Current</span>' : ''}<div class="mut" style="font-size:12.5px">${esc(sn.method || '')} · signed in ${agoT(sn.created)}</div></div>${sn.current ? '<button class="btn btn-ghost sm" data-action="logout">Log out</button>' : `<button class="btn btn-quiet sm" data-action="revokeSession" data-id="${sn.id}">Remove</button>`}</div>`).join('')}</div>
     <div class="card" style="margin-top:14px"><div class="card-head"><h3>${ic('clock', 'sm')}Recent security activity</h3></div>${u.activity.slice(0, 10).map(a => `<div class="mrow2"><span class="mi" style="color:${a.ok ? 'var(--green)' : 'var(--red)'}">${ic(a.ok ? 'check' : 'alert', 'sm')}</span><div style="flex:1"><b style="font-weight:550">${a.ok ? '' : 'Failed: '}${esc(a.method)}</b><div class="mut" style="font-size:12.5px">${esc(a.device)}</div></div><span class="mut" style="font-size:12px">${agoT(a.t)}</span></div>`).join('')}</div>`;
   if (tab === 'notifications') { const row = (k, t, s) => `<label class="row" style="padding:14px 18px;border-bottom:1px solid var(--line);cursor:pointer"><div style="flex:1"><div style="font-weight:500">${t}</div><div class="mut" style="font-size:12.5px">${s}</div></div><input type="checkbox" class="toggle" data-setting="${k}" ${st[k] ? 'checked' : ''}></label>`;
     body = `<div class="card"><div class="card-head"><h3>${ic('bell', 'sm')}Alerts</h3></div>${row('notifyTracked', 'Tracked traders', 'When a trader you track opens, closes or changes a position')}${row('notifyTx', 'Transactions', 'When your trades, claims or market creations confirm or fail on Solana')}${row('notifyMoves', 'Price moves', 'Moves of 5¢ or more on Panta markets you hold')}${row('notifyGoals', 'Followed games', 'Kick-off, goals and final scores for games you follow')}</div>
@@ -324,16 +381,16 @@ const FORMS = {
   login: async (f, fd) => { UI.auth.email = fd.get('email'); if (!fd.get('password')) throw aerr('x', 'Enter your password.'); onAuthed(await Auth.adapter.signIn({ email: fd.get('email'), password: fd.get('password'), remember: !!fd.get('remember') })); },
   signup: async (f, fd) => { UI.auth.email = fd.get('email'); if (!fd.get('terms')) throw aerr('x', 'Please accept the terms to continue.'); onAuthed(await Auth.adapter.signUp({ email: fd.get('email'), password: fd.get('password') })); },
   emailCodeSend: async (f, fd) => { const email = String(fd.get('email') || '').trim(); if (!emailOk(email)) throw aerr('x', 'Enter a valid email address.'); await EmailCodes.send(email, 'signin'); UI.auth.email = email; UI.auth.codeSent = true; refreshAuth(); },
-  emailCodeVerify: async (f, fd) => { await EmailCodes.verify(UI.auth.email, 'signin', fd.get('code')); UI.auth.codeSent = false; onAuthed(Auth.adapter.emailLogin(UI.auth.email)); },
+  emailCodeVerify: async (f, fd) => { const code = fd.get('code'), token = EmailCodes.token('signin', UI.auth.email); if (!Auth.adapter.remote) await EmailCodes.verify(UI.auth.email, 'signin', code); const r = await Auth.adapter.emailLogin(UI.auth.email, code, token); UI.auth.codeSent = false; onAuthed(r); },
   twofa: async (f, fd) => onAuthed(await Auth.adapter.verify2FA({ ...UI.auth.pending, code: fd.get('code') })),
-  forgot: async (f, fd) => { const email = String(fd.get('email') || '').trim(); if (!emailOk(email)) throw aerr('x', 'Enter a valid email address.'); if (!Auth.adapter.findByEmail(email)) throw aerr('x', 'No account with this email exists in this browser.'); await EmailCodes.send(email, 'reset'); UI.forgot = { step: 2, email }; refresh(); },
-  reset: async (f, fd) => { await EmailCodes.verify(UI.forgot.email, 'reset', fd.get('code')); await Auth.adapter.resetPassword({ email: UI.forgot.email, password: fd.get('password') }); UI.auth.email = UI.forgot.email; UI.forgot = null; toast({ title: 'Password updated', body: 'Log in with your new password.' }); location.hash = '#/login'; },
-  onboard: async (f, fd) => { Auth.adapter.updateProfile({ name: String(fd.get('name') || '').trim(), handle: fd.get('handle'), hue: UI.onb.hue, onboarded: true }); UI.onb = null; location.hash = '#/home'; setTimeout(() => toast({ title: `Welcome to Nexis, @${Auth.user.handle}` }), 300); },
-  profile: async (f, fd) => { Auth.adapter.updateProfile({ name: String(fd.get('name') || '').trim(), handle: fd.get('handle'), bio: String(fd.get('bio') || ''), hue: +fd.get('hue') }); toast({ title: 'Profile saved' }); refresh(); },
+  forgot: async (f, fd) => { const email = String(fd.get('email') || '').trim(); if (!emailOk(email)) throw aerr('x', 'Enter a valid email address.'); if (!(await Auth.adapter.findByEmail(email))) throw aerr('x', 'No Nexis account uses this email.'); await EmailCodes.send(email, 'reset'); UI.forgot = { step: 2, email }; refresh(); },
+  reset: async (f, fd) => { const code = fd.get('code'), token = EmailCodes.token('reset', UI.forgot.email); if (!Auth.adapter.remote) await EmailCodes.verify(UI.forgot.email, 'reset', code); await Auth.adapter.resetPassword({ email: UI.forgot.email, password: fd.get('password'), code, token }); UI.auth.email = UI.forgot.email; UI.forgot = null; toast({ title: 'Password updated', body: 'Log in with your new password.' }); location.hash = '#/login'; },
+  onboard: async (f, fd) => { await Auth.adapter.updateProfile({ name: String(fd.get('name') || '').trim(), handle: fd.get('handle'), hue: UI.onb.hue, onboarded: true }); UI.onb = null; location.hash = '#/home'; setTimeout(() => toast({ title: `Welcome to Nexis, @${Auth.user.handle}` }), 300); },
+  profile: async (f, fd) => { await Auth.adapter.updateProfile({ name: String(fd.get('name') || '').trim(), handle: fd.get('handle'), bio: String(fd.get('bio') || ''), hue: +fd.get('hue') }); toast({ title: 'Profile saved' }); refresh(); },
   password: async (f, fd) => { if (fd.get('next') !== fd.get('confirm')) throw aerr('x', 'The new passwords don’t match.'); const had = await Auth.adapter.changePassword({ current: fd.get('current'), next: fd.get('next') }); toast({ title: had ? 'Password updated' : 'Password added' }); refresh(); },
   twofaSetup: async (f, fd) => { await Auth.adapter.confirm2FA(fd.get('code')); toast({ title: 'Two-factor authentication is on' }); refresh(); },
   emailChange: async (f, fd) => { const email = String(fd.get('email') || '').trim(); if (!emailOk(email)) throw aerr('x', 'Enter a valid email address.'); await EmailCodes.send(email, 'verify'); UI.emailChange = { email }; openEmailChange(2); },
-  emailConfirm: async (f, fd) => { await EmailCodes.verify(UI.emailChange.email, 'verify', fd.get('code')); Auth.adapter.setEmail(UI.emailChange.email); closeModal(); toast({ title: 'Email verified' }); refresh(); },
+  emailConfirm: async (f, fd) => { const code = fd.get('code'), token = EmailCodes.token('verify', UI.emailChange.email); if (!Auth.adapter.remote) await EmailCodes.verify(UI.emailChange.email, 'verify', code); await Auth.adapter.setEmail(UI.emailChange.email, code, token); closeModal(); toast({ title: 'Email verified' }); refresh(); },
 };
 const FORM_BUSY = { login: 'Logging in…', signup: 'Creating account…', emailCodeSend: 'Sending…', emailCodeVerify: 'Verifying…', twofa: 'Verifying…', forgot: 'Sending…', reset: 'Resetting…', onboard: 'Saving…', profile: 'Saving…', password: 'Saving…', twofaSetup: 'Verifying…', emailChange: 'Sending…', emailConfirm: 'Verifying…' };
 function openEmailChange(step = 1) {
@@ -362,20 +419,20 @@ const A_AUTH = {
   walletPick: (el) => walletConnect(el.dataset.w), walletBack: () => setModal(UI.walletFlow.pick()), walletSign: (el) => walletSign(el),
   walletDone: () => { closeModal(); const f = UI.walletFlow && UI.walletFlow.onDone; UI.walletFlow = null; refresh(); if (f) setTimeout(f, 150); },
   onbHue: (el) => { UI.onb.hue = +el.dataset.h; $$('[data-action=onbHue]').forEach(b => b.classList.toggle('on', b === el)); $('#onb-av').style.background = `linear-gradient(135deg,hsl(${UI.onb.hue} 55% 42%),hsl(${(UI.onb.hue + 40) % 360} 50% 30%))`; },
-  onbSkip: (el) => { const f = $('[data-form=onboard]'); try { Auth.adapter.updateProfile({ handle: f.elements.handle.value, hue: UI.onb.hue, onboarded: true }); } catch (e) { return showErr(f, e.message); } UI.onb = null; location.hash = '#/home'; },
+  onbSkip: async (el) => { const f = $('[data-form=onboard]'); try { setBusy(el, true); await Auth.adapter.updateProfile({ handle: f.elements.handle.value, hue: UI.onb.hue, onboarded: true }); } catch (e) { setBusy(el, false); return showErr(f, e.message); } UI.onb = null; location.hash = '#/home'; },
   profHue: (el) => { const h = +el.dataset.h; $$('[data-action=profHue]').forEach(b => b.classList.toggle('on', b === el)); $('#prof-av').style.background = `linear-gradient(135deg,hsl(${h} 55% 42%),hsl(${(h + 40) % 360} 50% 30%))`; $('[name=hue]').value = h; },
   linkWallet: () => requireAuth(() => openWalletFlow({ mode: 'link' })), linkGoogle: () => openGoogleFlow({ mode: 'link' }),
-  unlinkGoogle: () => confirmAct('Disconnect Google?', 'You won’t be able to sign in with Google until you connect it again.', 'Disconnect', async () => { Auth.adapter.unlinkGoogle(); closeModal(); refresh(); }),
-  removePassword: () => confirmAct('Remove password?', 'You’ll sign in with your other methods instead.', 'Remove password', async () => { Auth.adapter.removePassword(); closeModal(); refresh(); }),
-  setPrimary: (el) => { Auth.adapter.setPrimaryWallet(el.dataset.a); Balances.refresh(); toast({ title: 'Primary wallet updated' }); refresh(); },
+  unlinkGoogle: () => confirmAct('Disconnect Google?', 'You won’t be able to sign in with Google until you connect it again.', 'Disconnect', async () => { await Auth.adapter.unlinkGoogle(); closeModal(); refresh(); }),
+  removePassword: () => confirmAct('Remove password?', 'You’ll sign in with your other methods instead.', 'Remove password', async () => { await Auth.adapter.removePassword(); closeModal(); refresh(); }),
+  setPrimary: async (el) => { try { await Auth.adapter.setPrimaryWallet(el.dataset.a); } catch (e) { return toast({ title: 'Couldn’t update', body: esc(e.message), kind: 'err' }); } Balances.refresh(); toast({ title: 'Primary wallet updated' }); refresh(); },
   copyAddr: async (el) => { try { await navigator.clipboard.writeText(el.dataset.a); toast({ title: 'Address copied', kind: 'info', ms: 1800 }); } catch (e) { toast({ title: 'Couldn’t copy', body: esc(el.dataset.a), kind: 'warn' }); } },
-  unlinkWallet: (el) => confirmAct('Remove this wallet?', `${shortAddr(el.dataset.a)} will no longer sign in or sign trades for this account. Your funds and positions stay in the wallet.`, 'Remove wallet', async () => { Auth.adapter.unlinkWallet(el.dataset.a); closeModal(); Balances.refresh(); refresh(); }),
+  unlinkWallet: (el) => confirmAct('Remove this wallet?', `${shortAddr(el.dataset.a)} will no longer sign in or sign trades for this account. Your funds and positions stay in the wallet.`, 'Remove wallet', async () => { await Auth.adapter.unlinkWallet(el.dataset.a); closeModal(); Balances.refresh(); refresh(); }),
   changeEmail: () => openEmailChange(1),
-  start2FA: (el) => { Auth.adapter.start2FA(); refresh(); },
-  disable2FA: () => confirmAct('Turn off two-factor authentication?', 'Your account will only need your password, email code or Google to log in.', 'Turn off', async () => { Auth.adapter.disable2FA(); closeModal(); refresh(); }),
-  revokeSession: (el) => { Auth.adapter.revokeSession(el.dataset.id); refresh(); },
-  deleteAccount: () => { const u = Auth.user; openModal(`${modalHead('Delete account')}<div class="modal-body"><p class="dim">This deletes <b style="color:var(--text)">@${esc(u.handle || 'you')}</b> from this browser. Your wallet and Panta positions are not affected.</p><label class="field"><span>Type <b class="num">${esc(u.handle || 'delete')}</b> to confirm</span><input class="input" id="del-in" autocomplete="off"></label></div><div class="modal-foot"><button class="btn btn-ghost" data-action="closeModal">Cancel</button><button class="btn btn-no on" data-action="confirmDelete">Delete account</button></div>`); },
-  confirmDelete: () => { if ($('#del-in').value.trim() !== (Auth.user.handle || 'delete')) return toast({ title: 'Confirmation doesn’t match', kind: 'warn' }); Auth.adapter.deleteAccount(); closeModal(true); Store.init(null); location.hash = '#/'; toast({ title: 'Account deleted', kind: 'info' }); },
+  start2FA: async (el) => { setBusy(el, true); try { await Auth.adapter.start2FA(); } catch (e) { setBusy(el, false); return toast({ title: 'Couldn’t start setup', body: esc(e.message), kind: 'err' }); } refresh(); },
+  disable2FA: () => confirmAct('Turn off two-factor authentication?', 'Your account will only need your password, email code or Google to log in.', 'Turn off', async () => { await Auth.adapter.disable2FA(); closeModal(); refresh(); }),
+  revokeSession: async (el) => { try { await Auth.adapter.revokeSession(el.dataset.id); } catch (e) { return toast({ title: 'Couldn’t sign out that session', body: esc(e.message), kind: 'err' }); } refresh(); },
+  deleteAccount: () => { const u = Auth.user; openModal(`${modalHead('Delete account')}<div class="modal-body"><p class="dim">This permanently deletes <b style="color:var(--text)">@${esc(u.handle || 'you')}</b> and its sign-in methods. Your wallet and Panta positions are not affected.</p><label class="field"><span>Type <b class="num">${esc(u.handle || 'delete')}</b> to confirm</span><input class="input" id="del-in" autocomplete="off"></label></div><div class="modal-foot"><button class="btn btn-ghost" data-action="closeModal">Cancel</button><button class="btn btn-no on" data-action="confirmDelete">Delete account</button></div>`); },
+  confirmDelete: async (el) => { if ($('#del-in').value.trim() !== (Auth.user.handle || 'delete')) return toast({ title: 'Confirmation doesn’t match', kind: 'warn' }); setBusy(el, true); try { await Auth.adapter.deleteAccount(); } catch (e) { setBusy(el, false); return toast({ title: 'Couldn’t delete account', body: esc(e.message), kind: 'err' }); } closeModal(true); Store.init(null); location.hash = '#/'; toast({ title: 'Account deleted', kind: 'info' }); },
   logout: () => logout(), userMenu: (el, e) => { e.stopPropagation(); toggleUserMenu(); }, closeUserMenu: () => { $('#user-pop').innerHTML = ''; },
   enableDesktop: () => Notify.enableDesktop().then(() => refresh()),
 };

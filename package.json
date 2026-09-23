@@ -2,8 +2,11 @@
   "name": "nexis",
   "private": true,
   "description": "Nexis — prediction markets on Panta with live data, sports and trader tracking.",
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.128.0"
+    "@anthropic-ai/sdk": "^0.128.0",
+    "@netlify/blobs": "^8.2.0"
   }
 }

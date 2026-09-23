@@ -270,6 +270,7 @@ Bus.on('tracker', () => { renderChrome(current.route); softRefresh(['tracker', '
 Bus.on('portfolio', () => { pfPatch(); softRefresh(['portfolio', 'home']); });
 Bus.on('feeds', () => { const fp = $('#feed-pill'); if (fp) fp.innerHTML = feedPill(); const pb = $('#panta-badge'); if (pb) pb.innerHTML = pantaBadge(); });
 Bus.on('store', () => { if ($('#view')) renderChrome(current.route); });
+Bus.on('auth:expired', () => { Store.init(null); Balances.v = null; toast({ title: 'You’ve been signed out', body: 'Your session ended or was signed out from another device. Log in again.', kind: 'info' }); if (PROTECTED.includes(current.route)) { UI.auth.next = location.hash.slice(1); location.hash = '#/login'; } else refresh(); });
 
 /* ---------------- boot ---------------- */
 window.addEventListener('hashchange', () => { const p = $('#user-pop'); if (p) p.innerHTML = ''; const n = $('#notif-pop'); if (n) n.innerHTML = ''; router(); });
@@ -279,6 +280,13 @@ window.addEventListener('hashchange', () => { const p = $('#user-pop'); if (p) p
   try { if (window.claude && typeof window.claude.use === 'function') { const s = await window.claude.use('sample'); if (s && typeof s.json === 'function') sampleFn = s; } } catch (e) { /* not available */ }
   router();
   const cfg = await Config.load();
+  // Accounts: server-side when the host has storage (Netlify Blobs), otherwise browser-only.
+  if (cfg && !cfg.error) {
+    const want = cfg.accounts && cfg.accounts.server ? 'remote' : 'local';
+    if (Auth.mode !== want) { Auth.setMode(want); Store.init(Auth.user && Auth.user.id); router(); }
+  }
+  // Keep the account in sync with other devices (profile edits, signed-out sessions).
+  Poller(() => Auth.mode === 'remote' && Auth.user ? RemoteAccounts.refresh().then(() => renderChrome(current.route)).catch(() => {}) : null, 60000);
   if (cfg && cfg.panta && !cfg.panta.configured && !cfg.error) { Panta.state = 'unconfigured'; Panta.mode = 'unconfigured'; Feeds.set('panta', 'unconfigured'); }
   else if (cfg && cfg.panta && cfg.panta.mode) Panta.mode = cfg.panta.mode;
   if (cfg && cfg.error === 'NO_API') ['panta', 'polymarket', 'sports', 'crypto', 'chain'].forEach(k => Feeds.set(k, 'offline', new Error('Not running on the Nexis server (/api unavailable)')));

@@ -8,12 +8,16 @@ const ROUTES = {
   config: () => require('../../api/config.js'),
   email: () => require('../../api/email.js'),
   ai: () => require('../../api/ai.js'),
+  auth: () => require('../../api/auth.js'),
 };
 
 exports.handler = async (event) => {
   const name = String(event.path || '').replace(/\/+$/, '').split('/').pop();
   const load = ROUTES[name];
   if (!load) return { statusCode: 404, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ error: 'Not found' }) };
+
+  // Netlify Blobs (server-side accounts) needs the Lambda event to find its credentials.
+  try { require('@netlify/blobs').connectLambda(event); process.env.NEXIS_NETLIFY = '1'; } catch (e) { /* Blobs unavailable: accounts fall back to the browser */ }
 
   let body = event.body || null;
   if (body && event.isBase64Encoded) body = Buffer.from(body, 'base64').toString('utf8');

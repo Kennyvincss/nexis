@@ -130,6 +130,14 @@ Desktop notifications can be enabled in Settings.
 
 ## Accounts
 
-Accounts are stored in the browser's `localStorage`: PBKDF2 password hashes, real TOTP two-factor authentication, and Sign-In With Solana wallet login. Email codes (Resend) and Google sign-in are verified server-side when configured.
+On **Netlify**, accounts are stored on the server with Netlify Blobs, which is built in and needs no setup. An account created on one device therefore works from any browser or phone. `/api/auth` checks every sign-in method:
 
-Because of this, accounts don't sync across devices. A hosted user database is the next step if you need that. Wallet balances, positions and trades always come from the chain and Panta, not from the account.
+- **Email + password:** passwords are hashed with scrypt on the server, and repeated failures lock the account for a minute.
+- **Wallet:** Sign-In With Solana. The server checks the wallet's Ed25519 signature and rejects replayed messages.
+- **Google:** the ID token is checked with Google and must be issued for your `GOOGLE_CLIENT_ID`.
+- **Email code and password reset:** these need Resend (`RESEND_API_KEY`, `EMAIL_FROM`, `AUTH_SECRET`).
+- **Two-factor authentication:** TOTP codes are verified on the server.
+
+Sessions are signed tokens that can be revoked. Settings → Security lists every signed-in device, and signing one out takes effect within a minute.
+
+On a host without storage (Vercel as configured here), Nexis falls back to accounts kept in the browser. Wallet balances, positions and trades always come from the chain and Panta, not from the account.
