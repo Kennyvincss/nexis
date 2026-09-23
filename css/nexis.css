@@ -755,3 +755,13 @@ mark.pred{ background:rgba(61,123,255,.2); color:#fff; border-radius:3px; paddin
 .sb-score.flash{ background:var(--blue-soft); }
 @media (max-width:900px){ #tr-grid{ grid-template-columns:minmax(0,1fr) !important; } }
 @media (max-width:720px){ .crypto-t th:nth-child(4), .crypto-t td:nth-child(4), .crypto-t th:nth-child(6), .crypto-t td:nth-child(6), .crypto-t th:nth-child(7), .crypto-t td:nth-child(7), .crypto-t th:nth-child(10), .crypto-t td:nth-child(10){ display:none; } .unavail{ padding:16px; } }
+
+/* sports day picker */
+.daystrip{ display:flex; gap:6px; overflow-x:auto; padding-bottom:4px; scrollbar-width:thin; scroll-snap-type:x proximity; }
+.daystrip button{ flex:none; min-width:74px; padding:8px 10px; border:1px solid var(--line-2); border-radius:var(--r-sm); background:var(--card); color:var(--text-2); display:flex; flex-direction:column; align-items:center; gap:2px; scroll-snap-align:center; transition:border-color .15s, background .15s; }
+.daystrip button b{ font-size:13px; font-weight:600; color:var(--text); }
+.daystrip button span{ font-size:11.5px; color:var(--muted); }
+.daystrip button.wide{ min-width:110px; }
+.daystrip button:hover{ border-color:var(--line-3); }
+.daystrip button.on{ background:var(--text); border-color:var(--text); }
+.daystrip button.on b, .daystrip button.on span{ color:#05060A; }

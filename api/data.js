@@ -17,7 +17,8 @@ module.exports = async (req, res) => {
   let target;
   try { target = new URL(String(req.query.url || '')); } catch (e) { return send(res, 400, { error: 'Invalid url' }); }
   if (target.protocol !== 'https:' || !ALLOWED.has(target.hostname)) return send(res, 403, { error: 'Host not allowed' });
-  const headers = { accept: 'application/json', 'user-agent': 'Nexis/1.0' };
+  // Some providers (notably ESPN) reject unfamiliar clients, so identify like a regular browser.
+  const headers = { accept: 'application/json, text/plain, */*', 'accept-language': 'en-US,en;q=0.9', 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36' };
   if (target.hostname.endsWith('coingecko.com')) {
     const k = env('COINGECKO_API_KEY');
     if (k && env('COINGECKO_PRO')) { target.hostname = 'pro-api.coingecko.com'; headers['x-cg-pro-api-key'] = k; }

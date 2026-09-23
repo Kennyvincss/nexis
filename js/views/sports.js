@@ -33,28 +33,55 @@ function sportsState() {
   if (Sports.state === 'idle') return skeletonCards(6);
   return null;
 }
+/* Day picker: last 7 days … next 7 days, plus week-long Results / Upcoming lists. */
+function sportsDays() {
+  const t = dayStart(now()); const out = [{ k: 'past', label: 'Results', sub: 'Last 7 days' }];
+  for (let i = -7; i <= 7; i++) { const d = t + i * DAY; out.push({ k: i === 0 ? 'today' : ymd(d), t: d, label: i === 0 ? 'Today' : i === -1 ? 'Yesterday' : i === 1 ? 'Tomorrow' : new Date(d).toLocaleDateString('en-US', { weekday: 'short' }), sub: new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) }); }
+  out.push({ k: 'next', label: 'Upcoming', sub: 'Next 7 days' }); return out;
+}
+function sportsSelection(day) {
+  const t = dayStart(now());
+  if (day === 'past') return { from: t - 7 * DAY, to: t - DAY, multi: true, order: -1, title: 'Results · last 7 days' };
+  if (day === 'next') return { from: t + DAY, to: t + 7 * DAY, multi: true, order: 1, title: 'Upcoming · next 7 days' };
+  if (day === 'today' || !/^\d{8}$/.test(day || '')) return { from: t, to: t, today: true, order: 1 };
+  const d = new Date(+day.slice(0, 4), +day.slice(4, 6) - 1, +day.slice(6, 8)).getTime();
+  return { from: d, to: d, order: d < t ? -1 : 1, title: new Date(d).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) };
+}
 Views.sports = async (params) => {
-  const st = UI.sports; if (params.get('f')) st.filter = params.get('f');
+  const st = UI.sports; if (params.get('f')) st.filter = params.get('f'); if (params.get('day')) st.day = params.get('day'); st.day = st.day || 'today';
+  const days = sportsDays(); if (!days.some(d => d.k === st.day)) st.day = 'today';
+  const sel = sportsSelection(st.day);
+  const head = `<div class="page-head"><div><h1>Sports</h1><p>Live scores update automatically. Pick a day to see results and upcoming fixtures.</p></div>${srcBadge('espn')}</div>`;
   if (Sports.state === 'idle') await Sports.poll();
-  const head = `<div class="page-head"><div><h1>Live sports</h1><p>Scores, clock and match events update automatically — every 12 seconds while games are live.</p></div>${srcBadge('espn')}</div>`;
-  const blocked = sportsState(); if (blocked) return `<div class="page">${head}${blocked}</div>`;
-  const all = Sports.list(); const today = new Date().toDateString();
-  const F = { All: () => true, Live: (g) => g.state === 'in', Today: (g) => new Date(g.start).toDateString() === today, Upcoming: (g) => g.state === 'pre', Finished: (g) => g.state === 'post', Following: (g) => isFollowed(g.id), Football: (g) => g.sport === 'Football', Basketball: (g) => g.sport === 'Basketball', 'American Football': (g) => g.sport === 'American Football' };
-  const list = all.filter(F[st.filter] || F.All); const live = all.filter(F.Live).length;
-  const groups = {}; list.forEach(g => (groups[g.league] = groups[g.league] || []).push(g));
-  return `<div class="page">${head}
-    <div class="row wrap" style="gap:8px;margin-bottom:18px">${Object.keys(F).map(k => `<button class="chip ${k === st.filter ? 'on' : ''}" data-action="sportFilter" data-f="${esc(k)}">${k === 'Live' ? `<span class="live-dot red"></span>Live${live ? ' · ' + live : ''}` : esc(k)}</button>`).join('')}</div>
-    ${Sports.state === 'stale' ? `<div class="sim-note" style="margin-bottom:14px">${ic('alert', 'sm')}<span>ESPN didn’t respond to the last refresh — scores may be behind. Retrying.</span></div>` : ''}
-    ${list.length ? Object.entries(groups).map(([lg, gs]) => `<section class="section"><div class="section-head"><h2 style="font-size:16px">${esc(lg)}</h2><span class="mut" style="font-size:12px">${gs.length} game${gs.length === 1 ? '' : 's'}</span></div><div class="grid gauto">${gs.map(gameCard).join('')}</div></section>`).join('')
-      : `<div class="card">${emptyState({ icon: 'soccer', title: st.filter === 'Live' ? 'No games live right now' : 'No games', body: st.filter === 'Following' ? 'Follow a game to get goal, kick-off and full-time alerts.' : 'Nothing in this filter between yesterday and the next three days.' })}</div>`}
+  let rangeErr = null; try { await Sports.loadRange(sel.from, sel.to); } catch (e) { rangeErr = e; }
+  const rs = Sports.rangeState(sel.from, sel.to);
+  if (!Sports.games.size) { const blocked = sportsState() || (rangeErr || (rs && rs.error) ? unavailable('Sports data unavailable', `Nexis couldn’t load the schedule from ESPN${(rangeErr || rs.error).message ? ': ' + esc((rangeErr || rs.error).message) : ''}. It retries automatically.`, '<button class="btn btn-ghost sm" data-action="retry">Retry now</button>') : null); if (blocked) return `<div class="page">${head}${daysHtml(days, st.day)}${blocked}</div>`; }
+  let pool = Sports.between(sel.from, sel.to);
+  if (sel.today) Sports.list().filter(g => g.state === 'in').forEach(g => { if (!pool.includes(g)) pool.push(g); });
+  if (st.day === 'past') pool = pool.filter(g => g.state !== 'pre');
+  const F = { All: () => true, Live: (g) => g.state === 'in', Following: (g) => isFollowed(g.id), Football: (g) => g.sport === 'Football', Basketball: (g) => g.sport === 'Basketball', 'American Football': (g) => g.sport === 'American Football' };
+  if (!sel.today && st.filter === 'Live') st.filter = 'All';
+  const chips = Object.keys(F).filter(k => k !== 'Live' || sel.today); const live = pool.filter(F.Live).length;
+  const list = pool.filter(F[st.filter] || F.All).sort((a, b) => ({ in: 0, pre: 1, post: 2 }[a.state] - { in: 0, pre: 1, post: 2 }[b.state]) * (sel.multi ? 0 : 1) || (a.start - b.start) * sel.order);
+  const groups = {}; list.forEach(g => { const k = sel.multi ? new Date(g.start).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : g.league; (groups[k] = groups[k] || []).push(g); });
+  const partial = rs && rs.failed && rs.ok ? `<div class="sim-note" style="margin-bottom:14px">${ic('info', 'sm')}<span>${rs.failed} league${rs.failed === 1 ? '' : 's'} didn’t load from ESPN just now. Retrying automatically.</span></div>` : '';
+  return `<div class="page">${head}${daysHtml(days, st.day)}
+    <div class="row wrap" style="gap:8px;margin:14px 0 18px">${chips.map(k => `<button class="chip ${k === st.filter ? 'on' : ''}" data-action="sportFilter" data-f="${esc(k)}">${k === 'Live' ? `<span class="live-dot red"></span>Live${live ? ' · ' + live : ''}` : esc(k)}</button>`).join('')}</div>
+    ${Sports.state === 'stale' && sel.today ? `<div class="sim-note" style="margin-bottom:14px">${ic('alert', 'sm')}<span>ESPN didn’t respond to the last refresh — scores may be behind. Retrying.</span></div>` : ''}${partial}
+    ${sel.title ? `<h2 style="font-size:17px;margin-bottom:12px">${esc(sel.title)}</h2>` : ''}
+    ${list.length ? Object.entries(groups).map(([k, gs]) => `<section class="section" style="margin-top:${sel.title ? 14 : 22}px"><div class="section-head"><h2 style="font-size:15px">${esc(k)}</h2><span class="mut" style="font-size:12px">${gs.length} game${gs.length === 1 ? '' : 's'}</span></div><div class="grid gauto">${gs.map(gameCard).join('')}</div></section>`).join('')
+      : `<div class="card">${emptyState({ icon: 'soccer', title: st.filter === 'Live' ? 'No games live right now' : st.filter === 'Following' ? 'You’re not following any of these games' : 'No games', body: st.filter === 'Following' ? 'Follow a game to get goal, kick-off and full-time alerts.' : st.day === 'past' ? 'No results in the last 7 days for these leagues.' : st.day === 'next' ? 'No fixtures scheduled in the next 7 days for these leagues.' : 'Nothing scheduled on this day for the leagues Nexis follows.' })}</div>`}
   </div>`;
 };
+function daysHtml(days, cur) {
+  return `<div class="daystrip" role="tablist" aria-label="Choose a day">${days.map(d => `<button role="tab" aria-selected="${d.k === cur}" class="${d.k === cur ? 'on' : ''} ${d.k === 'past' || d.k === 'next' ? 'wide' : ''}" data-action="sportDay" data-day="${d.k}"><b>${esc(d.label)}</b><span>${esc(d.sub)}</span></button>`).join('')}</div>`;
+}
 
 /* ---------- match page ---------- */
 Views.event = async (params, id) => {
   if (Sports.state === 'idle' || !Sports.games.has(id)) await Sports.poll();
-  const g = Sports.games.get(id);
-  if (!g) { const b = sportsState(); return `<div class="page"><a class="link" href="#/sports">${ic('chevLeft', 'sm')}Sports</a><div style="margin-top:14px">${b || `<div class="card">${emptyState({ icon: 'soccer', title: 'Game not found', body: 'Nexis shows games from the last 30 hours and the next 3 days. This one is outside that window or the link is wrong.' })}</div>`}</div></div>`; }
+  let g = Sports.games.get(id); if (!g) { try { g = await Sports.fetchGame(id); } catch (e) { g = null; } }
+  if (!g) { const b = sportsState(); return `<div class="page"><a class="link" href="#/sports">${ic('chevLeft', 'sm')}Sports</a><div style="margin-top:14px">${b || `<div class="card">${emptyState({ icon: 'soccer', title: 'Game not found', body: 'ESPN has no game with this link. It may have been removed, or the link is wrong.' })}</div>`}</div></div>`; }
   const rel = Sports.related(g); Panta.watch(rel.panta.map(m => m.id));
   return `<div class="page"><a class="link" href="#/sports">${ic('chevLeft', 'sm')}Sports</a>
     <div class="card ev-hero ${g.state === 'in' ? 'live' : ''}" style="margin-top:12px" id="ev-hero">${eventHero(g)}</div>
