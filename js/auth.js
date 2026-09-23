@@ -34,13 +34,48 @@ async function totp(secret, t = now()) {
 async function totpOk(secret, code) { code = String(code || '').replace(/\s/g, ''); for (const d of [-1, 0, 1]) if (await totp(secret, now() + d * 30000) === code) return true; return false; }
 function loadScript(src, globalName) { if (window[globalName]) return Promise.resolve(window[globalName]); return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.async = true; s.onload = () => res(window[globalName]); s.onerror = () => rej(new Error('Couldn’t load ' + src)); document.head.appendChild(s); }); }
 
-/* ---------- email codes via /api/email ---------- */
+/* ---------- Privy (email one-time codes, sent and checked by Privy) ----------
+   Enabled when the server has PRIVY_APP_ID and PRIVY_APP_SECRET. The Privy SDK is
+   loaded only when someone uses an email code. The server verifies Privy's signed
+   token and reads the verified email before signing anyone in. */
+const PrivyAuth = {
+  client: null,
+  get appId() { return Config.c && Config.c.privy && Config.c.privy.appId; },
+  get enabled() { return !!(this.appId && Config.c.privy.server); },
+  async get() {
+    if (this.client) return this.client;
+    const P = await loadScript('/js/vendor/privy-core.js', 'NexisPrivy');
+    if (!P) throw aerr('PRIVY_LOAD', 'Couldn’t load Privy. Check your connection or ad blocker.');
+    const c = new P.Privy({ appId: this.appId, storage: new P.LocalStorage() });
+    await c.initialize(); this.client = c; return c;
+  },
+  msg(e) { const m = String((e && e.message) || e || ''); return /invalid.*code|code.*invalid|incorrect/i.test(m) ? 'That code isn’t right.' : /expired/i.test(m) ? 'That code has expired. Request a new one.' : /too many|rate/i.test(m) ? 'Too many attempts. Wait a minute and try again.' : /origin|domain|not allowed/i.test(m) ? 'Privy rejected this site. Add this domain under Allowed domains in the Privy dashboard.' : m || 'Privy couldn’t complete the request.'; },
+  async send(email) { try { await (await this.get()).auth.email.sendCode(email); } catch (e) { throw aerr('PRIVY', this.msg(e)); } },
+  async verify(email, code) {
+    try { const c = await this.get(); const r = await c.auth.email.loginWithCode(email, String(code || '').trim()); return { accessToken: r.token || await c.getAccessToken(), idToken: r.identity_token || await c.getIdentityToken() }; }
+    catch (e) { throw aerr('PRIVY', this.msg(e)); }
+  },
+  async logout() { if (this.client) { try { await this.client.auth.logout(); } catch (e) {} } },
+};
+
+/* ---------- email codes: Privy when configured, otherwise Resend via /api/email ---------- */
 const EmailCodes = {
-  get configured() { return !!(Config.c && Config.c.email && Config.c.email.configured); },
+  get resend() { return !!(Config.c && Config.c.email && Config.c.email.configured); },
+  get configured() { return PrivyAuth.enabled || this.resend; },
   tokens: {},
   token(purpose, email) { const t = this.tokens[purpose + ':' + String(email).toLowerCase()]; if (!t) throw aerr('NO_CODE', 'Request a code first.'); return t; },
-  async send(email, purpose) { const r = await Net.api('email', { method: 'POST', body: { action: 'send', email, purpose } }); this.tokens[purpose + ':' + email.toLowerCase()] = r.token; return true; },
-  async verify(email, purpose, code) { const token = this.tokens[purpose + ':' + email.toLowerCase()]; if (!token) throw aerr('NO_CODE', 'Request a code first.'); await Net.api('email', { method: 'POST', body: { action: 'verify', email, purpose, code, token } }); delete this.tokens[purpose + ':' + email.toLowerCase()]; return true; },
+  async send(email, purpose) {
+    if (PrivyAuth.enabled) return PrivyAuth.send(String(email).trim().toLowerCase());
+    const r = await Net.api('email', { method: 'POST', body: { action: 'send', email, purpose } }); this.tokens[purpose + ':' + email.toLowerCase()] = r.token; return true;
+  },
+  async verify(email, purpose, code) { const token = this.token(purpose, email); await Net.api('email', { method: 'POST', body: { action: 'verify', email, purpose, code, token } }); delete this.tokens[purpose + ':' + email.toLowerCase()]; return true; },
+  /** Proof that the user received the code, for the accounts server. Browser-only accounts check it here instead. */
+  async proof(purpose, email, code) {
+    email = String(email).trim().toLowerCase();
+    if (PrivyAuth.enabled) { const privy = await PrivyAuth.verify(email, code); return Auth.adapter.remote ? { privy } : {}; }
+    if (!Auth.adapter.remote) { await this.verify(email, purpose, code); return {}; }
+    return { code, token: this.token(purpose, email) };
+  },
 };
 
 /* ---------- local account store ---------- */
@@ -136,11 +171,11 @@ const RemoteAccounts = {
   async signUp({ email, password }) { if (!emailOk(email)) throw aerr('invalid_email', 'Enter a valid email address.'); LocalAccounts.checkPw(password); return this.take(await this.call('signup', { email, password })); },
   async signIn({ email, password, remember }) { if (!emailOk(String(email || '').trim())) throw aerr('invalid_email', 'Enter a valid email address.'); return this.take(await this.call('login', { email, password, remember })); },
   async verify2FA({ pending, code }) { return this.take(await this.call('verify2fa', { pending, code })); },
-  async emailLogin(email, code, token) { return this.take(await this.call('emailLogin', { email, code, token })); },
+  async emailLogin(email, proof = {}) { return this.take(await this.call('emailLogin', { email, ...proof })); },
   async google({ credential }) { return this.take(await this.call('google', { credential })); },
   async wallet({ address, label, message, signature }) { return this.take(await this.call('wallet', { address, label, message, signature })); },
   async findByEmail(email) { const r = await this.call('exists', { email }); return r.exists ? r : null; },
-  async resetPassword({ email, password, code, token }) { LocalAccounts.checkPw(password); await this.call('reset', { email, password, code, token }); },
+  async resetPassword({ email, password, ...proof }) { LocalAccounts.checkPw(password); await this.call('reset', { email, password, ...proof }); },
   signOut() { const t = this.db && this.db.token; this.db = null; this.persist(); if (t) Net.api('auth', { method: 'POST', body: { action: 'logout', token: t } }).catch(() => {}); },
   me() { const u = this.current(); if (!u) throw aerr('no_session', 'Your session has ended. Log in again.'); return u; },
   async refresh() { if (!this.db) return null; const r = await this.authed('me'); return r.user; },
@@ -153,7 +188,7 @@ const RemoteAccounts = {
   async setPrimaryWallet(address) { await this.authed('setPrimary', { address }); },
   async linkGoogle({ credential }) { return (await this.authed('linkGoogle', { credential })).user; },
   async unlinkGoogle() { await this.authed('unlinkGoogle'); },
-  async setEmail(email, code, token) { await this.authed('setEmail', { email, code, token }); },
+  async setEmail(email, proof = {}) { await this.authed('setEmail', { email, ...proof }); },
   async start2FA() { return (await this.authed('start2fa')).user.twoFA; },
   async confirm2FA(code) { await this.authed('confirm2fa', { code }); },
   async disable2FA() { await this.authed('disable2fa'); },
@@ -277,7 +312,7 @@ Views.login = async () => { if (Auth.user && UI.auth.view !== 'twofa') { locatio
 Views.signup = async () => { if (Auth.user) { location.hash = '#/home'; return ''; } if (UI.auth.view === 'twofa') UI.auth.view = 'main'; return authPage('signup'); };
 Views.forgot = async () => {
   const F = UI.forgot = UI.forgot || { step: 1, email: UI.auth.email || '' };
-  const body = !EmailCodes.configured ? `<a class="link" href="#/login">${ic('chevLeft', 'sm')}Back to log in</a><div class="auth-icon">${ic('lock', 'lg')}</div><h1>Reset your password</h1>${unavailable('Password reset needs email delivery', 'The site owner hasn’t configured email (RESEND_API_KEY, EMAIL_FROM, AUTH_SECRET). You can still sign in with Google or your wallet if they’re linked.')}`
+  const body = !EmailCodes.configured ? `<a class="link" href="#/login">${ic('chevLeft', 'sm')}Back to log in</a><div class="auth-icon">${ic('lock', 'lg')}</div><h1>Reset your password</h1>${unavailable('Password reset needs email delivery', 'The site owner hasn’t set up email codes (Privy: PRIVY_APP_ID + PRIVY_APP_SECRET, or Resend). You can still sign in with Google or your wallet if they’re linked.')}`
     : F.step === 1 ? `<a class="link" href="#/login">${ic('chevLeft', 'sm')}Back to log in</a><div class="auth-icon">${ic('lock', 'lg')}</div><h1>Reset your password</h1><p class="dim">Enter your account email and we’ll send a 6-digit reset code.</p><form class="stack" style="gap:14px" data-form="forgot" novalidate><label class="field"><span>Email</span><input class="input" name="email" type="email" autocomplete="email" value="${esc(F.email)}" placeholder="you@example.com" autofocus></label><div data-err></div><button class="btn btn-primary lg block" type="submit">Send reset code</button></form>`
     : `<button class="link" data-action="forgotBack">${ic('chevLeft', 'sm')}Use a different email</button><h1>Enter your code</h1><p class="dim">We sent a code to <b style="color:var(--text)">${esc(F.email)}</b>. It expires in 15 minutes.</p><form class="stack" style="gap:14px" data-form="reset" novalidate><label class="field"><span>Reset code</span><input class="input otp num" name="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000"></label><div class="field"><label class="label" for="pw-new">New password</label><div class="pw-field"><input class="input" id="pw-new" name="password" type="password" autocomplete="new-password" placeholder="At least 8 characters" data-strength><button type="button" class="pw-eye" data-action="pwToggle" aria-label="Show password" aria-pressed="false">${ic('eye', 'sm')}</button></div><div class="pw-meter" data-meter><i></i><i></i><i></i><i></i><span class="mut">Use 8+ characters with letters and numbers</span></div></div><div data-err></div><button class="btn btn-primary lg block" type="submit">Reset password</button></form>`;
   return `<div class="auth">${authSide()}<main class="auth-main"><a class="logo auth-logo" href="#/">${logoMark}<span class="wm">NEXIS</span></a><div class="auth-card">${body}</div></main></div>`;
@@ -353,7 +388,8 @@ function integrationsHtml() {
     ${row(c.panta && c.panta.configured, `Panta ${c.panta && c.panta.mode === 'test' ? '<span class="tag amber">test key · sandbox fixtures</span>' : ''}`, 'Markets, trading, positions, market creation and resolution', 'PANTA_API_KEY')}
     ${row(c.rpc && c.rpc.custom, 'Solana RPC', c.rpc && c.rpc.custom ? 'Private RPC endpoint' : 'Using the public mainnet endpoint (rate-limited). Add a private RPC for reliable confirmations.', 'SOLANA_RPC_URL')}
     ${row(c.ai && c.ai.configured, 'Nexis AI (Claude)', 'Market drafting and factor analysis', 'ANTHROPIC_API_KEY')}
-    ${row(c.email && c.email.configured, 'Email (Resend)', 'Sign-in codes and password resets', 'RESEND_API_KEY, EMAIL_FROM, AUTH_SECRET')}
+    ${row(c.privy && c.privy.server, 'Email codes (Privy)', c.privy && c.privy.server ? 'Privy sends and checks email sign-in and password-reset codes.' : c.privy && c.privy.appId ? 'PRIVY_APP_ID is set but PRIVY_APP_SECRET is missing.' : 'Email sign-in and password-reset codes, sent by Privy. No email domain needed.', 'PRIVY_APP_ID, PRIVY_APP_SECRET')}
+    ${c.privy && c.privy.server ? '' : row(c.email && c.email.configured, 'Email (Resend)', 'Alternative to Privy for sign-in codes and password resets', 'RESEND_API_KEY, EMAIL_FROM, AUTH_SECRET')}
     ${row(c.google && c.google.clientId, 'Google sign-in', 'Google Identity Services', 'GOOGLE_CLIENT_ID')}
     ${row(true, 'Public data feeds', 'Polymarket, ESPN, CoinGecko and Coinbase need no keys. ' + (c.coingecko && c.coingecko.key ? 'CoinGecko key set.' : 'Optional COINGECKO_API_KEY raises CoinGecko rate limits.'), '')}</div>`;
 }
@@ -382,20 +418,20 @@ const FORMS = {
   login: async (f, fd) => { UI.auth.email = fd.get('email'); if (!fd.get('password')) throw aerr('x', 'Enter your password.'); onAuthed(await Auth.adapter.signIn({ email: fd.get('email'), password: fd.get('password'), remember: !!fd.get('remember') })); },
   signup: async (f, fd) => { UI.auth.email = fd.get('email'); if (!fd.get('terms')) throw aerr('x', 'Please accept the terms to continue.'); onAuthed(await Auth.adapter.signUp({ email: fd.get('email'), password: fd.get('password') })); },
   emailCodeSend: async (f, fd) => { const email = String(fd.get('email') || '').trim(); if (!emailOk(email)) throw aerr('x', 'Enter a valid email address.'); await EmailCodes.send(email, 'signin'); UI.auth.email = email; UI.auth.codeSent = true; refreshAuth(); },
-  emailCodeVerify: async (f, fd) => { const code = fd.get('code'), token = EmailCodes.token('signin', UI.auth.email); if (!Auth.adapter.remote) await EmailCodes.verify(UI.auth.email, 'signin', code); const r = await Auth.adapter.emailLogin(UI.auth.email, code, token); UI.auth.codeSent = false; onAuthed(r); },
+  emailCodeVerify: async (f, fd) => { const proof = await EmailCodes.proof('signin', UI.auth.email, fd.get('code')); const r = await Auth.adapter.emailLogin(UI.auth.email, proof); UI.auth.codeSent = false; onAuthed(r); },
   twofa: async (f, fd) => onAuthed(await Auth.adapter.verify2FA({ ...UI.auth.pending, code: fd.get('code') })),
   forgot: async (f, fd) => { const email = String(fd.get('email') || '').trim(); if (!emailOk(email)) throw aerr('x', 'Enter a valid email address.'); if (!(await Auth.adapter.findByEmail(email))) throw aerr('x', 'No Nexis account uses this email.'); await EmailCodes.send(email, 'reset'); UI.forgot = { step: 2, email }; refresh(); },
-  reset: async (f, fd) => { const code = fd.get('code'), token = EmailCodes.token('reset', UI.forgot.email); if (!Auth.adapter.remote) await EmailCodes.verify(UI.forgot.email, 'reset', code); await Auth.adapter.resetPassword({ email: UI.forgot.email, password: fd.get('password'), code, token }); UI.auth.email = UI.forgot.email; UI.forgot = null; toast({ title: 'Password updated', body: 'Log in with your new password.' }); location.hash = '#/login'; },
+  reset: async (f, fd) => { LocalAccounts.checkPw(fd.get('password')); const proof = await EmailCodes.proof('reset', UI.forgot.email, fd.get('code')); await Auth.adapter.resetPassword({ email: UI.forgot.email, password: fd.get('password'), ...proof }); UI.auth.email = UI.forgot.email; UI.forgot = null; toast({ title: 'Password updated', body: 'Log in with your new password.' }); location.hash = '#/login'; },
   onboard: async (f, fd) => { await Auth.adapter.updateProfile({ name: String(fd.get('name') || '').trim(), handle: fd.get('handle'), hue: UI.onb.hue, onboarded: true }); UI.onb = null; location.hash = '#/home'; setTimeout(() => toast({ title: `Welcome to Nexis, @${Auth.user.handle}` }), 300); },
   profile: async (f, fd) => { await Auth.adapter.updateProfile({ name: String(fd.get('name') || '').trim(), handle: fd.get('handle'), bio: String(fd.get('bio') || ''), hue: +fd.get('hue') }); toast({ title: 'Profile saved' }); refresh(); },
   password: async (f, fd) => { if (fd.get('next') !== fd.get('confirm')) throw aerr('x', 'The new passwords don’t match.'); const had = await Auth.adapter.changePassword({ current: fd.get('current'), next: fd.get('next') }); toast({ title: had ? 'Password updated' : 'Password added' }); refresh(); },
   twofaSetup: async (f, fd) => { await Auth.adapter.confirm2FA(fd.get('code')); toast({ title: 'Two-factor authentication is on' }); refresh(); },
   emailChange: async (f, fd) => { const email = String(fd.get('email') || '').trim(); if (!emailOk(email)) throw aerr('x', 'Enter a valid email address.'); await EmailCodes.send(email, 'verify'); UI.emailChange = { email }; openEmailChange(2); },
-  emailConfirm: async (f, fd) => { const code = fd.get('code'), token = EmailCodes.token('verify', UI.emailChange.email); if (!Auth.adapter.remote) await EmailCodes.verify(UI.emailChange.email, 'verify', code); await Auth.adapter.setEmail(UI.emailChange.email, code, token); closeModal(); toast({ title: 'Email verified' }); refresh(); },
+  emailConfirm: async (f, fd) => { const proof = await EmailCodes.proof('verify', UI.emailChange.email, fd.get('code')); await Auth.adapter.setEmail(UI.emailChange.email, proof); closeModal(); toast({ title: 'Email verified' }); refresh(); },
 };
 const FORM_BUSY = { login: 'Logging in…', signup: 'Creating account…', emailCodeSend: 'Sending…', emailCodeVerify: 'Verifying…', twofa: 'Verifying…', forgot: 'Sending…', reset: 'Resetting…', onboard: 'Saving…', profile: 'Saving…', password: 'Saving…', twofaSetup: 'Verifying…', emailChange: 'Sending…', emailConfirm: 'Verifying…' };
 function openEmailChange(step = 1) {
-  if (!EmailCodes.configured) return openModal(`${modalHead('Change email')}<div class="modal-body">${unavailable('Email verification isn’t configured', 'Nexis needs email delivery (RESEND_API_KEY, EMAIL_FROM, AUTH_SECRET) to verify a new address.')}</div>`);
+  if (!EmailCodes.configured) return openModal(`${modalHead('Change email')}<div class="modal-body">${unavailable('Email verification isn’t configured', 'Nexis needs Privy (PRIVY_APP_ID, PRIVY_APP_SECRET) or email delivery (RESEND_API_KEY, EMAIL_FROM, AUTH_SECRET) to verify a new address.')}</div>`);
   if (step === 1) return openModal(`${modalHead(Auth.user.email ? 'Change email' : 'Add email')}<div class="modal-body"><form class="stack" style="gap:14px" data-form="emailChange" novalidate><label class="field"><span>Email</span><input class="input" name="email" type="email" autocomplete="email" autofocus></label><p class="mut" style="font-size:12.5px">We’ll send a 6-digit code to confirm you own this address.</p><div data-err></div><button class="btn btn-primary block" type="submit">Send code</button></form></div>`);
   setModal(`${modalHead('Enter the code')}<div class="modal-body"><p class="dim">Sent to <b style="color:var(--text)">${esc(UI.emailChange.email)}</b></p><form class="stack" style="gap:14px" data-form="emailConfirm" novalidate><input class="input otp num" name="code" inputmode="numeric" maxlength="6" placeholder="000000" autofocus><div data-err></div><button class="btn btn-primary block" type="submit">Verify</button></form></div>`);
 }
@@ -403,7 +439,7 @@ function confirmAct(title, body, label, fn, danger = true) {
   openModal(`${modalHead(title)}<div class="modal-body"><p class="dim">${body}</p><div data-err></div></div><div class="modal-foot"><button class="btn btn-ghost" data-action="closeModal">Cancel</button><button class="btn ${danger ? 'btn-no on' : 'btn-primary'}" id="confirm-act">${label}</button></div>`);
   $('#confirm-act').onclick = async (e) => { const b = e.currentTarget; setBusy(b, true); try { await fn(); } catch (err) { setBusy(b, false); const box = $('.overlay [data-err]'); if (box) box.innerHTML = authErrorHtml(err.message); } };
 }
-function logout() { Auth.adapter.signOut(); closeModal(true); const up = $('#user-pop'); if (up) up.innerHTML = ''; Store.init(null); Balances.v = null; UI.setTab = 'account'; location.hash = '#/'; toast({ title: 'You’re logged out', kind: 'info' }); }
+function logout() { Auth.adapter.signOut(); PrivyAuth.logout(); closeModal(true); const up = $('#user-pop'); if (up) up.innerHTML = ''; Store.init(null); Balances.v = null; UI.setTab = 'account'; location.hash = '#/'; toast({ title: 'You’re logged out', kind: 'info' }); }
 function toggleUserMenu() {
   const pop = $('#user-pop'); if (!pop) return; if (pop.innerHTML) { pop.innerHTML = ''; return; }
   const u = Auth.user; const w = primaryWallet(); const b = Balances.v;

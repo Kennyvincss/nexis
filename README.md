@@ -33,7 +33,8 @@ To add them:
 | `SOLANA_RPC_URL` | Recommended | Your Solana mainnet RPC (Helius, Triton, QuickNode…). Used for wallet balances, on-chain history and transaction confirmation. The public endpoint used by default is heavily rate-limited. |
 | `COINGECKO_API_KEY` | Recommended | Raises CoinGecko rate limits for crypto prices and charts. Set `COINGECKO_PRO=1` if it's a Pro key. |
 | `ANTHROPIC_API_KEY` | Optional | Nexis AI: drafts markets from a post and lists factors for each side. Without it, drafting uses an on-device parser and analysis is hidden. |
-| `RESEND_API_KEY`, `EMAIL_FROM`, `AUTH_SECRET` | Optional | Email verification codes: passwordless sign-in and password reset. `AUTH_SECRET` is any long random string. |
+| `PRIVY_APP_ID`, `PRIVY_APP_SECRET` | Recommended | Email sign-in codes and password-reset codes, sent and checked by [Privy](https://dashboard.privy.io). No email domain needed. In the Privy dashboard enable **Email** as a login method and add your site under **Allowed domains**. The app ID is public; keep the secret only in environment variables. |
+| `RESEND_API_KEY`, `EMAIL_FROM`, `AUTH_SECRET` | Optional | Alternative to Privy: Nexis sends its own codes through Resend (needs a verified domain). `AUTH_SECRET` is any long random string. |
 | `KV_REST_API_URL`, `KV_REST_API_TOKEN` | **Yes on Vercel, for accounts** | Stores accounts on the server so they work on every device. In Vercel open **Storage → Create Database → Upstash for Redis** (free), connect it to the project and the variables are added automatically; `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` also work. Not needed on Netlify, which uses Netlify Blobs. |
 | `GOOGLE_CLIENT_ID` | Optional | "Continue with Google". Create an OAuth Web client in Google Cloud and add your domain as an authorized JavaScript origin. |
 
@@ -56,6 +57,7 @@ js/services/          one module per external integration
 js/auth.js            accounts, sign-in methods, settings
 js/views/*.js         pages (markets, crypto, sports, tracker, home, activity, landing)
 js/app.js             router, actions, live DOM updates, boot
+js/vendor/privy-core.js  Privy browser SDK bundle (Apache-2.0), loaded only for email codes; rebuild with `npm run vendor:privy`
 api/panta.js          Panta proxy: adds X-Api-Key server-side; allowlisted paths only
 api/data.js           public-feed proxy (Polymarket, ESPN, CoinGecko, Coinbase); allowlisted hosts, short cache
 api/rpc.js            Solana JSON-RPC proxy; allowlisted methods
@@ -141,7 +143,7 @@ Accounts are stored on the server, so an account created on one device works fro
 - **Email + password:** passwords are hashed with scrypt on the server, and repeated failures lock the account for a minute.
 - **Wallet:** Sign-In With Solana. The server checks the wallet's Ed25519 signature and rejects replayed messages.
 - **Google:** the ID token is checked with Google and must be issued for your `GOOGLE_CLIENT_ID`.
-- **Email code and password reset:** these need Resend (`RESEND_API_KEY`, `EMAIL_FROM`, `AUTH_SECRET`).
+- **Email code and password reset:** Privy sends and checks the code in the browser; the server verifies Privy's signed token (with `PRIVY_APP_SECRET`) and reads the verified email before signing in. Resend is an alternative.
 - **Two-factor authentication:** TOTP codes are verified on the server.
 
 Sessions are signed tokens that can be revoked. Settings → Security lists every signed-in device, and signing one out takes effect within a minute. Settings → Integrations shows whether the accounts database is connected.

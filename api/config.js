@@ -12,5 +12,6 @@ module.exports = async (req, res) => {
     ai: { configured: !!env('ANTHROPIC_API_KEY') },
     coingecko: { key: !!env('COINGECKO_API_KEY') },
     accounts: { server: available() },
+    privy: { appId: env('PRIVY_APP_ID'), server: !!(env('PRIVY_APP_ID') && env('PRIVY_APP_SECRET')) },
   }, { 'cache-control': 'no-store' });
 };

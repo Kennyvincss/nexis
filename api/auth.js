@@ -101,6 +101,27 @@ async function setHandle(db, u, h) {
   await db.set('handle:' + l, u.id); u.handle = h;
 }
 function needCode(email, purpose, b) { const err = codes.check(email, purpose, b.code, b.token); if (err) throw fail(400, err.code, err.message); }
+/* Privy: the browser proves the email with Privy's one-time code; we verify Privy's signed token here. */
+let privyFactory = (appId, secret) => new (require('@privy-io/server-auth').PrivyClient)(appId, secret);
+async function verifyPrivy(p = {}) {
+  const appId = env('PRIVY_APP_ID'), sec = env('PRIVY_APP_SECRET');
+  if (!appId || !sec) throw fail(503, 'PRIVY_NOT_CONFIGURED', 'Privy isn’t configured on this server (PRIVY_APP_ID, PRIVY_APP_SECRET).');
+  const c = privyFactory(appId, sec); let user = null;
+  if (p.idToken) { try { user = await c.getUser({ idToken: String(p.idToken) }); } catch (e) { user = null; } }
+  if (!user) {
+    let claims = null; try { claims = await c.verifyAuthToken(String(p.accessToken || '')); } catch (e) { claims = null; }
+    if (!claims || (claims.appId && claims.appId !== appId)) throw fail(401, 'bad_privy', 'The email code couldn’t be verified. Request a new code.');
+    try { user = await c.getUser(claims.userId); } catch (e) { throw fail(502, 'privy_unreachable', 'Couldn’t reach Privy. Try again.'); }
+  }
+  const email = user && user.email && user.email.address;
+  if (!email) throw fail(400, 'no_email', 'Privy didn’t return a verified email for this code.');
+  return { privyId: user.id, email: normEmail(email) };
+}
+/** Accepts either a Privy proof ({ privy: { accessToken, idToken } }) or a Resend code ({ code, token }). */
+async function needEmailProof(email, purpose, b) {
+  if (b.privy) { const p = await verifyPrivy(b.privy); if (p.email !== email) throw fail(400, 'email_mismatch', 'That code was for a different email address.'); return p; }
+  needCode(email, purpose, b); return null;
+}
 
 /* ---------- actions ---------- */
 const PUBLIC = {
@@ -131,10 +152,10 @@ const PUBLIC = {
     return startSession(db, key, u, p.m + ' · 2FA', b.device, p.r);
   },
   async emailLogin(db, key, b) {
-    const email = normEmail(b.email); needCode(email, 'signin', b);
+    const email = normEmail(b.email); const pv = await needEmailProof(email, 'signin', b);
     let u = await byIndex(db, 'email', email); const fresh = !u;
     if (!u) { u = newUser({ email, emailVerified: true }); await db.set('email:' + email, u.id); }
-    u.emailVerified = true; if (fresh) await saveUser(db, u);
+    u.emailVerified = true; if (pv) u.privy = pv.privyId; if (fresh || pv) await saveUser(db, u);
     return finishLogin(db, key, u, 'Email code', b.device, true, fresh);
   },
   async google(db, key, b) {
@@ -154,7 +175,7 @@ const PUBLIC = {
   },
   async exists(db, key, b) { const u = await byIndex(db, 'email', normEmail(b.email)); return { exists: !!u, password: !!(u && u.pw) }; },
   async reset(db, key, b) {
-    const email = normEmail(b.email); needCode(email, 'reset', b);
+    const email = normEmail(b.email); await needEmailProof(email, 'reset', b);
     const u = await byIndex(db, 'email', email); if (!u) throw fail(404, 'no_account', 'No account uses this email.');
     await setPassword(u, b.password); u.sessions = []; u.emailVerified = true; log(u, 'Password reset', b.device); await saveUser(db, u); return { ok: true };
   },
@@ -199,7 +220,7 @@ const AUTHED = {
   },
   async unlinkGoogle(db, key, b, u) { if (methods(u).length <= 1) throw fail(400, 'last_method', 'Google is your only sign-in method. Add another first.'); if (u.google) await db.del('google:' + u.google.sub); u.google = null; },
   async setEmail(db, key, b, u) {
-    const e = normEmail(b.email); needCode(e, 'verify', b);
+    const e = normEmail(b.email); await needEmailProof(e, 'verify', b);
     const o = await db.get('email:' + e); if (o && o !== u.id) throw fail(409, 'email_in_use', 'That email is used by another account.');
     if (u.email && u.email !== e) await db.del('email:' + u.email);
     u.email = e; u.emailVerified = true; await db.set('email:' + e, u.id); log(u, 'Email verified', b.device);
@@ -214,7 +235,7 @@ const AUTHED = {
   },
 };
 
-module.exports = async (req, res) => {
+const handler = async (req, res) => {
   if (req.method !== 'POST') return send(res, 405, { error: 'POST only' });
   res.setHeader('cache-control', 'no-store');
   if (!available()) return send(res, 503, { code: 'ACCOUNTS_UNAVAILABLE', message: 'Server accounts aren’t available on this host.' });
@@ -234,3 +255,6 @@ module.exports = async (req, res) => {
     return send(res, 500, { code: 'SERVER_ERROR', message: 'Something went wrong on the server. Try again.' });
   }
 };
+module.exports = handler;
+/* Test hook: swap the Privy client factory. */
+module.exports._setPrivyFactory = (f) => { privyFactory = f; };
