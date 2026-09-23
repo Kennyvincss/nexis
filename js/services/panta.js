@@ -35,7 +35,7 @@ const Panta = {
     const no = this.price(raw.noPrice, raw.primaryNoPrice, raw.secondaryNoPrice);
     const status = String(raw.status || '').toLowerCase(), phase = String(raw.phase || '').toLowerCase();
     const m = {
-      id: raw.marketId, src: 'panta', title: String(raw.title || raw.description || 'Untitled market').trim(), description: String(raw.description || '').trim(),
+      id: raw.marketId, src: 'panta', ...this.text(raw, prev),
       category: String(raw.category || 'other').toLowerCase(), image: (raw.images || []).find(Boolean) || null,
       phase, status, type: raw.marketType || 'standard', region: raw.region || '',
       start: toMs(raw.startTime), end: toMs(raw.endTime), resolveAt: toMs(raw.resolutionTime),
@@ -49,6 +49,31 @@ const Panta = {
     };
     m.tradable = !m.resolved && !m.cancelled && (m.phase === 'primary' || m.status === 'open' || m.phase === '') && (!m.end || m.end > now());
     return m;
+  },
+  /** Panta's catalogue often ships an empty title; the question may only appear in the detail response.
+      A known question is never replaced by an empty one, and questions are remembered in this browser. */
+  titles: null,
+  titleCache() { if (!this.titles) { try { this.titles = JSON.parse(localStorage.getItem('nexis-panta-titles') || '{}'); } catch (e) { this.titles = {}; } } return this.titles; },
+  rememberTitle(id, t) { const c = this.titleCache(); if (c[id] === t) return; c[id] = t; const keys = Object.keys(c); if (keys.length > 2000) keys.slice(0, keys.length - 2000).forEach(k => delete c[k]); try { localStorage.setItem('nexis-panta-titles', JSON.stringify(c)); } catch (e) {} },
+  text(raw, prev) {
+    const pick = (...v) => { for (const x of v) { const t = typeof x === 'string' ? x.trim() : ''; if (t) return t; } return ''; };
+    const md = raw.metadata || {}, ev = raw.event || {};
+    const q = pick(raw.title, raw.question, raw.name, raw.eventTitle, ev.title, ev.question, md.title, md.question);
+    const description = pick(raw.description, md.description, ev.description) || (prev && prev.description) || '';
+    if (q) this.rememberTitle(raw.marketId, q);
+    const known = q || (prev && !prev.untitled && prev.title) || this.titleCache()[raw.marketId] || '';
+    const fromDesc = !known && description ? (description.length > 160 ? description.slice(0, 157).trimEnd() + '…' : description) : '';
+    return { title: known || fromDesc || 'Untitled Panta market', description, untitled: !known && !fromDesc };
+  },
+  /** Fetches details for untitled markets (open ones first) so their questions can appear. Throttled; skips recent attempts. */
+  titleTried: {},
+  async fillTitles(max = 30) {
+    if (this._filling || this.state === 'unconfigured') return; this._filling = true; let changed = 0;
+    try {
+      const ids = this.order.map(id => this.markets.get(id)).filter(m => m && m.untitled && now() - (this.titleTried[m.id] || 0) > 30 * 60e3)
+        .sort((a, b) => (b.tradable - a.tradable) || ((b.volume || 0) - (a.volume || 0))).slice(0, max).map(m => m.id);
+      for (const id of ids) { this.titleTried[id] = now(); try { const m = await this.detail(id); if (!m.untitled) changed++; } catch (e) { if (e.status === 429) break; } await delay(250); }
+    } finally { this._filling = false; if (changed) Bus.emit('panta:catalog'); }
   },
   upsert(raw) {
     const prev = this.markets.get(raw.marketId); const m = this.norm(raw, prev);
@@ -74,7 +99,7 @@ const Panta = {
       }
       const seen = new Set(); items.forEach(x => { if (x && x.marketId) { this.upsert(x); seen.add(x.marketId); } });
       this.order = [...seen]; this.state = 'live'; this.error = null; this.loadedAt = now(); Feeds.set('panta', 'live');
-      Bus.emit('panta:catalog');
+      Bus.emit('panta:catalog'); this.fillTitles();
     } catch (e) { this.error = e; if (e.code !== 'PANTA_NOT_CONFIGURED') { this.state = this.markets.size ? 'stale' : 'error'; Feeds.set('panta', this.state === 'stale' ? 'stale' : 'offline', e); } Bus.emit('panta:catalog'); }
   },
   async detail(id) {

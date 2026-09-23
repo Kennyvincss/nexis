@@ -183,6 +183,7 @@ const A_APP = {
   claim: (el) => requireAuth(() => claimWinnings(el.dataset.id), 'Log in to claim'),
   aiAnalyze: async (el) => { const id = el.dataset.id; const m = Panta.markets.get(id); if (!m) return; setBusy(el, true, 'Analyzing…'); try { UI.ai = UI.ai || {}; UI.ai[id] = await AI.analyze(m); refresh(); } catch (e) { setBusy(el, false); toast({ title: 'Analysis unavailable', body: esc(e.message), kind: 'warn' }); } },
   mSrc: (el) => { UI.markets.src = el.dataset.src; UI.markets.cat = 'all'; history.replaceState(null, '', '#/markets'); refresh(); },
+  mStatus: (el) => { UI.markets.status = el.dataset.s; history.replaceState(null, '', '#/markets'); refresh(); },
   mCat: (el) => { UI.markets.cat = el.dataset.cat; history.replaceState(null, '', '#/markets'); refresh(); },
   pfTab: (el) => { UI.portfolio.tab = el.dataset.t; history.replaceState(null, '', '#/portfolio'); refresh(); },
   trTab: (el) => { UI.tracker.tab = el.dataset.t; refresh(); },
