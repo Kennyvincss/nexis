@@ -21,7 +21,7 @@ function pantaCard(m) {
   const ended = !m.tradable;
   return `<article class="mcard">
     <div class="mcard-top"><span class="tag">${esc(catLabel(m.category))}</span>${phaseTag(m)}${m.type === 'breaking' ? '<span class="tag amber">Breaking</span>' : ''}<span class="time">${ic('clock', 'sm')}${esc(endsLabel(m))}</span></div>
-    <h3><a href="#/market/${m.id}">${esc(m.title)}</a></h3>
+    <h3><a href="#/market/${m.id}" ${m.untitled ? 'class="mut" title="Panta hasn’t published this market’s question yet"' : ''}>${esc(m.title)}</a></h3>
     <div class="mcard-mid"><div><div class="prob-big" data-ppct="${m.id}">${m.yes != null ? Math.round(m.yes * 100) + '%' : '—'}</div><div class="prob-lbl">${m.yes != null ? 'chance' : 'Loading price…'}</div></div>${Panta.hist(m.id).length > 2 ? sparkSvg(Panta.hist(m.id).map(x => x[1]).slice(-48)) : ''}</div>
     <div class="yn"><button class="btn btn-yes" data-action="quickTrade" data-id="${m.id}" data-side="YES" ${ended ? 'disabled' : ''}><span>Yes</span><span data-py="${m.id}">${m.yes != null ? cents(m.yes) : '—'}</span></button><button class="btn btn-no" data-action="quickTrade" data-id="${m.id}" data-side="NO" ${ended ? 'disabled' : ''}><span>No</span><span data-pn="${m.id}">${m.no != null ? cents(m.no) : '—'}</span></button></div>
     <div class="mcard-foot"><span><b data-pvol="${m.id}">${m.volume != null ? kusd(m.volume) : '—'}</b> vol</span>${srcBadge('panta', true)}</div>
@@ -33,12 +33,13 @@ function polyCard(m) {
     <div class="mcard-mid"><div><div class="prob-big" data-lpct="${m.id}">${Math.round(m.yes * 100)}%</div><div class="prob-lbl">${esc(m.yesLabel)} · ${chgHtml(m.chg * 100)}</div></div></div>
     <div class="mcard-foot"><span><b>${kusd(m.vol)}</b> vol</span><span><b>${kusd(m.liq)}</b> liq</span><a class="link" style="margin-left:auto;position:relative;z-index:2" href="${Poly.url(m)}" target="_blank" rel="noopener">Polymarket ${ic('ext', 'sm')}</a></div></article>`;
 }
-function pantaList({ cat = 'all', q = '', sort = 'volume' } = {}) {
+function pantaList({ cat = 'all', q = '', sort = 'volume', status = 'all' } = {}) {
   let l = Panta.order.map(id => Panta.markets.get(id)).filter(Boolean).filter(m => !m.cancelled);
+  if (status === 'open') l = l.filter(m => m.tradable); else if (status === 'closed') l = l.filter(m => !m.tradable);
   if (cat !== 'all') l = l.filter(m => m.category === cat);
   if (q) { const s = q.toLowerCase(); l = l.filter(m => (m.title + ' ' + m.description + ' ' + m.category).toLowerCase().includes(s)); }
   const k = { volume: (m) => -(m.volume || 0), ending: (m) => m.tradable ? (m.end || 9e15) : 9e15 + 1, newest: (m) => -(m.start || 0), prob: (m) => -(m.yes ?? -1) }[sort] || (() => 0);
-  return l.sort((a, b) => (a.tradable === b.tradable ? 0 : a.tradable ? -1 : 1) || k(a) - k(b));
+  return l.sort((a, b) => (a.tradable === b.tradable ? 0 : a.tradable ? -1 : 1) || (!!a.untitled - !!b.untitled) || k(a) - k(b));
 }
 
 /* ---------------- MARKETS ---------------- */
@@ -51,8 +52,10 @@ Views.markets = async (params) => {
   }
   const blocked = pantaState(); if (blocked && !Panta.markets.size) return marketsFrame(st, blocked, 0);
   if (Panta.state === 'idle' || (!Panta.loadedAt && !Panta.markets.size)) return marketsFrame(st, skeletonCards(6), 0);
-  const list = pantaList(st); Panta.watch(list.slice(0, 24).map(m => m.id));
-  return marketsFrame(st, list.length ? `<div class="grid gauto">${list.map(pantaCard).join('')}</div>` : emptyState({ title: 'No markets match', body: st.q ? `Nothing on Panta matches “${esc(st.q)}”.` : 'No Panta markets in this category right now.', cta: '<a class="btn btn-primary sm" href="#/create">Create a market</a>' }), list.length, 'Live Panta markets. Trade with your Solana wallet; settlement in USDC.');
+  st.status = st.status || 'open'; const list = pantaList(st); Panta.watch(list.slice(0, 24).map(m => m.id));
+  const nOpen = pantaList({ ...st, status: 'open' }).length, nClosed = pantaList({ ...st, status: 'closed' }).length;
+  const statusSeg = `<div class="seg text" style="margin-bottom:14px">${[['open', `Open · ${nOpen}`], ['closed', `Closed · ${nClosed}`]].map(([k, l]) => `<button class="${st.status === k ? 'on' : ''}" data-action="mStatus" data-s="${k}">${l}</button>`).join('')}</div>`;
+  return marketsFrame(st, statusSeg + (list.length ? `<div class="grid gauto">${list.map(pantaCard).join('')}</div>` : emptyState({ title: st.status === 'open' ? 'No open markets match' : 'No closed markets match', body: st.q ? `Nothing on Panta matches “${esc(st.q)}”.` : st.status === 'open' ? 'No Panta markets are open for trading in this category right now.' : 'No closed or resolved markets in this category.', cta: st.status === 'open' ? '<a class="btn btn-primary sm" href="#/create">Create a market</a>' : '' })), list.length, 'Live Panta markets. Trade with your Solana wallet; settlement in USDC.');
 };
 function marketsFrame(st, inner, n, note = '') {
   const cats = ['all', ...(st.src === 'poly' ? ['crypto', 'sports', 'politics', 'finance', 'entertainment', 'world', 'science', 'other'] : Panta.categories)];
