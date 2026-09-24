@@ -8,8 +8,8 @@
    Decimal odds = 1 / price, so a $10 stake at 2.50 returns $25 if it wins.
    ===================================================================== */
 const BOOK_CODES = {
-  epl: ['Premier League', 'Football', 'England'], lal: ['La Liga', 'Football', 'Spain'], sea: ['Serie A', 'Football', 'Italy'], bun: ['Bundesliga', 'Football', 'Germany'],
-  fl1: ['Ligue 1', 'Football', 'France'], ucl: ['Champions League', 'Football', 'Europe'], uel: ['Europa League', 'Football', 'Europe'], uecl: ['Conference League', 'Football', 'Europe'],
+  epl: ['English Premier League', 'Football', 'England'], lal: ['La Liga', 'Football', 'Spain'], sea: ['Serie A', 'Football', 'Italy'], bun: ['Bundesliga', 'Football', 'Germany'],
+  fl1: ['Ligue 1', 'Football', 'France'], ucl: ['UEFA Champions League', 'Football', 'Europe'], uel: ['Europa League', 'Football', 'Europe'], uecl: ['Conference League', 'Football', 'Europe'],
   ere: ['Eredivisie', 'Football', 'Netherlands'], por: ['Primeira Liga', 'Football', 'Portugal'], tur: ['Süper Lig', 'Football', 'Turkey'], spl: ['Saudi Pro League', 'Football', 'Saudi Arabia'],
   mls: ['MLS', 'Football', 'USA'], lmx: ['Liga MX', 'Football', 'Mexico'], bra: ['Brasileirão', 'Football', 'Brazil'], arg: ['Liga Profesional', 'Football', 'Argentina'],
   efl: ['Championship', 'Football', 'England'], fac: ['FA Cup', 'Football', 'England'], cdr: ['Copa del Rey', 'Football', 'Spain'], fifwc: ['World Cup', 'Football', 'International'],
@@ -23,7 +23,7 @@ const BOOK_REGION = { eng: 'England', esp: 'Spain', ita: 'Italy', ger: 'Germany'
 const BOOK_SPORTS = ['Football', 'Basketball', 'Tennis', 'Baseball', 'Hockey', 'MMA', 'Boxing', 'Cricket', 'Rugby', 'Motorsport', 'Golf', 'Esports', 'Other'];
 const BOOK_CATS = ['Match result', 'Handicap', 'Totals', 'Both teams to score', 'Other'];
 /* Leagues listed first (in this order) wherever leagues are listed; the rest follow by volume. */
-const BOOK_TOP = ['Premier League', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1', 'Champions League', 'UEFA Champions League', 'Europa League', 'UEFA Europa League', 'Conference League', 'UEFA Conference League', 'Eredivisie', 'Primeira Liga', 'MLS', 'Saudi Pro League', 'NBA', 'NFL', 'MLB', 'NHL', 'WNBA', 'ATP', 'WTA', 'UFC'];
+const BOOK_TOP = ['English Premier League', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1', 'UEFA Champions League', 'Europa League', 'UEFA Europa League', 'Conference League', 'UEFA Conference League', 'Eredivisie', 'Primeira Liga', 'MLS', 'Saudi Pro League', 'NBA', 'NFL', 'MLB', 'NHL', 'WNBA', 'ATP', 'WTA', 'UFC'];
 const bookRank = (name) => { const i = BOOK_TOP.indexOf(name); return i < 0 ? 999 : i; };
 
 /* ---------------------------------------------------------------------
@@ -85,7 +85,9 @@ const Book = {
     const out = [];
     Poly.games.forEach(p => {
       const markets = p.mids.map(id => Poly.markets.get(id)).filter(Boolean);
-      const e = espn.get(p.id) || null; const L = leagueOf(p, e);
+      const e = espn.get(p.id) || null; let L = leagueOf(p, e);
+      // The six main football leagues always carry the same key and name, whatever Polymarket or ESPN call them.
+      const pin = footballPinned({ key: L.key, code: p.league, name: L.name }) || footballPinned({ name: p.series }); if (pin) L = { key: pin.key, name: pin.name, sport: 'Football', region: pin.region };
       if (sportExcluded({ sport: L.sport, key: L.key, code: p.league, name: L.name, tags: p.tags }) || sportExcluded({ name: p.series })) return; // not offered on Nexis
       // Sides: ESPN's home/away when matched (which Polymarket name is home?), else Polymarket's order.
       let home = { name: p.a, short: trim(p.a), logo: null, score: null, pm: p.a }, away = { name: p.b, short: trim(p.b), logo: null, score: null, pm: p.b };
