@@ -127,8 +127,9 @@ The services emit events on a small bus. `app.js` patches the visible page in pl
   - The first registration wins.
 - **In-play betting:** bets can be placed while a game is live, until the 90th minute.
   - Estimated odds follow the game: the goals model is re-fitted to Polymarket's live 1X2 (and O/U 2.5 when listed) for the goals still to come, on top of the current score and time left.
-  - Bets that are already decided close automatically: half-time bets after the break, First Team to Score after a goal, and impossible or near-certain outcomes (under 1% or over 99%).
-  - Corners and cards are pre-match only, because there's no live data to price them.
+  - Bets that are already decided close automatically: half-time bets after the break, and impossible or near-certain outcomes (under 1% or over 99%).
+  - After a goal, First Team to Score becomes **Next Team to Score** (goal 2, 3, …, props `ng<k>_home/away`), with a "No More Goals" option (NO on the matching over/under line).
+  - Corners and cards stay open in play, priced from ESPN's live counts plus the expected rest of the match. Corners use each team's `wonCorners` statistic; cards use the yellow and red cards in ESPN's match events. The counts are shown on the game page. If ESPN has no live corner stats for a game, its corner bets close at kick-off.
   - Panta markets created from now on stay open until about 2 hours after kick-off (3.5 hours for other sports). Markets created before this change close at kick-off.
 - **Odds:** the Panta price once the market exists. Until then, estimates (marked with *):
   - Polymarket's own price where it lists the same bet;

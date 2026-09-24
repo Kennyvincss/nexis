@@ -13,7 +13,7 @@ const RPC = env('SOLANA_RPC_URL') || 'https://api.mainnet-beta.solana.com';
 const GAMMA = 'https://gamma-api.polymarket.com';
 // Bet types: 1X2, winner, goal lines, handicaps, half-time, HT/FT, correct score, first to score, corners, cards,
 // both teams to score, and mirrored Polymarket markets.
-const KEY_RE = /^[A-Za-z0-9_-]{1,40}:(home|draw|away|winner|btts|ou[0-4]5|htou[0-4]5|hc_[ha][1-3]|ht_(home|draw|away)|htft_[hda][hda]|cs_[0-9]_[0-9]|fts_(home|away)|cor_o[0-9]{2,3}|cor[ha]_o[0-9]{2}|corhc_[ha]1|crd_o[0-9]{2}|crd[ha]_o[0-9]{2}|pm:[0-9]{1,20})$/;
+const KEY_RE = /^[A-Za-z0-9_-]{1,40}:(home|draw|away|winner|btts|ou[0-4]5|htou[0-4]5|hc_[ha][1-3]|ht_(home|draw|away)|htft_[hda][hda]|cs_[0-9]_[0-9]|fts_(home|away)|ng[2-9]_(home|away)|cor_o[0-9]{2,3}|cor[ha]_o[0-9]{2}|corhc_[ha]1|crd_o[0-9]{2}|crd[ha]_o[0-9]{2}|pm:[0-9]{1,20})$/;
 const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 
 function b58dec(str) {

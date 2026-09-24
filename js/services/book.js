@@ -223,8 +223,10 @@ const Book = {
   /** Every prop on the game page. */
   props(g) {
     if (!g.football) return [...this.listProps(g), ...(g.extra || []).map(m => 'pm:' + m.id.replace(/^pm-/, ''))];
+    const L = this.liveInfo(g); const next = L.sh + L.sa + 1;
+    const ng = L.live && next >= 2 && next <= 9 ? ['ng' + next + '_home', 'ng' + next + '_away'] : [];
     return [...new Set(['home', 'draw', 'away', ...BOOK_OU_LINES.map(ouKey), 'btts', 'ht_home', 'ht_draw', 'ht_away', 'htou05', 'htou15', ...BOOK_HTFT.map(x => 'htft_' + x),
-      ...BOOK_SCORES.map(s => 'cs_' + s.replace('-', '_')), 'fts_home', 'fts_away', ...BOOK_CORNER_LINES.map(l => 'cor_o' + lineKey(l)), 'corh_o45', 'cora_o45', 'corhc_h1', 'corhc_a1',
+      ...BOOK_SCORES.map(s => 'cs_' + s.replace('-', '_')), 'fts_home', 'fts_away', ...ng, ...BOOK_CORNER_LINES.map(l => 'cor_o' + lineKey(l)), 'corh_o45', 'cora_o45', 'corhc_h1', 'corhc_a1',
       ...BOOK_CARD_LINES.map(l => 'crd_o' + lineKey(l)), 'crdh_o15', 'crda_o15', 'hc_h1', 'hc_a1', 'hc_h2', 'hc_a2', ...(g.extra || []).map(m => 'pm:' + m.id.replace(/^pm-/, ''))])];
   },
   /** Looks up the Panta markets registered for these games (cached 30s), then loads their Panta prices. */
@@ -246,6 +248,19 @@ const Book = {
   /* ---------- estimated odds ---------- */
   /** Goals model for a football game, fitted like a bookmaker's: home and away scoring rates (Poisson) that
       reproduce Polymarket's 1X2 prices and, when listed, its over/under 2.5 price. Half-time uses 45% of each rate. */
+  /** Live corner and card counts from ESPN (null when ESPN has no live stats for the game). Corners: each team's
+      "wonCorners" statistic; cards: the yellow and red cards in ESPN's match events. */
+  liveCounts(g) {
+    const e = g.espn; if (!e || g.state !== 'in') return { corners: null, cards: null };
+    const sum = Sports.summaries && Sports.summaries[e.id]; const ts = (id) => sum && (sum.teamStats || []).find(t => t.id === id);
+    const stat = (t, name) => { const v = t.stats && t.stats[name]; if (v != null && v !== '') return nz(v, null); const s = ts(t.id); const x = s && s.stats.find(y => y.name === name); return x ? nz(x.value, null) : null; };
+    const ch = stat(e.home, 'wonCorners'), ca = stat(e.away, 'wonCorners');
+    const cards = (side) => (e.details || []).filter(d => d.side === side && (d.kind === 'yellow' || d.kind === 'red')).length;
+    const flip = g.home.name !== e.home.name; // Nexis home = ESPN home unless the sides were swapped
+    const corners = ch != null && ca != null ? (flip ? [ca, ch] : [ch, ca]) : null;
+    const cd = [cards('home'), cards('away')];
+    return { corners, cards: flip ? cd.reverse() : cd };
+  },
   /** Live state of a game for in-play pricing: minute (0 before kick-off), current score, whether half-time has passed. */
   liveInfo(g) {
     if (g.state !== 'in') return { live: false, min: 0, sh: 0, sa: 0, htDone: false };
@@ -327,8 +342,11 @@ const Book = {
     const L = this.liveInfo(g);
     if (L.min >= 90) return false;
     if (/^(ht_|htou|htft_)/.test(prop) && L.htDone) return false;
-    if (/^fts_/.test(prop) && L.sh + L.sa > 0) return false;
-    if (/^(cor|crd)/.test(prop)) return false;
+    if (/^fts_/.test(prop) && L.sh + L.sa > 0) return false; // decided: becomes "next team to score"
+    { const m = /^ng(\d)_/.exec(prop); if (m && +m[1] !== L.sh + L.sa + 1) return false; } // only the next goal is open
+    const C = this.liveCounts(g);
+    if (/^cor/.test(prop) && !C.corners) return false; // no live corner stats for this game
+    if (/^crd/.test(prop) && !g.espn) return false;
     return true;
   },
   quote(g, prop, side) {
@@ -346,6 +364,7 @@ const Book = {
     if (prop === 'btts') return 'Both teams to score';
     if (/^htft_/.test(prop)) return 'Half time / Full time';
     if (/^fts_/.test(prop)) return 'First team to score';
+    if ((m = /^ng(\d)_/.exec(prop))) return `Next team to score (goal ${m[1]})`;
     if ((m = /^cor_o(\d+)5$/.exec(prop))) return `Total corners O/U ${m[1]}.5`;
     if ((m = /^cor([ha])_o(\d)5$/.exec(prop))) return `${m[1] === 'h' ? H : A} corners O/U ${m[2]}.5`;
     if ((m = /^corhc_([ha])1$/.exec(prop))) return `Corner handicap ${m[1] === 'h' ? H : A} −1.5`;
@@ -356,6 +375,7 @@ const Book = {
   questionX(g, prop) {
     const H = g.home.pm, A = g.away.pm, D = this.dateText(g); let m;
     if ((m = /^htft_([hda])([hda])$/.exec(prop))) { const ht = { h: `${H} leading`, d: 'level', a: `${A} leading` }[m[1]]; const ft = { h: `${H} winning`, d: 'a draw', a: `${A} winning` }[m[2]]; return `Will ${H} vs ${A} on ${D} be ${ht} at half-time and end with ${ft}?`; }
+    if ((m = /^ng(\d)_(home|away)$/.exec(prop))) { const ordinal = (n) => n + (['th', 'st', 'nd', 'rd'][(n % 100 - 20) % 10] || ['th', 'st', 'nd', 'rd'][n % 100] || 'th'); const [X, Y] = m[2] === 'home' ? [H, A] : [A, H]; return `Will ${X} score the ${ordinal(+m[1])} goal of their match against ${Y} on ${D}?`; }
     if ((m = /^fts_(home|away)$/.exec(prop))) { const [X, Y] = m[1] === 'home' ? [H, A] : [A, H]; return `Will ${X} score the first goal of their match against ${Y} on ${D}?`; }
     if ((m = /^cor_o(\d+)5$/.exec(prop))) return `Will ${H} vs ${A} on ${D} have ${+m[1] + 1} or more corners in total?`;
     if ((m = /^cor([ha])_o(\d)5$/.exec(prop))) { const [X, Y] = m[1] === 'h' ? [H, A] : [A, H]; return `Will ${X} win ${+m[2] + 1} or more corners in their match against ${Y} on ${D}?`; }
@@ -372,6 +392,7 @@ const Book = {
     const corners = ' Corners are counted from the official match statistics (such as ESPN\'s match page). A corner that is awarded and retaken counts once.';
     const cards = ' Each yellow card and each red card shown to a player on the pitch counts as one card; a second yellow followed by a red counts as two. Cards shown to managers, staff or players on the bench, and cards after the final whistle, do not count.';
     if ((m = /^htft_([hda])([hda])$/.exec(prop))) { const ht = { h: `${H} is ahead`, d: 'the score is level', a: `${A} is ahead` }[m[1]]; const ft = { h: `${H} wins`, d: 'the match is drawn', a: `${A} wins` }[m[2]]; return `${base} It is settled on the half-time score and the score after regular time.${reg} Resolves YES if ${ht} at half-time and ${ft} after regular time. Resolves NO otherwise.${off}`; }
+    if ((m = /^ng(\d)_(home|away)$/.exec(prop))) { const ordinal = (n) => n + (['th', 'st', 'nd', 'rd'][(n % 100 - 20) % 10] || ['th', 'st', 'nd', 'rd'][n % 100] || 'th'); const [X, Y] = m[2] === 'home' ? [H, A] : [A, H]; return `${base}${reg} Goals are counted in the order they are scored. Resolves YES if ${X} scores the ${ordinal(+m[1])} goal of the match (an own goal counts for the team credited with it). Resolves NO if ${Y} scores it or the match ends with fewer than ${m[1]} goals.${off}`; }
     if ((m = /^fts_(home|away)$/.exec(prop))) { const [X, Y] = m[1] === 'home' ? [H, A] : [A, H]; return `${base}${reg} Resolves YES if ${X} scores the first goal of the match (an own goal counts for the team credited with it). Resolves NO if ${Y} scores first or no goal is scored.${off}`; }
     if ((m = /^cor_o(\d+)5$/.exec(prop))) return `${base}${reg}${corners} Resolves YES if ${+m[1] + 1} or more corners are taken in total (over ${m[1]}.5). Resolves NO otherwise.${off}`;
     if ((m = /^cor([ha])_o(\d)5$/.exec(prop))) { const X = m[1] === 'h' ? H : A; return `${base}${reg}${corners} Resolves YES if ${X} win ${+m[2] + 1} or more corners (over ${m[2]}.5). Resolves NO otherwise.${off}`; }
@@ -396,16 +417,22 @@ const Book = {
       return M._htft[m[1] + m[2]] || 0;
     }
     if ((m = /^fts_(home|away)$/.exec(prop))) { if (M.sh + M.sa > 0) return null; const l = M.T * M.W; return (1 - Math.exp(-l)) * (m[1] === 'home' ? M.s : 1 - M.s); }
-    if (/^(cor|crd)/.test(prop) && M.live) return null; // no live corner/card data to price from
+    if ((m = /^ng(\d)_(home|away)$/.exec(prop))) { if (M.sh + M.sa + 1 !== +m[1]) return null; const l = M.T * M.W; return (1 - Math.exp(-l)) * (m[2] === 'home' ? M.s : 1 - M.s); }
+    // Corners and cards in play: the current count plus the expected rest of the match (spread evenly over 90 minutes).
+    const C = M.live ? this.liveCounts(g) : null; const rem = M.live ? Math.max(0, 90 - M.min) / 90 : 1;
+    if (/^cor/.test(prop) && M.live && !(C && C.corners)) return null;
+    if (/^crd/.test(prop) && M.live && !g.espn) return null;
+    const base = (kind) => (C && C[kind]) || [0, 0];
     if (!M._edge) { const G = M.grid(M.lh, M.la); let w = 0, l = 0; G.forEach((r, i) => r.forEach((x, j) => { if (i > j) w += x; else if (i < j) l += x; })); M._edge = w - l; }
     const edge = M._edge;
     const cShare = clamp(0.5 + edge * 0.35, 0.3, 0.7), CT = 10.2;
-    if ((m = /^cor_o(\d+)5$/.exec(prop))) return over(CT, +m[1] + 0.5);
-    if ((m = /^cor([ha])_o(\d)5$/.exec(prop))) return over(CT * (m[1] === 'h' ? cShare : 1 - cShare), +m[2] + 0.5);
-    if ((m = /^corhc_([ha])1$/.exec(prop))) { const a = CT * cShare, b = CT * (1 - cShare); const P = (l) => { const o = [Math.exp(-l)]; for (let i = 1; i <= 30; i++) o.push(o[i - 1] * l / i); return o; }; const X = P(a), Y = P(b); let p = 0; X.forEach((x, i) => Y.forEach((y, j) => { if ((m[1] === 'h' ? i - j : j - i) >= 2) p += x * y; })); return p; }
+    const overFrom = (have, l, line) => have > line ? 1 : over(l, line - have);
+    if ((m = /^cor_o(\d+)5$/.exec(prop))) { const b = base('corners'); return overFrom(b[0] + b[1], CT * rem, +m[1] + 0.5); }
+    if ((m = /^cor([ha])_o(\d)5$/.exec(prop))) { const b = base('corners'); return overFrom(m[1] === 'h' ? b[0] : b[1], CT * rem * (m[1] === 'h' ? cShare : 1 - cShare), +m[2] + 0.5); }
+    if ((m = /^corhc_([ha])1$/.exec(prop))) { const bc = base('corners'); const a = CT * rem * cShare, b = CT * rem * (1 - cShare); const P = (l) => { const o = [Math.exp(-l)]; for (let i = 1; i <= 30; i++) o.push(o[i - 1] * l / i); return o; }; const X = P(a), Y = P(b); let p = 0; X.forEach((x, i) => Y.forEach((y, j) => { if ((m[1] === 'h' ? (bc[0] + i) - (bc[1] + j) : (bc[1] + j) - (bc[0] + i)) >= 2) p += x * y; })); return p; }
     const kShare = clamp(0.5 - edge * 0.2, 0.35, 0.65), KT = 4.3;
-    if ((m = /^crd_o(\d)5$/.exec(prop))) return over(KT, +m[1] + 0.5);
-    if ((m = /^crd([ha])_o(\d)5$/.exec(prop))) return over(KT * (m[1] === 'h' ? kShare : 1 - kShare), +m[2] + 0.5);
+    if ((m = /^crd_o(\d)5$/.exec(prop))) { const b = base('cards'); return overFrom(b[0] + b[1], KT * rem, +m[1] + 0.5); }
+    if ((m = /^crd([ha])_o(\d)5$/.exec(prop))) { const b = base('cards'); return overFrom(m[1] === 'h' ? b[0] : b[1], KT * rem * (m[1] === 'h' ? kShare : 1 - kShare), +m[2] + 0.5); }
     return undefined;
   },
   odds(p, fmt) {
