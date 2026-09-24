@@ -34,12 +34,37 @@ const Poly = {
       const r = await Net.api('pmgames', { timeout: 35000 }); if (!r || !Array.isArray(r.events)) throw new Error('Unexpected response');
       this.games = r.events.map(e => {
         const mids = (e.markets || []).map(x => { const m = this.upsert(x, e, 'sports'); Object.assign(m, { game: e.id, start: e.start, smt: x.sportsMarketType || '', line: x.line != null ? nz(x.line) : null, group: x.groupItemTitle || '' }); return m.id; });
-        const [a, b] = String(e.title || '').replace(/\s*[-–:|]\s*(?:game|match)?\s*\d.*$/i, '').split(/\s+(?:vs\.?|v\.?|@|-|–)\s+/i);
+        const [a, b] = this.sides(e.title);
         const abbrs = String(e.slug || '').split('-').slice(1).filter(w => /^[a-z]{2,4}$/.test(w));
         return { id: e.id, slug: e.slug, title: e.title, league: e.league, series: e.series || '', tags: e.tags || [], image: e.image, live: !!e.live, ended: !!e.ended, score: e.score || '', period: e.period || '', elapsed: e.elapsed || '', volume: nz(e.volume), start: e.start, a: a || '', b: b || '', abbrs, mids };
       }).filter(g => g.a && g.b && (g.mids.length || g.ended));
+      this.games = this.mergeGames(this.games);
       this.gamesAt = now(); this.gamesState = 'live'; this.subscribe(); Bus.emit('poly'); Bus.emit('sports');
     } catch (e) { this.gamesState = this.games.length ? 'stale' : 'offline'; }
+  },
+  /** "A vs. B: Total Runs" / "A vs. B - 1st Half" / "A - B" → [A, B]. */
+  sides(title) {
+    let t = String(title || '').trim();
+    const vs = /\s(?:vs\.?|v\.?|@)\s/i.test(t);
+    if (vs) t = t.replace(/\s*[:(|].*$/, '').replace(/\s+[-–]\s+.*$/, '');
+    else t = t.replace(/\s*[:(|].*$/, '').replace(/\s*[-–]\s*(?:game|match)?\s*\d.*$/i, '');
+    return t.split(vs ? /\s+(?:vs\.?|v\.?|@)\s+/i : /\s+[-–]\s+/).map(x => x.trim());
+  },
+  /** Polymarket often lists one game as several events (winner, spread, totals, innings…). Merge events with the same
+      two teams starting within 12 hours into one game; its id is the event with the most markets (stable across refreshes). */
+  mergeGames(list) {
+    const key = (g) => [nameTokens(g.a).join(' '), nameTokens(g.b).join(' ')].sort().join('|');
+    const out = []; const by = new Map();
+    list.slice().sort((x, y) => y.mids.length - x.mids.length || String(x.id).localeCompare(String(y.id))).forEach(g => {
+      const k = key(g); const cands = by.get(k) || [];
+      const same = cands.find(c => Math.abs(c.start - g.start) < 12 * HOUR);
+      if (!same) { const c = { ...g, mids: g.mids.slice(), merged: [g.id] }; cands.push(c); by.set(k, cands); out.push(c); return; }
+      g.mids.forEach(id => { if (!same.mids.includes(id)) same.mids.push(id); }); same.merged.push(g.id);
+      same.live = same.live || g.live; same.ended = same.ended && g.ended; same.volume += g.volume || 0;
+      if (!same.score && g.score) { same.score = g.score; same.period = g.period; same.elapsed = g.elapsed; }
+      if (!same.slug && g.slug) same.slug = g.slug; same.abbrs = [...new Set([...same.abbrs, ...g.abbrs])];
+    });
+    return out.sort((x, y) => x.start - y.start);
   },
   upsert(x, e, cat) {
     const id = 'pm-' + x.id; const outs = jparse(x.outcomes); const px = jparse(x.outcomePrices).map(Number); const tok = jparse(x.clobTokenIds).map(String);

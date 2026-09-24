@@ -51,7 +51,10 @@ async function verifyGame(game, prop, question) {
     return norm(question).includes(norm(m.question)) ? null : 'Question does not match the Polymarket market.';
   }
   const e = await getJson(`${GAMMA}/events/${encodeURIComponent(game)}`);
-  const sides = String(e.title || '').split(/\s+(?:vs\.?|v\.?|@|-|–)\s+/i).map(norm).filter(Boolean);
+  // Same parsing as the browser: "A vs. B: Total Runs" / "A vs. B - 1st Half" / "A - B" → [A, B].
+  let t = String(e.title || '').trim(); const vs = /\s(?:vs\.?|v\.?|@)\s/i.test(t);
+  t = vs ? t.replace(/\s*[:(|].*$/, '').replace(/\s+[-–]\s+.*$/, '') : t.replace(/\s*[:(|].*$/, '').replace(/\s*[-–]\s*(?:game|match)?\s*\d.*$/i, '');
+  const sides = t.split(vs ? /\s+(?:vs\.?|v\.?|@)\s+/i : /\s+[-–]\s+/).map(norm).filter(Boolean);
   if (sides.length < 2) return 'Unknown game.';
   const q = norm(question); return sides.slice(0, 2).every(s => q.includes(s)) ? null : 'Question does not name both teams of this game.';
 }
