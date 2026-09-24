@@ -39,8 +39,10 @@ function bkFull(g, h, sub) {
   return h;
 }
 function bkCols(g) { const tabs = g.tabs; return (tabs.find(t => t.id === UI.book.bt) || tabs[0]).cols; }
-function bkRow(g) {
-  const cols = bkCols(g); const statsHref = g.espn ? `#/event/${esc(g.espn.id)}` : `#/book/${esc(g.id)}`;
+/** Column slots shown for a group of games: those at least one game in the group has (empty ones are dropped). */
+function bkSlots(gs) { const n = Math.max(...gs.map(g => bkCols(g).length)); return [...Array(n).keys()].filter(i => gs.some(g => bkCols(g)[i])); }
+function bkRow(g, slots) {
+  const all = bkCols(g); const cols = (slots || all.map((c, i) => i)).map(i => all[i] || null); const statsHref = g.espn ? `#/event/${esc(g.espn.id)}` : `#/book/${esc(g.id)}`;
   const n = Book.props(g).length;
   const right = g.state === 'post'
     ? `<div class="bk-final"><span class="mut">FT</span><b class="num">${esc(bkScore(g) || '—')}</b></div>`
@@ -105,7 +107,7 @@ Views.sports = async (params, arg) => {
   if (!tabs.some(t => t.id === st.bt)) st.bt = tabs[0].id;
   const sportsHere = [...new Set(all.filter(g => g.state !== 'post').map(g => g.sport))].sort((a, b) => (BOOK_SPORTS.indexOf(a) + 1 || 99) - (BOOK_SPORTS.indexOf(b) + 1 || 99));
   const anyEst = shown.some(g => g.state === 'pre' && bkCols(g).some(c => c && Book.quote(g, c.prop, c.side).src === 'est'));
-  const section = ([day, leagues]) => `<section class="bk-day"><h2 class="bk-dayh">${esc(day)}</h2>${[...leagues.values()].sort((a, b) => bookRank(a[0].league) - bookRank(b[0].league)).map(gs => { const cols = bkCols(gs[0]); return `<div class="card bk-league"><div class="bk-lhead"><span>${ic(SPORT_IC[gs[0].sport] || 'ball', 'sm')}<b>${esc(gs[0].league)}</b>${gs[0].region && gs[0].region !== 'World' ? `<span class="mut"> · ${esc(gs[0].region)}</span>` : ''}</span>${gs[0].state === 'post' ? '<span class="bk-cols" style="--n:1"><span>Result</span></span>' : `<span class="bk-cols" style="--n:${cols.length}">${cols.map(c => `<span>${esc(c ? c.h : '')}</span>`).join('')}</span>`}</div>${gs.map(bkRow).join('')}</div>`; }).join('')}</section>`;
+  const section = ([day, leagues]) => `<section class="bk-day"><h2 class="bk-dayh">${esc(day)}</h2>${[...leagues.values()].sort((a, b) => bookRank(a[0].league) - bookRank(b[0].league)).map(gs => { const slots = bkSlots(gs); const cols = slots.map(i => (gs.map(g => bkCols(g)[i]).find(Boolean))); return `<div class="card bk-league"><div class="bk-lhead"><span>${ic(SPORT_IC[gs[0].sport] || 'ball', 'sm')}<b>${esc(gs[0].league)}</b>${gs[0].region && gs[0].region !== 'World' ? `<span class="mut"> · ${esc(gs[0].region)}</span>` : ''}</span>${gs[0].state === 'post' ? '<span class="bk-cols" style="--n:1"><span>Result</span></span>' : `<span class="bk-cols" style="--n:${cols.length}">${cols.map(c => `<span>${esc(c ? c.h : '')}</span>`).join('')}</span>`}</div>${gs.map(g => bkRow(g, slots)).join('')}</div>`; }).join('')}</section>`;
   return `<div class="page bk">${head}
     <div class="bk-layout">
       ${bkNav(all, st)}
