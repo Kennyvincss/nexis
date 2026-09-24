@@ -36,8 +36,8 @@ const Poly = {
         const mids = (e.markets || []).map(x => { const m = this.upsert(x, e, 'sports'); Object.assign(m, { game: e.id, start: e.start, smt: x.sportsMarketType || '', line: x.line != null ? nz(x.line) : null, group: x.groupItemTitle || '' }); return m.id; });
         const [a, b] = String(e.title || '').replace(/\s*[-–:|]\s*(?:game|match)?\s*\d.*$/i, '').split(/\s+(?:vs\.?|v\.?|@|-|–)\s+/i);
         const abbrs = String(e.slug || '').split('-').slice(1).filter(w => /^[a-z]{2,4}$/.test(w));
-        return { id: e.id, slug: e.slug, title: e.title, league: e.league, series: e.series || '', tags: e.tags || [], image: e.image, live: !!e.live, score: e.score || '', period: e.period || '', elapsed: e.elapsed || '', volume: nz(e.volume), start: e.start, a: a || '', b: b || '', abbrs, mids };
-      }).filter(g => g.a && g.b && g.mids.length);
+        return { id: e.id, slug: e.slug, title: e.title, league: e.league, series: e.series || '', tags: e.tags || [], image: e.image, live: !!e.live, ended: !!e.ended, score: e.score || '', period: e.period || '', elapsed: e.elapsed || '', volume: nz(e.volume), start: e.start, a: a || '', b: b || '', abbrs, mids };
+      }).filter(g => g.a && g.b && (g.mids.length || g.ended));
       this.gamesAt = now(); this.gamesState = 'live'; this.subscribe(); Bus.emit('poly'); Bus.emit('sports');
     } catch (e) { this.gamesState = this.games.length ? 'stale' : 'offline'; }
   },

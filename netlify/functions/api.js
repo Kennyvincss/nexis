@@ -11,6 +11,7 @@ const ROUTES = {
   auth: () => require('../../api/auth.js'),
   sports: () => require('../../api/sports.js'),
   pmgames: () => require('../../api/pmgames.js'),
+  book: () => require('../../api/book.js'),
 };
 
 exports.handler = async (event) => {
