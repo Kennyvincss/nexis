@@ -274,7 +274,7 @@ async function openGoogleFlow({ mode = 'login' } = {}) {
 /* ---------- auth pages ---------- */
 function authSide() {
   const top = [...Panta.markets.values()].filter(m => m.yes != null && m.tradable).slice(0, 2);
-  const btc = Crypto.bySym.get('BTC'), g = Sports.list().find(x => x.state === 'in');
+  const btc = Crypto.bySym.get('BTC'), g = Sports.list().find(x => x.state === 'in' && x.home);
   const rows = [
     ...top.map(m => `<a href="#/market/${m.id}" class="row"><span class="tag">${esc(PANTA_CAT_LABEL[m.category] || m.category)}</span><span style="flex:1;font-size:13px">${esc(m.title)}</span><span class="num up" data-py="${m.id}">${cents(m.yes)}</span></a>`),
     g ? `<a href="#/event/${g.id}" class="row"><span class="live-badge sm"><span class="live-dot red"></span>${esc(g.clock || 'LIVE')}</span><span style="flex:1;font-size:13px">${esc(g.home.short)} <span class="num">${g.home.score ?? ''}–${g.away.score ?? ''}</span> ${esc(g.away.short)}</span></a>` : '',

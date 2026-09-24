@@ -160,7 +160,7 @@ function bindView(route, arg, params) {
     viewStops.push(Poller(() => PMTrade.address ? Promise.all([PMTrade.loadAccount(), PMTrade.refresh()]) : null, 20000, { immediate: false }));
     if (arg) { pmPaintBook(); viewStops.push(Poller(() => pmPaintBook(), 8000, { immediate: false })); const pm = Poly.markets.get(arg); if (pm) Poly.history(pm).then(() => { const c = $(`.chart-box[data-chart="poly"][data-id="${arg}"]`); if (c) mountChartEl(c); }).catch(() => {}); }
   }
-  if (route === 'sports') { const lg = $('#sp-league'); if (lg) lg.addEventListener('change', () => { UI.sports.league = lg.value; refresh(); }); }
+  if (route === 'sports') { const lg = $('#sp-league'); if (lg) lg.addEventListener('change', () => { UI.sports.league = lg.value; UI.sports.limit = 60; refresh(); }); debounceInput('#sp-q', 250, (v) => { UI.sports.q = v; UI.sports.limit = 60; refreshKeepFocus('#sp-q'); }); }
   if (route === 'sports') { const on = $('.daystrip button.on'); if (on) on.scrollIntoView({ inline: 'center', block: 'nearest' }); }
   if (route === 'event' && arg) { paintEventSummary(arg); viewStops.push(Poller(() => paintEventSummary(arg), () => { const g = Sports.games.get(arg); return g && g.state === 'in' ? 12000 : 60000; }, { immediate: false })); }
   if (route === 'tracker' && !arg) {
@@ -212,6 +212,12 @@ const A_APP = {
   trTab: (el) => { UI.tracker.tab = el.dataset.t; refresh(); },
   actTab: (el) => { UI.activity.tab = el.dataset.t; history.replaceState(null, '', '#/activity'); refresh(); },
   sportFilter: (el) => { UI.sports.filter = el.dataset.f; history.replaceState(null, '', '#/sports'); refresh(); },
+  spStatus: (el) => { UI.sports.status = el.dataset.v; UI.sports.limit = 60; refresh(); },
+  spSport: (el) => { UI.sports.sport = el.dataset.v; UI.sports.league = ''; UI.sports.limit = 60; refresh(); },
+  spToggle: (el) => { UI.sports[el.dataset.k] = !UI.sports[el.dataset.k]; UI.sports.limit = 60; refresh(); },
+  spReset: () => { Object.assign(UI.sports, { q: '', sport: 'all', league: '', status: 'all', bettable: false, following: false, limit: 60 }); refresh(); },
+  spClear: () => { UI.sports.q = ''; refresh(); },
+  spMore: () => { UI.sports.limit = (UI.sports.limit || 60) + 90; refresh(); },
   sportDay: (el) => { UI.sports.day = el.dataset.day; history.replaceState(null, '', '#/sports'); $$('.daystrip button').forEach(b => { const on = b === el; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); }); refresh(); },
   quoteCreate: (el) => quoteCreate(el), confirmCreate: (el) => { el.disabled = true; confirmCreate(); }, draftAi: (el) => draftAi(el),
   track: (el) => { const id = el.dataset.id; Traders.track(id, el.dataset.name || undefined); closeModal(true); toast({ title: `Tracking @${Traders.name(id)}`, body: 'You’ll be notified when they open, change or close a position. Tracking never places trades.' }); refresh(); },
@@ -219,7 +225,7 @@ const A_APP = {
   trNotify: (el) => { const e = Traders.entry(el.dataset.id); if (!e) return; e.notify = !e.notify; Store.emit('track'); toast({ title: e.notify ? 'Alerts on' : 'Alerts off', kind: 'info', ms: 2000 }); refresh(); },
   copySettings: (el) => openCopyModal(el.dataset.id), saveCopy: (el) => saveCopy(el.dataset.id),
   followEvent: (el) => { const id = el.dataset.id; const L = Store.s.followedEvents; const on = !L.includes(id); Store.s.followedEvents = on ? [id, ...L].slice(0, 100) : L.filter(x => x !== id); Store.emit('follow'); const g = Sports.games.get(id);
-    toast({ title: on ? `Following ${g ? g.home.short + ' vs ' + g.away.short : 'game'}` : 'Unfollowed', body: on ? 'You’ll get goal, kick-off and full-time alerts.' : '', kind: on ? 'ok' : 'info', ms: 2500 });
+    toast({ title: on ? `Following ${g ? Sports.title(g) : 'game'}` : 'Unfollowed', body: on ? 'You’ll get score, kick-off and full-time alerts.' : '', kind: on ? 'ok' : 'info', ms: 2500 });
     $$(`[data-action="followEvent"][data-id="${id}"]`).forEach(b => { const g2 = Sports.games.get(id); if (g2) b.outerHTML = followBtn(g2); }); },
   cRange: (el) => { const id = el.dataset.id; UI.chartRange[id] = el.dataset.r; $$(`[data-action="cRange"][data-id="${id}"]`).forEach(b => b.classList.toggle('on', b === el)); const c = $(`.chart-box[data-chart="crypto"][data-id="${id}"]`); if (c) { c.dataset.r = el.dataset.r; mountChartEl(c); } },
 };
