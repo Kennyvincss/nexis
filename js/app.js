@@ -160,7 +160,7 @@ function bindView(route, arg, params) {
     viewStops.push(Poller(() => PMTrade.address ? Promise.all([PMTrade.loadAccount(), PMTrade.refresh()]) : null, 20000, { immediate: false }));
     if (arg) { pmPaintBook(); viewStops.push(Poller(() => pmPaintBook(), 8000, { immediate: false })); const pm = Poly.markets.get(arg); if (pm) Poly.history(pm).then(() => { const c = $(`.chart-box[data-chart="poly"][data-id="${arg}"]`); if (c) mountChartEl(c); }).catch(() => {}); }
   }
-  if (route === 'sports') { const lg = $('#sp-league'); if (lg) lg.addEventListener('change', () => { UI.sports.league = lg.value; UI.sports.limit = 60; refresh(); }); debounceInput('#sp-q', 250, (v) => { UI.sports.q = v; UI.sports.limit = 60; refreshKeepFocus('#sp-q'); }); }
+  if (route === 'sports') { const lg = $('#sp-league'); if (lg) lg.addEventListener('change', () => { Object.assign(UI.sports, { league: lg.value, q: '', status: 'all', limit: 60 }); history.replaceState(null, '', '#/sports'); refresh(); window.scrollTo(0, 0); }); debounceInput('#sp-q', 250, (v) => { UI.sports.q = v; UI.sports.limit = 60; refreshKeepFocus('#sp-q'); }); }
   if (route === 'sports') { const on = $('.daystrip button.on'); if (on) on.scrollIntoView({ inline: 'center', block: 'nearest' }); }
   if (route === 'event' && arg) { paintEventSummary(arg); viewStops.push(Poller(() => paintEventSummary(arg), () => { const g = Sports.games.get(arg); return g && g.state === 'in' ? 12000 : 60000; }, { immediate: false })); }
   if (route === 'tracker' && !arg) {
@@ -216,6 +216,7 @@ const A_APP = {
   spSport: (el) => { UI.sports.sport = el.dataset.v; UI.sports.league = ''; UI.sports.limit = 60; refresh(); },
   spToggle: (el) => { UI.sports[el.dataset.k] = !UI.sports[el.dataset.k]; UI.sports.limit = 60; refresh(); },
   spReset: () => { Object.assign(UI.sports, { q: '', sport: 'all', league: '', status: 'all', bettable: false, following: false, limit: 60 }); refresh(); },
+  spLeague: (el, ev) => { if (ev) ev.preventDefault(); Object.assign(UI.sports, { league: el.dataset.v || '', q: '', status: 'all', limit: 60 }); history.replaceState(null, '', '#/sports'); refresh(); window.scrollTo(0, 0); },
   spClear: () => { UI.sports.q = ''; refresh(); },
   spMore: () => { UI.sports.limit = (UI.sports.limit || 60) + 90; refresh(); },
   sportDay: (el) => { UI.sports.day = el.dataset.day; history.replaceState(null, '', '#/sports'); $$('.daystrip button').forEach(b => { const on = b === el; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); }); refresh(); },

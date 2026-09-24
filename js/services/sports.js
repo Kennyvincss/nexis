@@ -4,14 +4,25 @@
      live, otherwise every 60s.
    - Game summary (box score, lineups/rosters, key events, plays, leaders):
      polled every 12s while a match page is open.
-   - Related prediction markets are real Panta (tradable) and Polymarket
-     (reference) markets whose titles mention the teams.
+   - Related prediction markets: Panta markets whose titles mention the
+     teams, and the game's own Polymarket markets (tradable in Nexis via
+     #/polymarket), matched by team names and kick-off time.
    ===================================================================== */
 const ESPN = 'https://site.api.espn.com/apis/site/v2/sports';
 const LEAGUES = SPORT_LEAGUES; // js/services/leagues.js
 /* Calendar days in the viewer's time zone, as ESPN's YYYYMMDD. */
 const ymd = (t) => { const d = new Date(t); return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`; };
 const dayStart = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
+/* Team / player name matching between ESPN and Polymarket ("Arsenal" ~ "Arsenal FC", "Man City" ≁ "Manchester United"). */
+const NAME_STOP = new Set(['fc', 'cf', 'afc', 'sc', 'ac', 'as', 'cd', 'ud', 'sd', 'club', 'de', 'del', 'la', 'the', 'fk', 'sk', 'bk', 'if', 'ss', 'calcio', 'futbol', 'football', 'and', 'st', 'saint', 'sv', 'vfl', 'vfb', 'tsg', 'rc', 'rcd', 'ca', 'cr', 'se', 'ec', 'bc', 'kc', 'nk', 'hnk', 'gnk', 'jk', 'ogc', 'sl', 'us', 'ssc']);
+const NAME_ALIAS = { internazionale: 'inter', 'man': 'manchester', utd: 'united', spurs: 'tottenham', wolves: 'wolverhampton', psg: 'paris', atletico: 'atletico', bayern: 'bayern', munchen: 'munich' };
+const nameTokens = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/&/g, ' ').replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(w => w && !NAME_STOP.has(w) && !/^\d{4}$/.test(w)).map(w => NAME_ALIAS[w] || w);
+const subsetOf = (a, b) => a.length > 0 && a.every(w => b.includes(w));
+function teamMatch(t, polyName, abbrs) {
+  const P = nameTokens(polyName); if (!P.length) return false;
+  if ([t.name, t.short].some(n => { const T = nameTokens(n); return subsetOf(T, P) || subsetOf(P, T); })) return true;
+  return !!(t.abbr && t.abbr.length === 3 && abbrs && abbrs.includes(t.abbr.toLowerCase())); // slug codes, e.g. epl-ars-che-2026-09-27
+}
 const Sports = {
   games: new Map(), state: 'idle', error: null, summaries: {}, anyLive: false, ranges: {},
   team(c) {
@@ -134,7 +145,7 @@ const Sports = {
   words(t) { return [t.name, t.short, t.abbr].filter(Boolean).map(x => x.toLowerCase()); },
   _rel: {},
   related(g) {
-    const v = `${Panta.markets.size}|${Poly.markets.size}|${Panta.loadedAt}|${g.home ? g.home.name + g.away.name : g.name}`; const c = this._rel[g.id];
+    const v = `${Panta.markets.size}|${Poly.markets.size}|${Poly.gamesAt}|${Panta.loadedAt}|${g.start}|${g.home ? g.home.name + g.away.name : g.name}`; const c = this._rel[g.id];
     if (c && c.v === v) return c.r; const r = this.relatedRaw(g); this._rel[g.id] = { v, r }; return r;
   },
   relatedRaw(g) {
@@ -142,8 +153,16 @@ const Sports = {
     const keys = [...new Set(names.filter(k => k.length >= 4 || /^[a-z]{3}$/.test(k)))];
     const hit = (title) => { const t = ' ' + String(title || '').toLowerCase() + ' '; const h = keys.filter(k => k.length >= 4 ? t.includes(k) : new RegExp(`\\b${k}\\b`).test(t)); return h.length; };
     const panta = [...Panta.markets.values()].filter(m => hit(m.title) >= 1 && !m.cancelled).sort((a, b) => hit(b.title) - hit(a.title)).slice(0, 8);
-    const poly = [...Poly.markets.values()].filter(m => hit(m.q) >= 1).sort((a, b) => hit(b.q) - hit(a.q) || b.vol - a.vol).slice(0, 8);
-    return { panta, poly };
+    // This exact game on Polymarket (moneyline, draw, spreads…) first, then other markets naming the teams.
+    const game = this.pmGame(g); const own = game ? game.mids.map(id => Poly.markets.get(id)).filter(Boolean) : [];
+    const other = g.kind === 'field' || game ? [] : [...Poly.markets.values()].filter(m => !m.game && hit(m.q) >= (g.kind === 'field' ? 1 : 2)).sort((a, b) => b.vol - a.vol).slice(0, 4);
+    const fieldPoly = g.kind === 'field' ? [...Poly.markets.values()].filter(m => hit(m.q) >= 1).sort((a, b) => hit(b.q) - hit(a.q) || b.vol - a.vol).slice(0, 8) : [];
+    return { panta, poly: [...own, ...other, ...fieldPoly].slice(0, 10), pmEvent: game };
+  },
+  /** The Polymarket game event for an ESPN game: both sides' names match and it starts within 30 hours. */
+  pmGame(g) {
+    if (!g.home || !g.away || !Poly.games.length) return null;
+    return Poly.games.find(p => Math.abs(p.start - g.start) < 30 * HOUR && ((teamMatch(g.home, p.a, p.abbrs) && teamMatch(g.away, p.b, p.abbrs)) || (teamMatch(g.home, p.b, p.abbrs) && teamMatch(g.away, p.a, p.abbrs)))) || null;
   },
   /** Loads every league's schedule between two local days (inclusive). ESPN dates are US time, so we
       ask for one extra day each side and filter by the viewer's local day. Cached: 10 min, 2 min for today. */
@@ -163,6 +182,31 @@ const Sports = {
     this.ranges[key] = { ...(c || {}), loading: run };
     try { return await run; } catch (e) { delete this.ranges[key]; throw e; }
   },
+  /** One league's schedule: the last 7 days through the next 28 (league view). Cached 5 min, 1 min while live. */
+  leagues: {},
+  async loadLeague(key) {
+    const c = this.leagues[key];
+    if (c && (c.loading || now() - c.at < (c.live ? 1 : 5) * 60e3)) return c.loading || c;
+    const L = this.meta.get(key) || (() => { const [sp, ...rest] = key.split('/'); return [sp, rest.join('/'), rest.join('/'), SPORT_LABEL_OF_PATH[sp] || sp, SPORT_KIND_OF_PATH[sp] || 'team']; })();
+    const t = dayStart(now()); const q = `${ymd(t - 8 * DAY)}-${ymd(t + 29 * DAY)}`;
+    const run = (async () => {
+      let events = null;
+      try {
+        const r = await Net.api(`sports?league=${encodeURIComponent(key)}&dates=${q}`, { timeout: 35000 });
+        const lg = (r.leagues || [])[0]; if (lg && lg[1] && !this.meta.has(key)) this.meta.set(key, [L[0], L[1], lg[1], L[3], L[4]]);
+        if (lg && !lg[4]) throw new Error('League unavailable');
+        events = (r.events || []).map(x => x[1]);
+      } catch (e) {
+        const r = await Net.data(`${ESPN}/${L[0]}/${L[1]}/scoreboard?dates=${q}&limit=500`); events = Array.isArray(r.events) ? r.events : [];
+      }
+      const LL = this.meta.get(key) || L; let live = false;
+      events.forEach(e => this.parseAll(LL, e).forEach(g => { const prev = this.games.get(g.id); if (!prev || prev.state !== 'in' || g.state !== 'pre') this.games.set(g.id, g); if (g.state === 'in') live = true; }));
+      const out = { at: now(), ok: true, live, n: events.length }; this.leagues[key] = out; Bus.emit('sports'); return out;
+    })();
+    this.leagues[key] = { ...(c || {}), loading: run };
+    try { return await run; } catch (e) { this.leagues[key] = { at: now(), ok: false, error: e }; throw e; }
+  },
+  inLeague(key) { return [...this.games.values()].filter(g => g.sp + '/' + g.lg === key); },
   rangeState(fromT, toT) { return this.ranges[ymd(dayStart(fromT)) + '-' + ymd(dayStart(toT))] || null; },
   between(fromT, toT) { const a = dayStart(fromT), b = dayStart(toT) + DAY; return [...this.games.values()].filter(g => g.start >= a && g.start < b); },
   /** A single game by Nexis id (e.g. an old link), rebuilt from ESPN's summary header. */
