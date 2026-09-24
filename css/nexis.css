@@ -822,9 +822,16 @@ mark.pred{ background:rgba(61,123,255,.2); color:#fff; border-radius:3px; paddin
 .odd:disabled{ opacity:.45; cursor:not-allowed; }
 .odd-l{ color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
 .odd-l.mob{ display:none; }
+.odd.na{ color:var(--muted); background:transparent; border-style:dashed; cursor:default; }
+.bk-cs .bk-odds{ grid-template-columns:repeat(4,minmax(0,1fr)); }
+.bk-game .bk-bt{ margin-top:16px; }
+.bk-mode{ display:flex; width:100%; } .bk-mode button{ flex:1; }
 .odd b{ font-size:13.5px; font-weight:650; flex:none; }
 .odd sup{ font-size:9px; color:var(--amber); margin-left:1px; }
 .bk-mkt .odd{ justify-content:space-between; padding:0 10px; }
+.bk-mkt .odd-l{ flex:1 1 auto; text-align:left; }
+.bk-mkt.wide{ grid-column:1 / -1; }
+@media (max-width:640px){ .bk-mkt .bk-odds{ grid-template-columns:minmax(0,1fr) !important; gap:6px; } .bk-cs .bk-odds{ grid-template-columns:repeat(2,minmax(0,1fr)) !important; } .bk-mkt .odd{ height:42px; } .bk-mkt .odd-l{ font-size:13px; color:var(--text-2); } }
 .bk-final{ width:120px; flex:none; display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-right:42px; }
 .bk-final b{ font-size:15px; }
 .bk-more{ width:32px; flex:none; text-align:center; font-size:11.5px; font-family:var(--mono); color:var(--text-2); padding:6px 0; border-radius:var(--r-xs); }

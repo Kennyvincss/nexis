@@ -96,23 +96,27 @@ The services emit events on a small bus. `app.js` patches the visible page in pl
   - games grouped by day ("24/09 Thursday") and league;
   - each row shows kick-off time and game ID, teams, a stats link, one odds column per selection, and "+N" for more bets;
   - Live, Upcoming and Results tabs, search (teams, leagues, game ID), and decimal, fractional or American odds.
-- **Bets are Panta markets:** each bet is YES or NO on a Panta market. Each game has a fixed set of props, one Panta market each:
-  - football: home win, draw, away win, 3+ goals (O/U 2.5) and both teams to score;
-  - other sports: the winner;
-  - any Polymarket market for the game (handicaps, other lines, props) can be mirrored as its own prop (`pm:<id>`).
+- **Game page:** every option shows its name with the odds beside it (e.g. "Arsenal 1.85 · Draw 3.60 · Chelsea 4.20"). Bet groups:
+  - **Match Result:** home, draw, away.
+  - **Double Chance:** home or draw, home or away, draw or away.
+  - **Goals:** over/under 0.5, 1.5, 2.5, 3.5 and 4.5.
+  - **Both Teams To Score:** yes, no.
+  - **Half Time Result**, plus first-half goals over/under 0.5 and 1.5.
+  - **Half Time / Full Time:** all 9 combinations.
+  - **Correct Score:** 16 common scores.
+  - **First Team to Score:** home, away, no goal.
+  - **Corners:** totals over/under 8.5, 9.5 and 10.5; each team over/under 4.5; corner handicap ±1.5.
+  - **Cards:** totals over/under 3.5, 4.5 and 5.5; each team over/under 1.5. Player cards appear under More when Polymarket lists them.
+  - **Handicap:** ±1.5 and ±2.5.
+  - **More:** other markets Polymarket lists for the game.
+  - Other sports: winner, plus Polymarket's total and spread lines.
+- **List tabs:** 3 Way & O/U, Over/Under, Handicap and Half Time. A game counts as football (1 · X · 2) if its league is football, ESPN says soccer, or Polymarket lists a draw.
+- **Bets are Panta markets:** each option is YES or NO on one Panta market per bet type and game, for example:
+  - home win, draw, away win;
+  - over N.5 goals;
+  - home wins by 2 or more (handicap −1.5).
 
-  | Selection | Panta market and side |
-  |---|---|
-  | 1 | home win, YES |
-  | X | draw, YES |
-  | 2 | away win, YES |
-  | 1X | away win, NO |
-  | 12 | draw, NO |
-  | X2 | home win, NO |
-  | Over / Under 2.5 | O/U 2.5, YES / NO |
-  | GG / NG | both teams to score, YES / NO |
-
-  Draw No Bet isn't offered, because a YES/NO market can't refund stakes on a draw.
+  Double Chance reuses the result markets: "Home or Draw" is NO on "away win". "No goal" is NO on "over 0.5". Draw No Bet isn't offered, because a YES/NO market can't refund stakes on a draw.
 - **First bettor creates the market:** if a prop has no Panta market yet, the first bettor creates it on Panta in the same flow, then places the bet. They pay Panta's creation fee, which is shown in the review, and sign one extra transaction.
   - Each market has a fixed question, a resolution rule (regular time only; extra time and penalties don't count; cancelled if not played within 48h) and sources (ESPN match page, Polymarket event, BBC scores).
   - Trading ends at kick-off, so there's no in-play betting. Panta's Resolution Agent settles the market.
@@ -120,9 +124,16 @@ The services emit events on a small bus. `app.js` patches the visible page in pl
   - Before recording a market, the server checks on Solana (`SOLANA_RPC_URL`) that the creation transaction succeeded, touches the market account and contains the question.
   - It also checks against Polymarket that the question names both teams, or is the exact Polymarket question for `pm:` props.
   - The first registration wins.
-- **Odds:** the Panta price once the market exists. Before that, an estimate from Polymarket's prices, marked with *. The review shows Panta's real price, shares and fees before anything is signed.
-- **Bet slip:**
-  - singles, kept in the browser; minimum $1; USDC balance checked first;
+- **Odds:** the Panta price once the market exists. Until then, estimates (marked with *):
+  - Polymarket's own price where it lists the same bet;
+  - otherwise a goals model fitted like a bookmaker's: home and away Poisson scoring rates that reproduce Polymarket's 1X2 prices and its over/under 2.5 price when listed. It prices goal lines, handicaps, half-time (45% of each rate), HT/FT, correct score and first to score.
+  - Corners and cards have no market price, so they use typical averages (about 10 corners and 4.3 cards per match), tilted by team strength.
+  - A new Panta market opens at Panta's own price. After a first bettor creates a market, Nexis shows that real price and asks before placing the stake.
+- **Bet slip:** each selection shows its odds. Two modes:
+  - **Singles:** each selection is its own bet with its own stake and potential winnings.
+  - **Accumulator:** one stake. Combined odds = the selections' odds multiplied; potential winnings = stake × combined odds. Panta has no multi-bets, so an accumulator is one Panta market that resolves YES only if every selection wins. It allows 2–6 selections, one per game, and trading ends at the earliest kick-off.
+- **Other slip rules:**
+  - kept in the browser; minimum $1; USDC balance checked first;
   - review, then one or two signatures per bet (create market if needed, then buy);
   - bets appear in Portfolio, where winnings are claimed after Panta settles.
 - **Code:**
