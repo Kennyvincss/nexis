@@ -8,11 +8,7 @@
      (reference) markets whose titles mention the teams.
    ===================================================================== */
 const ESPN = 'https://site.api.espn.com/apis/site/v2/sports';
-const LEAGUES = [
-  ['soccer', 'eng.1', 'Premier League', 'Football'], ['soccer', 'uefa.champions', 'Champions League', 'Football'], ['soccer', 'uefa.europa', 'Europa League', 'Football'],
-  ['soccer', 'esp.1', 'La Liga', 'Football'], ['soccer', 'ita.1', 'Serie A', 'Football'], ['soccer', 'ger.1', 'Bundesliga', 'Football'], ['soccer', 'fra.1', 'Ligue 1', 'Football'], ['soccer', 'usa.1', 'MLS', 'Football'],
-  ['basketball', 'nba', 'NBA', 'Basketball'], ['basketball', 'wnba', 'WNBA', 'Basketball'], ['football', 'nfl', 'NFL', 'American Football'], ['football', 'college-football', 'College Football', 'American Football'],
-];
+const LEAGUES = SPORT_LEAGUES; // js/services/leagues.js
 /* Calendar days in the viewer's time zone, as ESPN's YYYYMMDD. */
 const ymd = (t) => { const d = new Date(t); return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`; };
 const dayStart = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
@@ -35,13 +31,27 @@ const Sports = {
   },
   label(g) { if (g.state === 'pre') return /postpon|cancel|suspend|delay/i.test(g.statusName) ? g.detail : `${fmtDate(g.start, { weekday: 'short', month: 'short', day: 'numeric' })} · ${new Date(g.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`; if (g.state === 'post') return g.detail || 'Final'; return g.detail || g.clock; },
   isLive(g) { return g.state === 'in'; },
+  /** All leagues via /api/sports (one cached request); if that fails, the main leagues directly from ESPN. */
+  async fetchBoards(dates) {
+    try {
+      const j = await Net.api('sports' + (dates ? '?dates=' + dates : ''), { timeout: 20000 });
+      const by = new Map(); (j.leagues || []).forEach(([i, ok]) => { if (ok && LEAGUES[i]) by.set(i, { status: 'fulfilled', L: LEAGUES[i], value: { events: [] } }); });
+      (j.events || []).forEach(([i, e]) => { const r = by.get(i); if (r) r.value.events.push(e); });
+      (j.leagues || []).forEach(([i, ok]) => { if (!ok && LEAGUES[i]) by.set(i, { status: 'rejected', L: LEAGUES[i], reason: new Error('League unavailable') }); });
+      this.via = 'server'; return [...by.values()];
+    } catch (e) {
+      this.via = 'direct';
+      const res = await Promise.allSettled(SPORT_LEAGUES_CORE.map(L => Net.data(`${ESPN}/${L[0]}/${L[1]}/scoreboard${dates ? '?dates=' + dates + '&limit=500' : ''}`)));
+      return res.map((r, i) => ({ ...r, L: SPORT_LEAGUES_CORE[i] }));
+    }
+  },
   async poll() {
-    const res = await Promise.allSettled(LEAGUES.map(L => Net.data(`${ESPN}/${L[0]}/${L[1]}/scoreboard`)));
+    const res = await this.fetchBoards('');
     let ok = 0, live = false;
     res.forEach((r, i) => {
       if (r.status !== 'fulfilled' || !r.value || !Array.isArray(r.value.events)) return; ok++;
       r.value.events.forEach(e => {
-        const g = this.parse(LEAGUES[i], e); if (!g) return;
+        const g = this.parse(r.L || LEAGUES[i], e); if (!g) return;
         if (g.state === 'pre' && g.start - now() > 3 * DAY) return;
         if (g.state === 'post' && now() - g.start > 30 * HOUR) return;
         const prev = this.games.get(g.id); this.games.set(g.id, g); if (g.state === 'in') live = true;
@@ -95,11 +105,11 @@ const Sports = {
     if (c && (c.loading || now() - c.at < (to >= today && from <= today ? 2 : 10) * 60e3)) return c.loading || c;
     const q = `${ymd(from - DAY)}-${ymd(to + DAY)}`;
     const run = (async () => {
-      const res = await Promise.allSettled(LEAGUES.map(L => Net.data(`${ESPN}/${L[0]}/${L[1]}/scoreboard?dates=${q}&limit=500`)));
+      const res = await this.fetchBoards(q);
       let ok = 0;
       res.forEach((r, i) => { if (r.status !== 'fulfilled' || !r.value || !Array.isArray(r.value.events)) return; ok++;
-        r.value.events.forEach(e => { const g = this.parse(LEAGUES[i], e); if (!g) return; const prev = this.games.get(g.id); if (!prev || prev.state !== 'in') this.games.set(g.id, g); }); });
-      const out = { at: now(), ok, failed: LEAGUES.length - ok, error: ok ? null : ((res.find(r => r.status === 'rejected') || {}).reason || new Error('No schedule data returned')) };
+        r.value.events.forEach(e => { const g = this.parse(r.L || LEAGUES[i], e); if (!g) return; const prev = this.games.get(g.id); if (!prev || prev.state !== 'in') this.games.set(g.id, g); }); });
+      const out = { at: now(), ok, failed: res.length - ok, error: ok ? null : ((res.find(r => r.status === 'rejected') || {}).reason || new Error('No schedule data returned')) };
       this.ranges[key] = out; Bus.emit('sports'); return out;
     })();
     this.ranges[key] = { ...(c || {}), loading: run };

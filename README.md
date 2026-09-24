@@ -61,6 +61,7 @@ js/app.js             router, actions, live DOM updates, boot
 js/vendor/polymarket-trade.js  Polymarket CLOB client + viem bundle (MIT), loaded only in the Polymarket section; rebuild with `npm run vendor:polymarket`
 js/vendor/privy-core.js  Privy browser SDK bundle (Apache-2.0), loaded only for email codes; rebuild with `npm run vendor:privy`
 api/panta.js          Panta proxy: adds X-Api-Key server-side; allowlisted paths only
+api/sports.js         every league's ESPN scoreboard in one trimmed, edge-cached response
 api/data.js           public-feed proxy (Polymarket, ESPN, CoinGecko, Coinbase); allowlisted hosts, short cache
 api/rpc.js            Solana JSON-RPC proxy; allowlisted methods
 api/config.js         reports which integrations are configured (never the secrets)
@@ -80,7 +81,7 @@ The services emit events on a small bus. `app.js` patches the visible page in pl
 | Price charts (Panta) | Recorded by Nexis | Panta has no price-history endpoint, so Nexis records the prices it observes. Charts are labelled that way. |
 | Portfolio | Panta positions + Solana RPC | Positions every 20s, balances every 30s |
 | Crypto | CoinGecko `/coins/markets`, `market_chart`; Coinbase `ticker` WebSocket | Tick-by-tick for assets listed on Coinbase, otherwise every 30s |
-| Sports | ESPN scoreboard + summary | Every 12s while a game is live, otherwise 60s |
+| Sports | ESPN scoreboard + summary, 87 team-sport leagues (`js/services/leagues.js`) fetched together by `/api/sports` and cached at the edge | Every 12s while a game is live, otherwise 60s |
 | Trader Tracker | Polymarket Data API (`pm:0x…`), Panta positions (`sol:<wallet>`) | Every 20s per tracked trader |
 | Reference markets | Polymarket Gamma + CLOB WebSocket | Streamed prices, trades every 8s |
 
