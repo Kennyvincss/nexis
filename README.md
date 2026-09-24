@@ -92,6 +92,7 @@ The services emit events on a small bus. `app.js` patches the visible page in pl
 `#/sports` opens a sportsbook. Games (upcoming, live, and results from the last 3 days) come from Polymarket's sports listings via `/api/pmgames`. Bets are placed on **Panta** from the user's Solana wallet; Polymarket is not used for betting. ESPN supplies scores, clocks, crests and match stats when it has the same game.
 
 - **Layout:**
+  - **Sport** and **League** dropdowns at the top (no swipe rows or side list);
   - bet-type tabs: **3 Way & O/U**, **Double Chance** and **GG/NG** for football, **Winner** for other sports;
   - games grouped by day ("24/09 Thursday") and league;
   - each row shows kick-off time and game ID, teams, a stats link, one odds column per selection, and "+N" for more bets;
@@ -152,7 +153,7 @@ The services emit events on a small bus. `app.js` patches the visible page in pl
 - **Leagues.** `js/services/leagues.js` lists about 200 leagues across three kinds of event: team games, player-vs-player matches (tennis, MMA) and leaderboards (golf, motorsport). `/api/sports` also reads ESPN's league catalogue for football, basketball and rugby, so leagues ESPN adds appear automatically.
 - **Sports page:**
   - **Search:** teams, players, leagues and tournaments.
-  - **Top leagues:** one-tap shortcuts (Premier League, La Liga, Serie A, Bundesliga, Ligue 1, Champions League, Europa League, MLS, Saudi Pro League, NBA, WNBA, MLB, NHL, ATP, WTA, UFC, F1).
+  - **Sport and league dropdowns:** a Sport dropdown, and a league dropdown whose first group is **Top leagues** (Premier League, La Liga, Serie A, Bundesliga, Ligue 1, Champions League, Europa League, MLS, Saudi Pro League, NBA, WNBA, MLB, NHL, ATP, WTA, UFC, F1).
   - **League pages:** picking any league (shortcut, the league picker, or `#/sports?league=soccer/esp.1`) opens its schedule: live games, fixtures for the next 4 weeks and results from the last 7 days, whatever day it is. The picker always lists every known league, not only those playing today.
   - **Filters:** status (All / Live / Upcoming / Finished), sport chips with counts, **Has markets** (only events with a related Panta or Polymarket market), **Following**, and a reset button.
 - **Markets on games.** `/api/pmgames` loads Polymarket's game markets (win / draw / spread) for every league Polymarket covers. Nexis matches each one to its ESPN game by both team names and a start time within 30 hours. Game cards show the win and draw prices, and each market opens in the Polymarket section so it can be traded without leaving Nexis. Polymarket usually lists a game a few days before it starts and doesn't cover every league, so lower divisions and far-off fixtures often have no market yet. Panta markets whose titles name the teams are listed as well.
