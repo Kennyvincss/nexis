@@ -46,6 +46,7 @@ const Sports = {
   kindOf(L) { return L[4] || SPORT_KIND_OF_PATH[L[0]] || 'team'; },
   /** Any ESPN event → one or more games: team fixture, player-vs-player matches, or one leaderboard. */
   parseAll(L, e) {
+    if (sportExcluded({ path: L[0], key: L[0] + '/' + L[1], name: L[2], sport: L[3] })) return []; // not offered on Nexis
     const kind = this.kindOf(L);
     if (kind === 'match') return this.parseMatches(L, e);
     if (kind === 'field') { const g = this.parseField(L, e); return g ? [g] : []; }
@@ -91,7 +92,7 @@ const Sports = {
       res.forEach(r => {
         if (r.status !== 'fulfilled') { out.push({ status: 'rejected', reason: r.reason }); return; }
         const by = new Map();
-        (r.value.leagues || []).forEach(([key, name, label, kind, ok]) => { const [sp, ...rest] = key.split('/'); const L = [sp, rest.join('/'), name || rest.join('/'), label, kind]; if (!this.meta.has(key)) this.meta.set(key, L); by.set(key, ok ? { status: 'fulfilled', L: this.meta.get(key), value: { events: [] } } : { status: 'rejected', L, reason: new Error('League unavailable') }); });
+        (r.value.leagues || []).forEach(([key, name, label, kind, ok]) => { if (sportExcluded({ key, name, sport: label })) return; const [sp, ...rest] = key.split('/'); const L = [sp, rest.join('/'), name || rest.join('/'), label, kind]; if (!this.meta.has(key)) this.meta.set(key, L); by.set(key, ok ? { status: 'fulfilled', L: this.meta.get(key), value: { events: [] } } : { status: 'rejected', L, reason: new Error('League unavailable') }); });
         (r.value.events || []).forEach(([key, e]) => { const x = by.get(key); if (x && x.value) x.value.events.push(e); });
         out.push(...by.values());
       });

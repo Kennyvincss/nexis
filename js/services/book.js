@@ -20,7 +20,7 @@ const BOOK_CODES = {
   cs2: ['Counter-Strike 2', 'Esports', 'World'], csgo: ['Counter-Strike 2', 'Esports', 'World'], lol: ['League of Legends', 'Esports', 'World'], dota2: ['Dota 2', 'Esports', 'World'], val: ['Valorant', 'Esports', 'World'],
 };
 const BOOK_REGION = { eng: 'England', esp: 'Spain', ita: 'Italy', ger: 'Germany', fra: 'France', ned: 'Netherlands', por: 'Portugal', sco: 'Scotland', tur: 'Turkey', bel: 'Belgium', aut: 'Austria', sui: 'Switzerland', den: 'Denmark', nor: 'Norway', swe: 'Sweden', gre: 'Greece', usa: 'USA', can: 'Canada', mex: 'Mexico', bra: 'Brazil', arg: 'Argentina', col: 'Colombia', chi: 'Chile', ksa: 'Saudi Arabia', jpn: 'Japan', kor: 'South Korea', chn: 'China', aus: 'Australia', uefa: 'Europe', fifa: 'International', conmebol: 'South America', concacaf: 'North America', caf: 'Africa', afc: 'Asia', club: 'International' };
-const BOOK_SPORTS = ['Football', 'Basketball', 'Tennis', 'American Football', 'Baseball', 'Hockey', 'MMA', 'Boxing', 'Cricket', 'Rugby', 'Australian Football', 'Motorsport', 'Golf', 'Esports', 'Other'];
+const BOOK_SPORTS = ['Football', 'Basketball', 'Tennis', 'Baseball', 'Hockey', 'MMA', 'Boxing', 'Cricket', 'Rugby', 'Motorsport', 'Golf', 'Esports', 'Other'];
 const BOOK_CATS = ['Match result', 'Handicap', 'Totals', 'Both teams to score', 'Other'];
 /* Leagues listed first (in this order) wherever leagues are listed; the rest follow by volume. */
 const BOOK_TOP = ['Premier League', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1', 'Champions League', 'UEFA Champions League', 'Europa League', 'UEFA Europa League', 'Conference League', 'UEFA Conference League', 'Eredivisie', 'Primeira Liga', 'MLS', 'Saudi Pro League', 'NBA', 'NFL', 'MLB', 'NHL', 'WNBA', 'ATP', 'WTA', 'UFC'];
@@ -86,6 +86,7 @@ const Book = {
     Poly.games.forEach(p => {
       const markets = p.mids.map(id => Poly.markets.get(id)).filter(Boolean);
       const e = espn.get(p.id) || null; const L = leagueOf(p, e);
+      if (sportExcluded({ sport: L.sport, key: L.key, code: p.league, name: L.name, tags: p.tags }) || sportExcluded({ name: p.series })) return; // not offered on Nexis
       // Sides: ESPN's home/away when matched (which Polymarket name is home?), else Polymarket's order.
       let home = { name: p.a, short: trim(p.a), logo: null, score: null, pm: p.a }, away = { name: p.b, short: trim(p.b), logo: null, score: null, pm: p.b };
       if (e) { const flip = teamMatch(e.home, p.b, p.abbrs) && !teamMatch(e.home, p.a, p.abbrs); const H = e.home, A = e.away; home = { name: H.name, short: H.short, logo: H.logo, score: H.score, pm: flip ? p.b : p.a }; away = { name: A.name, short: A.short, logo: A.logo, score: A.score, pm: flip ? p.a : p.b }; }
@@ -103,6 +104,8 @@ const Book = {
   },
   sportFromTags(tags) {
     const t = (tags || []).join(' ').toLowerCase();
+    if (/\bnfl\b|american football|college football|\bcfl\b/.test(t)) return 'American Football';
+    if (/\bafl\b|australian football/.test(t)) return 'Australian Football';
     return /soccer|football(?!.*american)/.test(t) ? 'Football' : /basketball|nba/.test(t) ? 'Basketball' : /tennis/.test(t) ? 'Tennis' : /nfl|american football/.test(t) ? 'American Football' : /baseball|mlb/.test(t) ? 'Baseball' : /hockey|nhl/.test(t) ? 'Hockey' : /ufc|mma/.test(t) ? 'MMA' : /boxing/.test(t) ? 'Boxing' : /cricket/.test(t) ? 'Cricket' : /esport|counter|league of legends|dota|valorant/.test(t) ? 'Esports' : /rugby/.test(t) ? 'Rugby' : 'Other';
   },
   side(g, name) { const n = String(name || '').replace(/^will\s+/i, '').replace(/\s+(win|beat)\b.*$/i, '').replace(/\?$/, ''); return teamMatch({ name: g.home.pm, short: g.home.short, abbr: '' }, n, null) || teamMatch(g.home, n, null) ? 'home' : teamMatch({ name: g.away.pm, short: g.away.short, abbr: '' }, n, null) || teamMatch(g.away, n, null) ? 'away' : null; },

@@ -162,6 +162,7 @@ function bindView(route, arg, params) {
   }
   if (route === 'sports' || route === 'book') bindBook();
   if (['sports', 'event', 'book', 'home', ''].includes(route)) Sports.kick(); // don't wait for the slow (60s) refresh
+  if (route === 'sports') { const ss = $('#sp-sport'); if (ss) ss.addEventListener('change', () => { Object.assign(UI.sports, { sport: ss.value, league: '', limit: 60 }); refresh(); }); }
   if (route === 'sports') { const lg = $('#sp-league'); if (lg) lg.addEventListener('change', () => { Object.assign(UI.sports, { league: lg.value, q: '', status: 'all', limit: 60 }); history.replaceState(null, '', '#/sports'); refresh(); window.scrollTo(0, 0); }); debounceInput('#sp-q', 250, (v) => { UI.sports.q = v; UI.sports.limit = 60; refreshKeepFocus('#sp-q'); }); }
   if (route === 'sports') { const on = $('.daystrip button.on'); if (on) on.scrollIntoView({ inline: 'center', block: 'nearest' }); }
   if (route === 'event' && arg) { paintEventSummary(arg); viewStops.push(Poller(() => paintEventSummary(arg), () => { const g = Sports.games.get(arg); return g && g.state === 'in' ? 12000 : 60000; }, { immediate: false })); }

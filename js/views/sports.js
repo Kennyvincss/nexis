@@ -62,7 +62,7 @@ function sportsSelection(day) {
   const d = new Date(+day.slice(0, 4), +day.slice(4, 6) - 1, +day.slice(6, 8)).getTime();
   return { from: d, to: d, order: d < t ? -1 : 1, title: new Date(d).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) };
 }
-const SPORT_ORDER = ['Football', 'Basketball', 'Tennis', 'American Football', 'Baseball', 'Hockey', 'MMA', 'Golf', 'Motorsport', 'Rugby', 'Australian Football', 'Lacrosse', 'Volleyball', 'Field Hockey', 'Water Polo'];
+const SPORT_ORDER = ['Football', 'Basketball', 'Tennis', 'Baseball', 'Hockey', 'MMA', 'Golf', 'Motorsport', 'Rugby', 'Lacrosse', 'Volleyball', 'Field Hockey', 'Water Polo'];
 const gameText = (g) => [g.name, g.league, g.tournament, g.round, g.sport, g.home && g.home.name, g.away && g.away.name, g.home && g.home.abbr, g.away && g.away.abbr, g.venue, ...(g.leaders || []).slice(0, 20).map(r => r.name)].filter(Boolean).join(' ').toLowerCase();
 Views.sportsScores = async (params) => {
   const st = UI.sports; if (params.get('q') != null) st.q = params.get('q'); if (params.get('day')) st.day = params.get('day'); st.day = st.day || 'today';
@@ -106,9 +106,8 @@ Views.sportsScores = async (params) => {
       <label class="search-trigger sp-search">${ic('search', 'sm')}<input id="sp-q" value="${esc(st.q)}" placeholder="Search teams, players, leagues, tournaments" autocomplete="off" aria-label="Search sports">${st.q ? '<button class="iconbtn" data-action="spClear" aria-label="Clear search" style="width:26px;height:26px">' + ic('x', 'sm') + '</button>' : ''}</label>
       <div class="seg text">${[['all', 'All'], ['live', `Live${counts.live ? ' · ' + counts.live : ''}`], ['upcoming', `Upcoming${counts.upcoming ? ' · ' + counts.upcoming : ''}`], ['finished', `Finished${counts.finished ? ' · ' + counts.finished : ''}`]].map(([k, l]) => `<button class="${st.status === k ? 'on' : ''}" data-action="spStatus" data-v="${k}">${k === 'live' && counts.live ? '<span class="live-dot red" style="margin-right:6px"></span>' : ''}${l}</button>`).join('')}</div>
     </div>
-    ${topLeagueChips(st.league)}
-    <div class="row wrap" style="gap:8px;margin:12px 0 6px"><button class="chip ${st.sport === 'all' ? 'on' : ''}" data-action="spSport" data-v="all">All sports · ${pool.length}</button>${sportsHere.map(sp => `<button class="chip ${st.sport === sp ? 'on' : ''}" data-action="spSport" data-v="${esc(sp)}">${ic(SPORT_IC[sp] || 'ball', 'sm')}${esc(sp)} · ${bySport[sp]}</button>`).join('')}</div>
-    <div class="row wrap" style="gap:8px;margin:6px 0 16px">
+    <div class="row wrap" style="gap:8px;margin:12px 0 16px">
+      <select class="select" id="sp-sport" style="width:auto;max-width:100%;height:34px;padding:0 10px" aria-label="Sport"><option value="all">All sports (${pool.length})</option>${sportsHere.map(sp => `<option value="${esc(sp)}" ${st.sport === sp ? 'selected' : ''}>${esc(sp)} (${bySport[sp]})</option>`).join('')}</select>
       <select class="select" id="sp-league" style="width:auto;max-width:100%;height:34px;padding:0 10px" aria-label="Open a league"><option value="">Open a league…</option>${leagueOpts}</select>
       <button class="chip ${st.bettable ? 'on' : ''}" data-action="spToggle" data-k="bettable" aria-pressed="${!!st.bettable}">${ic('chart', 'sm')}Has markets</button>
       <button class="chip ${st.following ? 'on' : ''}" data-action="spToggle" data-k="following" aria-pressed="${!!st.following}">${ic('bell', 'sm')}Following</button>
@@ -122,16 +121,18 @@ Views.sportsScores = async (params) => {
   </div>`;
 };
 /* League shortcuts shown above the filters on every Sports page. */
-const TOP_LEAGUES = ['soccer/eng.1', 'soccer/esp.1', 'soccer/ita.1', 'soccer/ger.1', 'soccer/fra.1', 'soccer/uefa.champions', 'soccer/uefa.europa', 'soccer/usa.1', 'soccer/ksa.1', 'basketball/nba', 'basketball/wnba', 'football/nfl', 'baseball/mlb', 'hockey/nhl', 'tennis/atp', 'tennis/wta', 'mma/ufc', 'racing/f1'];
+const TOP_LEAGUES = ['soccer/eng.1', 'soccer/esp.1', 'soccer/ita.1', 'soccer/ger.1', 'soccer/fra.1', 'soccer/uefa.champions', 'soccer/uefa.europa', 'soccer/usa.1', 'soccer/ksa.1', 'basketball/nba', 'basketball/wnba', 'baseball/mlb', 'hockey/nhl', 'tennis/atp', 'tennis/wta', 'mma/ufc', 'racing/f1'];
 const leagueName = (key) => { const L = Sports.meta.get(key); return L ? L[2] : key.split('/').slice(1).join('/'); };
+/* Top leagues, first in every league dropdown. */
+function topLeagueOptions(cur) { return `<optgroup label="Top leagues">${TOP_LEAGUES.filter(k => !sportExcluded({ key: k })).map(k => `<option value="${esc(k)}" ${k === cur ? 'selected' : ''}>${esc(leagueName(k))}</option>`).join('')}</optgroup>`; }
 function topLeagueChips(cur) {
   return `<div class="row sp-top" style="gap:8px;margin:14px 0 2px;overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px" role="navigation" aria-label="Top leagues">${TOP_LEAGUES.map(k => { const L = Sports.meta.get(k); return `<button class="chip ${k === cur ? 'on' : ''}" style="flex:none" data-action="spLeague" data-v="${esc(k)}">${ic(SPORT_IC[L ? L[3] : ''] || 'ball', 'sm')}${esc(leagueName(k))}</button>`; }).join('')}</div>`;
 }
 /* Every league Nexis knows (built-in list + ones ESPN's catalogue added), grouped by sport. */
 function leagueOptions(sport, counts, cur) {
-  const bySp = {}; [...Sports.meta.values()].forEach(L => { const lab = L[3] || SPORT_LABEL_OF_PATH[L[0]] || L[0]; if (sport !== 'all' && lab !== sport) return; (bySp[lab] = bySp[lab] || []).push(L); });
+  const bySp = {}; [...Sports.meta.values()].forEach(L => { if (sportExcluded({ path: L[0], key: L[0] + '/' + L[1], name: L[2], sport: L[3] })) return; const lab = L[3] || SPORT_LABEL_OF_PATH[L[0]] || L[0]; if (sport !== 'all' && lab !== sport) return; (bySp[lab] = bySp[lab] || []).push(L); });
   const rank = (L) => { const i = LEAGUES.findIndex(x => x[0] === L[0] && x[1] === L[1]); return i < 0 ? 9999 : i; };
-  return Object.keys(bySp).sort((a, b) => (SPORT_ORDER.indexOf(a) + 1 || 99) - (SPORT_ORDER.indexOf(b) + 1 || 99)).map(lab => `<optgroup label="${esc(lab)}">${bySp[lab].sort((a, b) => rank(a) - rank(b) || String(a[2]).localeCompare(String(b[2]))).map(L => { const k = L[0] + '/' + L[1]; const n = counts && counts[k]; return `<option value="${esc(k)}" ${k === cur ? 'selected' : ''}>${esc(L[2])}${n ? ` (${n} today)` : ''}</option>`; }).join('')}</optgroup>`).join('');
+  return (sport === 'all' ? topLeagueOptions(cur) : '') + Object.keys(bySp).sort((a, b) => (SPORT_ORDER.indexOf(a) + 1 || 99) - (SPORT_ORDER.indexOf(b) + 1 || 99)).map(lab => `<optgroup label="${esc(lab)}">${bySp[lab].sort((a, b) => rank(a) - rank(b) || String(a[2]).localeCompare(String(b[2]))).map(L => { const k = L[0] + '/' + L[1]; const n = counts && counts[k]; return `<option value="${esc(k)}" ${k === cur && !(sport === 'all' && TOP_LEAGUES.includes(k)) ? 'selected' : ''}>${esc(L[2])}${n ? ` (${n} today)` : ''}</option>`; }).join('')}</optgroup>`).join('');
 }
 /* One league: live now, upcoming fixtures (next 4 weeks) and recent results (last 7 days). */
 async function sportsLeagueView(st) {
@@ -156,7 +157,7 @@ async function sportsLeagueView(st) {
   const head = `<div class="page-head"><div><a class="link" href="#/sports" data-action="spLeague" data-v="">${ic('chevLeft', 'sm')}All sports</a><h1 style="margin-top:6px">${esc(name)}</h1><p>${esc(L ? L[3] : '')}${L ? ' · ' : ''}${counts.upcoming} upcoming · ${counts.finished} results in the last week${withMk ? ` · ${withMk} with markets` : ''}</p></div>${srcBadge('espn')}</div>`;
   const empty = err && !pool.length ? unavailable('League unavailable', `Nexis couldn’t load ${esc(name)} from ESPN${err.message ? ': ' + esc(err.message) : ''}. It retries automatically.`, '<button class="btn btn-ghost sm" data-action="retry">Retry now</button>')
     : `<div class="card">${emptyState({ icon: 'soccer', title: q ? `Nothing matches “${esc(st.q)}”` : st.bettable ? 'No games with markets yet' : 'No games in this window', body: q ? 'Try another team or player name.' : st.bettable ? 'Polymarket usually lists a game’s markets a few days before kick-off. Turn off “Has markets” to see every fixture.' : `${esc(name)} has no games from the last 7 days through the next 4 weeks — it may be between seasons.` })}</div>`;
-  return `<div class="page">${head}${topLeagueChips(key)}
+  return `<div class="page">${head}
     <div class="sp-filters" style="margin-top:12px">
       <label class="search-trigger sp-search">${ic('search', 'sm')}<input id="sp-q" value="${esc(st.q)}" placeholder="Search ${esc(name)} teams or players" autocomplete="off" aria-label="Search this league">${st.q ? '<button class="iconbtn" data-action="spClear" aria-label="Clear search" style="width:26px;height:26px">' + ic('x', 'sm') + '</button>' : ''}</label>
       <div class="seg text">${[['all', 'All'], ['live', `Live${counts.live ? ' · ' + counts.live : ''}`], ['upcoming', `Upcoming${counts.upcoming ? ' · ' + counts.upcoming : ''}`], ['finished', `Results${counts.finished ? ' · ' + counts.finished : ''}`]].map(([k, l]) => `<button class="${st.status === k ? 'on' : ''}" data-action="spStatus" data-v="${k}">${k === 'live' && counts.live ? '<span class="live-dot red" style="margin-right:6px"></span>' : ''}${l}</button>`).join('')}</div>

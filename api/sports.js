@@ -6,7 +6,7 @@
 // ESPN's league catalogue, so leagues ESPN adds appear automatically.
 // Returns { at, group, leagues: [[key, name, label, kind, ok]], events: [[key, event]] }.
 const { send } = require('./_util');
-const { SPORT_LEAGUES, SPORT_GROUPS, SPORT_LABEL_OF_PATH, SPORT_KIND_OF_PATH } = require('../js/services/leagues.js');
+const { SPORT_LEAGUES, SPORT_GROUPS, SPORT_LABEL_OF_PATH, SPORT_KIND_OF_PATH, sportExcluded } = require('../js/services/leagues.js');
 
 const ESPN = 'https://site.api.espn.com/apis/site/v2/sports';
 const CORE = 'https://sports.core.api.espn.com/v2/sports';
@@ -68,6 +68,7 @@ module.exports = async (req, res) => {
   if (lkey) {
     const m = /^([a-z-]+)\/([a-z0-9._-]{1,60})$/i.exec(lkey);
     if (!m || !SPORT_LABEL_OF_PATH[m[1]]) return send(res, 400, { error: 'league must look like soccer/eng.1' });
+    if (sportExcluded({ key: m[1] + '/' + m[2] })) return send(res, 404, { error: 'This league is not available on Nexis.' });
     const L = SPORT_LEAGUES.find(x => x[0] === m[1] && x[1] === m[2]);
     G = { id: 'league', sports: [m[1]], only: { sp: m[1], slug: m[2], name: L ? L[2] : null, label: SPORT_LABEL_OF_PATH[m[1]], kind: (L && L[4]) || SPORT_KIND_OF_PATH[m[1]] || 'team' } }; gid = 'league:' + lkey;
   }
@@ -85,7 +86,7 @@ module.exports = async (req, res) => {
   if (G.discover && !G.only) {
     const known = new Set(list.map(l => l.sp + '/' + l.slug));
     const found = (await Promise.all(G.sports.map(async sp => (await discover(sp)).map(slug => ({ sp, slug }))))).flat();
-    found.forEach(({ sp, slug }) => { if (!known.has(sp + '/' + slug)) { known.add(sp + '/' + slug); list.push({ sp, slug, name: null, label: SPORT_LABEL_OF_PATH[sp] || sp, kind: SPORT_KIND_OF_PATH[sp] || 'team', discovered: true }); } });
+    found.forEach(({ sp, slug }) => { if (!known.has(sp + '/' + slug) && !sportExcluded({ key: sp + '/' + slug })) { known.add(sp + '/' + slug); list.push({ sp, slug, name: null, label: SPORT_LABEL_OF_PATH[sp] || sp, kind: SPORT_KIND_OF_PATH[sp] || 'team', discovered: true }); } });
   }
   const now = Date.now();
   const todo = list.filter(l => dates || G.only || !((quiet.get(l.sp + '/' + l.slug) || 0) > now));
@@ -100,6 +101,7 @@ module.exports = async (req, res) => {
     if (!r.ok) { if (!l.discovered) leagues.push([key, l.name, l.label, l.kind, 0]); return; }
     okN++; const evs = Array.isArray(r.v.events) ? r.v.events : [];
     const lg = (r.v.leagues || [])[0] || {};
+    if (l.discovered && sportExcluded({ name: lg.name || lg.abbreviation })) return; // e.g. a discovered friendlies league
     if (!evs.length) { if (!dates) quiet.set(key, now + 30 * 60e3); if (l.discovered) return; }
     leagues.push([key, l.name || lg.name || lg.abbreviation || l.slug, l.label, l.kind, 1]);
     evs.forEach(e => events.push([key, trimEvent(e, l.kind)]));

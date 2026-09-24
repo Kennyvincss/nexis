@@ -7,6 +7,7 @@
 // Returns { at, events: [{ id, slug, title, start, league, series, tags, live, score, markets: [...] }] } — up to 60 markets
 // per game (result, draw, handicap, totals, both teams to score, props), for the sportsbook.
 const { send } = require('./_util');
+const { sportExcluded } = require('../js/services/leagues.js');
 
 const GAMMA = 'https://gamma-api.polymarket.com';
 const HEADERS = { accept: 'application/json', 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36' };
@@ -20,7 +21,7 @@ const jparse = (v) => { if (Array.isArray(v)) return v; try { const x = JSON.par
 const ms = (v) => { if (!v) return null; let s = String(v).trim(); if (/^\d{4}-\d\d-\d\d \d/.test(s)) s = s.replace(' ', 'T'); if (/T\d/.test(s)) s = s.replace(/([+-]\d\d)$/, '$1:00'); const t = Date.parse(s); return Number.isFinite(t) ? t : null; };
 const isGame = (title) => /\s(vs\.?|v\.?|@|-|–)\s/i.test(title || '');
 // Leagues fetched first, so the time budget never runs out before them.
-const PRIORITY = ['epl', 'lal', 'sea', 'bun', 'fl1', 'ucl', 'uel', 'uecl', 'ere', 'por', 'mls', 'efl', 'spl', 'tur', 'bra', 'arg', 'lmx', 'nba', 'nfl', 'mlb', 'nhl', 'wnba', 'cfb', 'cbb', 'atp', 'wta', 'ufc'];
+const PRIORITY = ['epl', 'lal', 'sea', 'bun', 'fl1', 'ucl', 'uel', 'uecl', 'ere', 'por', 'mls', 'efl', 'spl', 'tur', 'bra', 'nba', 'mlb', 'nhl', 'wnba', 'cbb', 'atp', 'wta', 'ufc'];
 const rankOf = (code) => { const i = PRIORITY.indexOf(String(code).toLowerCase()); return i < 0 ? 999 : i; };
 function trimMarket(x) {
   return { id: String(x.id), question: x.question, outcomes: x.outcomes, outcomePrices: x.outcomePrices, clobTokenIds: x.clobTokenIds, conditionId: x.conditionId, slug: x.slug,
@@ -68,6 +69,7 @@ module.exports = async (req, res) => {
   }
   let sports = [];
   try { const j = await getJson(`${GAMMA}/sports`, 6000); sports = Array.isArray(j) ? j : []; } catch (e) { errors.push('sports: ' + e.message); }
+  sports = sports.filter(s => !sportExcluded({ code: s.sport }));
   const series = [...new Map(sports.flatMap(s => String(s.series || '').split(',').map(id => id.trim()).filter(Boolean).map(id => [id, s.sport || ''])))].sort((a, b) => rankOf(a[1]) - rankOf(b[1]));
   const jobs = [...series.map(([id, league]) => ({ filter: 'series_id=' + encodeURIComponent(id), league, max: 3 })),
     // Results: games that finished in the last 3 days, for the main leagues (one page each, newest first).
@@ -81,6 +83,7 @@ module.exports = async (req, res) => {
   raw.forEach(([e, league]) => {
     if (!e || seen.has(String(e.id))) return; seen.add(String(e.id));
     if (!isGame(e.title)) { why.notGame++; return; }
+    if (sportExcluded({ code: league, name: ((e.series || [])[0] || {}).title, tags: (e.tags || []).map(t => t.label) })) { why.excluded = (why.excluded || 0) + 1; return; }
     const t = trimEvent(e, league); if (!t) { why.noMarkets++; return; }
     if (t.ended) { // results: last 3 days, markets dropped (nothing to bet on)
       if (!t.start || t.start < Date.now() - 3 * 86400e3 || t.start > Date.now()) { why.ended++; return; }

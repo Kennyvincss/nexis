@@ -781,7 +781,7 @@ mark.pred{ background:rgba(61,123,255,.2); color:#fff; border-radius:3px; paddin
 @media (max-width:720px){ .sp-filters .seg{ width:100%; overflow-x:auto; } .sp-filters .seg button{ flex:1; white-space:nowrap; } #sp-league{ flex:1 1 100%; } }
 
 /* ---------- sportsbook ---------- */
-.bk-layout{ display:grid; grid-template-columns:220px minmax(0,1fr) 300px; gap:18px; align-items:start; }
+.bk-layout{ display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:18px; align-items:start; }
 .bk-nav{ position:sticky; top:calc(var(--top) + 14px); padding:8px; max-height:calc(100vh - var(--top) - 28px); overflow-y:auto; }
 .bk-nav-i{ display:flex; align-items:center; gap:9px; width:100%; padding:8px 10px; border-radius:var(--r-sm); font-size:13px; color:var(--text-2); text-align:left; }
 .bk-nav-i span:nth-of-type(1){ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -791,6 +791,9 @@ mark.pred{ background:rgba(61,123,255,.2); color:#fff; border-radius:3px; paddin
 .bk-nav-i i{ font-style:normal; }
 .bk-sub{ margin:2px 0 6px; }
 .bk-chips{ display:none; margin-bottom:12px; }
+.bk-pick{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-bottom:12px; }
+.bk-dd{ display:flex; flex-direction:column; gap:4px; min-width:0; font-size:11.5px; color:var(--muted); }
+.bk-dd .select{ width:100%; height:38px; padding:0 10px; }
 /* bet-type tabs (3 Way & O/U · Double Chance · GG/NG) */
 .bk-bt{ display:flex; gap:4px; margin:14px 0 4px; padding:4px; border:1px solid var(--line); border-radius:var(--r); background:var(--card); overflow-x:auto; }
 .bk-bt button{ flex:none; height:34px; padding:0 16px; border-radius:var(--r-sm); font-size:13.5px; font-weight:550; color:var(--text-2); white-space:nowrap; }
@@ -859,7 +862,7 @@ mark.pred{ background:rgba(61,123,255,.2); color:#fff; border-radius:3px; paddin
 .bk-mkt{ padding:12px; display:flex; flex-direction:column; gap:10px; }
 .bk-mkt-t{ font-size:13px; font-weight:550; }
 .bk-mkt .bk-odds{ width:100%; }
-@media (max-width:1440px){ .bk-layout{ grid-template-columns:minmax(0,1fr) 290px; } .bk-nav{ display:none; } .bk-chips{ display:flex; } }
+@media (max-width:1180px){ .bk-layout{ grid-template-columns:minmax(0,1fr) 290px; } }
 @media (max-width:860px){
   .bk-layout, .bk-game{ grid-template-columns:minmax(0,1fr); }
   .bk-slip-col{ display:none; }
