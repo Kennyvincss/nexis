@@ -52,11 +52,13 @@ js/services/          one module per external integration
   sports.js           sports data service (ESPN scoreboard + match summary)
   polymarket.js       reference markets + global trades tape (view only)
   traders.js          trader activity service (Trader Tracker, Panta trades tape)
+  pmtrade.js          Polymarket trading (EVM wallet, Polygon approvals, CLOB orders)
   notifications.js    notifications service (in-app + optional desktop)
   ai.js               Nexis AI
 js/auth.js            accounts, sign-in methods, settings
 js/views/*.js         pages (markets, crypto, sports, tracker, home, activity, landing)
 js/app.js             router, actions, live DOM updates, boot
+js/vendor/polymarket-trade.js  Polymarket CLOB client + viem bundle (MIT), loaded only in the Polymarket section; rebuild with `npm run vendor:polymarket`
 js/vendor/privy-core.js  Privy browser SDK bundle (Apache-2.0), loaded only for email codes; rebuild with `npm run vendor:privy`
 api/panta.js          Panta proxy: adds X-Api-Key server-side; allowlisted paths only
 api/data.js           public-feed proxy (Polymarket, ESPN, CoinGecko, Coinbase); allowlisted hosts, short cache
@@ -110,6 +112,24 @@ A trade is shown as successful **only after on-chain confirmation**. Transaction
   - liquidity and open interest;
   - price history (see above);
   - cost basis. Entry price and P&L are shown only for trades you place in Nexis.
+
+## Polymarket trading
+
+The **Polymarket** section (`#/polymarket`) trades Polymarket markets from inside Nexis. It is separate from Panta: it uses a different wallet (an EVM wallet on Polygon), a different network and a different balance.
+
+- **Setup, once per wallet:**
+  1. Connect an EVM wallet (MetaMask, Rabby, Coinbase Wallet, or any wallet announced via EIP-6963).
+  2. Switch to Polygon.
+  3. Sign a free message to create Polymarket trading credentials.
+  4. Approve Polymarket's exchange contracts: one transaction per approval, each confirmed on Polygon.
+  5. Fund the wallet with USDC.e and a little POL for gas.
+- **Trading:** market orders (fill-or-kill: a BUY amount is in USDC, a SELL amount in shares) and limit orders (good-till-cancelled), plus the live order book, open orders with cancel, positions and trade history.
+- **Safety:**
+  - Orders are signed in the wallet and sent from the browser straight to `clob.polymarket.com`; Nexis runs no trading server and never holds keys or funds.
+  - A fill counts as successful only after its settlement transaction is confirmed on Polygon. A resting limit order is shown as waiting, not as a trade.
+- **Regions:** Nexis checks Polymarket's geoblock endpoint and disables trading where Polymarket isn't available, and Polymarket enforces its own restrictions too.
+- **Library:** `@polymarket/clob-client` and `viem` are bundled as `js/vendor/polymarket-trade.js` and loaded only in this section. Rebuild with `npm run vendor:polymarket`.
+- **Limitation:** funds held in a polymarket.com account (a proxy wallet) don't appear automatically. The connected wallet trades with its own USDC.
 
 ## Trader Tracker
 
