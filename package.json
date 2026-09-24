@@ -11,10 +11,12 @@
     "@privy-io/server-auth": "^1.32.5"
   },
   "devDependencies": {
+    "@polymarket/clob-client": "5.8.1",
     "@privy-io/js-sdk-core": "0.76.2",
     "esbuild": "^0.24.2"
   },
   "scripts": {
-    "vendor:privy": "esbuild scripts/privy-entry.js --bundle --format=iife --platform=browser --target=es2020 --minify --legal-comments=none --define:process.env.NODE_ENV='\"production\"' --banner:js='/*! @privy-io/js-sdk-core (Apache-2.0, https://www.apache.org/licenses/LICENSE-2.0) bundled for Nexis. Rebuild: npm run vendor:privy */' --outfile=js/vendor/privy-core.js"
+    "vendor:privy": "esbuild scripts/privy-entry.js --bundle --format=iife --platform=browser --target=es2020 --minify --legal-comments=none --define:process.env.NODE_ENV='\"production\"' --banner:js='/*! @privy-io/js-sdk-core (Apache-2.0, https://www.apache.org/licenses/LICENSE-2.0) bundled for Nexis. Rebuild: npm run vendor:privy */' --outfile=js/vendor/privy-core.js",
+    "vendor:polymarket": "esbuild scripts/polymarket-entry.js --bundle --format=iife --platform=browser --target=es2020 --minify --legal-comments=none --define:process.env.NODE_ENV='\"production\"' --define:global=globalThis --banner:js='/*! @polymarket/clob-client (MIT) + viem (MIT) bundled for Nexis. Rebuild: npm run vendor:polymarket */' --outfile=js/vendor/polymarket-trade.js"
   }
 }
