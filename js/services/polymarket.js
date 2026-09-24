@@ -22,7 +22,7 @@ const Poly = {
     try {
       const evs = await Net.data(`${GAMMA}/events?active=true&closed=false&archived=false&order=volume24hr&ascending=false&limit=40`);
       if (!Array.isArray(evs)) throw new Error('Unexpected response');
-      evs.forEach(e => { const cat = polyCat((e.tags || []).map(t => t.label || ''), e.title); (e.markets || []).filter(x => !x.closed && jparse(x.clobTokenIds).length === 2 && jparse(x.outcomePrices).length === 2).sort((a, b) => nz(b.volume24hr) - nz(a.volume24hr)).slice(0, 2).forEach(x => this.upsert(x, e, cat)); });
+      evs.filter(e => !sportExcluded({ tags: (e.tags || []).map(t => t.label || '') })).forEach(e => { const cat = polyCat((e.tags || []).map(t => t.label || ''), e.title); (e.markets || []).filter(x => !x.closed && jparse(x.clobTokenIds).length === 2 && jparse(x.outcomePrices).length === 2).sort((a, b) => nz(b.volume24hr) - nz(a.volume24hr)).slice(0, 2).forEach(x => this.upsert(x, e, cat)); });
       this.state = 'live'; Feeds.set('polymarket', 'live'); this.subscribe(); Bus.emit('poly');
     } catch (e) { this.state = this.markets.size ? 'stale' : 'offline'; Feeds.set('polymarket', this.state, e); Bus.emit('poly'); }
   },

@@ -26,28 +26,26 @@ const SPORT_LEAGUES = [
   SOC('esp.super_cup', 'Supercopa de España'), SOC('ita.super_cup', 'Supercoppa Italiana'), SOC('ger.super_cup', 'DFL-Supercup'), SOC('eng.charity', 'Community Shield'), SOC('uefa.super_cup', 'UEFA Super Cup'),
   SOC('uefa.champions_qual', 'Champions League Qualifying'), SOC('uefa.europa_qual', 'Europa League Qualifying'), SOC('uefa.europa.conf_qual', 'Conference League Qualifying'),
   // ---- Football: women ----
-  SOC('eng.w.1', 'Women’s Super League'), SOC('usa.nwsl', 'NWSL'), SOC('uefa.wchampions', 'Women’s Champions League'), SOC('esp.w.1', 'Liga F'), SOC('fra.w.1', 'Première Ligue'), SOC('ger.w.1', 'Frauen-Bundesliga'),
+  SOC('eng.w.1', 'Women’s Super League'), SOC('uefa.wchampions', 'Women’s Champions League'), SOC('esp.w.1', 'Liga F'), SOC('fra.w.1', 'Première Ligue'), SOC('ger.w.1', 'Frauen-Bundesliga'),
   SOC('fifa.wwc', 'FIFA Women’s World Cup'), SOC('uefa.weuro', 'Women’s Euro'),
   // ---- Football: international ----
   SOC('fifa.world', 'FIFA World Cup'), SOC('uefa.euro', 'UEFA Euro'), SOC('uefa.nations', 'UEFA Nations League'), SOC('fifa.worldq.uefa', 'World Cup Qualifying (UEFA)'),
   SOC('fifa.worldq.conmebol', 'World Cup Qualifying (CONMEBOL)'), SOC('fifa.worldq.concacaf', 'World Cup Qualifying (CONCACAF)'), SOC('fifa.worldq.caf', 'World Cup Qualifying (CAF)'),
-  SOC('fifa.worldq.afc', 'World Cup Qualifying (AFC)'), SOC('fifa.worldq.ofc', 'World Cup Qualifying (OFC)'), SOC('uefa.euroq', 'Euro Qualifying'), SOC('fifa.friendly', 'International Friendlies'),
-  SOC('conmebol.america', 'Copa América'), SOC('caf.nations', 'Africa Cup of Nations'), SOC('caf.nations_qual', 'AFCON Qualifying'), SOC('afc.asian.cup', 'AFC Asian Cup'), SOC('concacaf.gold', 'Gold Cup'),
+  SOC('fifa.worldq.afc', 'World Cup Qualifying (AFC)'), SOC('fifa.worldq.ofc', 'World Cup Qualifying (OFC)'), SOC('uefa.euroq', 'Euro Qualifying'),   SOC('conmebol.america', 'Copa América'), SOC('caf.nations', 'Africa Cup of Nations'), SOC('caf.nations_qual', 'AFCON Qualifying'), SOC('afc.asian.cup', 'AFC Asian Cup'), SOC('concacaf.gold', 'Gold Cup'),
   SOC('concacaf.nations.league', 'CONCACAF Nations League'), SOC('fifa.cwc', 'FIFA Club World Cup'), SOC('fifa.olympics', 'Olympic Football'), SOC('fifa.world.u20', 'U-20 World Cup'),
-  SOC('fifa.world.u17', 'U-17 World Cup'), SOC('uefa.euro.u21', 'U-21 Euro'), SOC('club.friendly', 'Club Friendlies'),
-  // ---- Football: Americas ----
-  SOC('usa.1', 'MLS'), SOC('usa.open', 'U.S. Open Cup'), SOC('usa.usl.1', 'USL Championship'), SOC('usa.usl.l1', 'USL League One'), SOC('can.1', 'Canadian Premier League'),
-  SOC('mex.1', 'Liga MX'), SOC('mex.2', 'Liga de Expansión MX'), SOC('concacaf.champions', 'CONCACAF Champions Cup'), SOC('concacaf.leagues.cup', 'Leagues Cup'),
-  SOC('bra.1', 'Brasileirão'), SOC('bra.2', 'Brasileirão Série B'), SOC('bra.copa_do_brazil', 'Copa do Brasil'), SOC('arg.1', 'Argentine Primera'), SOC('arg.copa', 'Copa Argentina'),
+  SOC('fifa.world.u17', 'U-17 World Cup'), SOC('uefa.euro.u21', 'U-21 Euro'),   // ---- Football: Americas ----
+  SOC('usa.1', 'MLS'), SOC('usa.open', 'U.S. Open Cup'), SOC('usa.usl.l1', 'USL League One'), SOC('can.1', 'Canadian Premier League'),
+  SOC('mex.2', 'Liga de Expansión MX'), SOC('concacaf.champions', 'CONCACAF Champions Cup'), SOC('concacaf.leagues.cup', 'Leagues Cup'),
+  SOC('bra.1', 'Brasileirão'), SOC('bra.copa_do_brazil', 'Copa do Brasil'), SOC('arg.copa', 'Copa Argentina'),
   SOC('conmebol.libertadores', 'Copa Libertadores'), SOC('conmebol.sudamericana', 'Copa Sudamericana'), SOC('conmebol.recopa', 'Recopa Sudamericana'),
-  SOC('col.1', 'Colombian Primera A'), SOC('chi.1', 'Chilean Primera'), SOC('uru.1', 'Uruguayan Primera'), SOC('per.1', 'Peruvian Liga 1'), SOC('ecu.1', 'Ecuadorian LigaPro'),
+  SOC('chi.1', 'Chilean Primera'), SOC('uru.1', 'Uruguayan Primera'), SOC('per.1', 'Peruvian Liga 1'), SOC('ecu.1', 'Ecuadorian LigaPro'),
   SOC('par.1', 'Paraguayan Primera'), SOC('bol.1', 'Bolivian Primera'), SOC('ven.1', 'Venezuelan Primera'), SOC('crc.1', 'Costa Rican Primera'), SOC('hon.1', 'Honduran Liga Nacional'),
-  SOC('gua.1', 'Guatemalan Liga Nacional'), SOC('slv.1', 'Salvadoran Primera'), SOC('jam.1', 'Jamaica Premier League'),
+  SOC('slv.1', 'Salvadoran Primera'), SOC('jam.1', 'Jamaica Premier League'),
   // ---- Football: Asia, Middle East, Africa, Oceania ----
-  SOC('ksa.1', 'Saudi Pro League'), SOC('uae.1', 'UAE Pro League'), SOC('qat.1', 'Qatar Stars League'), SOC('jpn.1', 'J1 League'), SOC('jpn.2', 'J2 League'), SOC('kor.1', 'K League 1'),
+  SOC('ksa.1', 'Saudi Pro League'), SOC('uae.1', 'UAE Pro League'), SOC('qat.1', 'Qatar Stars League'), SOC('jpn.1', 'J1 League'), SOC('kor.1', 'K League 1'),
   SOC('chn.1', 'Chinese Super League'), SOC('ind.1', 'Indian Super League'), SOC('tha.1', 'Thai League 1'), SOC('idn.1', 'Liga 1 Indonesia'), SOC('mys.1', 'Malaysia Super League'),
   SOC('vie.1', 'V.League 1'), SOC('aus.1', 'A-League Men'), SOC('aus.w.1', 'A-League Women'), SOC('afc.champions', 'AFC Champions League Elite'), SOC('afc.cup', 'AFC Champions League Two'),
-  SOC('rsa.1', 'South African Premiership'), SOC('egy.1', 'Egyptian Premier League'), SOC('mar.1', 'Botola Pro'), SOC('tun.1', 'Tunisian Ligue 1'), SOC('alg.1', 'Algerian Ligue 1'),
+  SOC('rsa.1', 'South African Premiership'), SOC('egy.1', 'Egyptian Premier League'), SOC('tun.1', 'Tunisian Ligue 1'), SOC('alg.1', 'Algerian Ligue 1'),
   SOC('nga.1', 'Nigeria Premier League'), SOC('gha.1', 'Ghana Premier League'), SOC('ken.1', 'Kenyan Premier League'), SOC('caf.champions', 'CAF Champions League'), SOC('caf.confed', 'CAF Confederation Cup'),
   // ---- Basketball ----
   ['basketball', 'nba', 'NBA', 'Basketball', 'team'], ['basketball', 'wnba', 'WNBA', 'Basketball', 'team'], ['basketball', 'mens-college-basketball', 'NCAA Men’s Basketball', 'Basketball', 'team'],
@@ -55,8 +53,6 @@ const SPORT_LEAGUES = [
   ['basketball', 'fiba', 'FIBA', 'Basketball', 'team'], ['basketball', 'nba-summer-league', 'NBA Summer League', 'Basketball', 'team'],
   // ---- Tennis (player vs player) ----
   ['tennis', 'atp', 'ATP', 'Tennis', 'match'], ['tennis', 'wta', 'WTA', 'Tennis', 'match'],
-  // ---- American football ----
-  ['football', 'nfl', 'NFL', 'American Football', 'team'], ['football', 'college-football', 'College Football', 'American Football', 'team'], ['football', 'ufl', 'UFL', 'American Football', 'team'],
   // ---- Baseball ----
   ['baseball', 'mlb', 'MLB', 'Baseball', 'team'], ['baseball', 'college-baseball', 'College Baseball', 'Baseball', 'team'], ['baseball', 'world-baseball-classic', 'World Baseball Classic', 'Baseball', 'team'],
   // ---- Ice hockey ----
@@ -72,7 +68,7 @@ const SPORT_LEAGUES = [
   ['rugby', '267979', 'Premiership Rugby', 'Rugby', 'team'], ['rugby', '270557', 'United Rugby Championship', 'Rugby', 'team'], ['rugby', '270559', 'Top 14', 'Rugby', 'team'],
   ['rugby', '242041', 'Super Rugby Pacific', 'Rugby', 'team'], ['rugby', '271937', 'European Champions Cup', 'Rugby', 'team'],
   // ---- Other team sports ----
-  ['australian-football', 'afl', 'AFL', 'Australian Football', 'team'], ['lacrosse', 'pll', 'Premier Lacrosse League', 'Lacrosse', 'team'], ['lacrosse', 'nll', 'National Lacrosse League', 'Lacrosse', 'team'],
+  ['lacrosse', 'pll', 'Premier Lacrosse League', 'Lacrosse', 'team'], ['lacrosse', 'nll', 'National Lacrosse League', 'Lacrosse', 'team'],
   ['lacrosse', 'mens-college-lacrosse', 'NCAA Men’s Lacrosse', 'Lacrosse', 'team'], ['volleyball', 'mens-college-volleyball', 'NCAA Men’s Volleyball', 'Volleyball', 'team'], ['volleyball', 'womens-college-volleyball', 'NCAA Women’s Volleyball', 'Volleyball', 'team'],
   ['field-hockey', 'womens-college-field-hockey', 'NCAA Field Hockey', 'Field Hockey', 'team'], ['water-polo', 'mens-college-water-polo', 'NCAA Water Polo', 'Water Polo', 'team'],
 ];
@@ -81,13 +77,33 @@ const SPORT_GROUPS = [
   { id: 'soccer', label: 'Football', sports: ['soccer'], discover: true },
   { id: 'basketball', label: 'Basketball', sports: ['basketball'], discover: true },
   { id: 'tennis', label: 'Tennis', sports: ['tennis'] },
-  { id: 'us', label: 'US sports', sports: ['football', 'baseball', 'hockey'] },
+  { id: 'us', label: 'US sports', sports: ['baseball', 'hockey'] },
   { id: 'fight', label: 'MMA', sports: ['mma'] },
   { id: 'golf', label: 'Golf & motorsport', sports: ['golf', 'racing'] },
-  { id: 'rugby', label: 'Rugby & more', sports: ['rugby', 'australian-football', 'lacrosse', 'volleyball', 'field-hockey', 'water-polo'], discover: true },
+  { id: 'rugby', label: 'Rugby & more', sports: ['rugby', 'lacrosse', 'volleyball', 'field-hockey', 'water-polo'], discover: true },
 ];
 const SPORT_LABEL_OF_PATH = { soccer: 'Football', basketball: 'Basketball', tennis: 'Tennis', football: 'American Football', baseball: 'Baseball', hockey: 'Hockey', mma: 'MMA', golf: 'Golf', racing: 'Motorsport', rugby: 'Rugby', 'australian-football': 'Australian Football', lacrosse: 'Lacrosse', volleyball: 'Volleyball', 'field-hockey': 'Field Hockey', 'water-polo': 'Water Polo' };
 const SPORT_KIND_OF_PATH = { tennis: 'match', mma: 'match', golf: 'field', racing: 'field' };
 /* The leagues the browser fetches directly if /api/sports is unavailable. */
 const SPORT_LEAGUES_CORE = SPORT_LEAGUES.filter(L => ['eng.1', 'uefa.champions', 'uefa.europa', 'esp.1', 'ita.1', 'ger.1', 'fra.1', 'usa.1', 'nba', 'wnba', 'nfl', 'college-football', 'mlb', 'nhl', 'atp', 'wta', 'ufc'].includes(L[1]));
-if (typeof module !== 'undefined' && module.exports) module.exports = { SPORT_LEAGUES, SPORT_GROUPS, SPORT_LEAGUES_CORE, SPORT_LABEL_OF_PATH, SPORT_KIND_OF_PATH };
+/* Sports and leagues that are not offered on Nexis anywhere (scores, sportsbook, pickers, filters, markets).
+   Matched by sport, by ESPN key, by Polymarket league code, or by league name (for leagues found by discovery). */
+const SPORT_EXCLUDED = {
+  sports: ['American Football', 'Australian Football'],
+  paths: ['football', 'australian-football'],
+  keys: ['soccer/fifa.friendly', 'soccer/club.friendly', 'soccer/col.1', 'soccer/jpn.2', 'soccer/mar.1', 'soccer/mex.1', 'soccer/gua.1', 'soccer/usa.nwsl', 'soccer/arg.1', 'soccer/usa.usl.1', 'soccer/bra.2'],
+  codes: ['nfl', 'cfb', 'ufl', 'cfl', 'afl', 'lmx', 'arg', 'nwsl'],
+  names: /\bfriendl(y|ies)\b|\bprimera a\b|\bj2\b|j\.?\s?league 2|\bmorocc|botola|\bliga (bbva )?mx\b|guatemal|\bcfl\b|canadian football|\bnwsl\b|liga profesional|argentine primera|usl championship|brasileir[aã]o s[ée]rie b|brazil\w* s[ée]rie b|\bnfl\b|american football|college football|australian football|\bafl\b/i,
+};
+/** True if a sport/league should not appear on Nexis. Pass whatever is known: { sport, path, key, code, name, tags }. */
+function sportExcluded({ sport, path, key, code, name, tags } = {}) {
+  if (sport && SPORT_EXCLUDED.sports.includes(sport)) return true;
+  const p = path || (key ? String(key).split('/')[0] : '');
+  if (p && SPORT_EXCLUDED.paths.includes(p)) return true;
+  if (key && SPORT_EXCLUDED.keys.includes(key)) return true;
+  if (code && SPORT_EXCLUDED.codes.includes(String(code).toLowerCase())) return true;
+  if (name && SPORT_EXCLUDED.names.test(String(name))) return true;
+  if (tags && tags.some(t => /^(nfl|cfl|afl|ncaaf|college football|american football|australian football)$/i.test(String(t)))) return true;
+  return false;
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = { SPORT_LEAGUES, SPORT_GROUPS, SPORT_LEAGUES_CORE, SPORT_LABEL_OF_PATH, SPORT_KIND_OF_PATH, SPORT_EXCLUDED, sportExcluded };

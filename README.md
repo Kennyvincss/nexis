@@ -83,7 +83,7 @@ The services emit events on a small bus. `app.js` patches the visible page in pl
 | Price charts (Panta) | Recorded by Nexis | Panta has no price-history endpoint, so Nexis records the prices it observes. Charts are labelled that way. |
 | Portfolio | Panta positions + Solana RPC | Positions every 20s, balances every 30s |
 | Crypto | CoinGecko `/coins/markets`, `market_chart`; Coinbase `ticker` WebSocket | Tick-by-tick for assets listed on Coinbase, otherwise every 30s |
-| Sports | ESPN: ~200 built-in leagues plus leagues discovered from ESPN's catalogue (football, basketball, tennis, NFL/college, MLB, NHL, MMA, golf, motorsport, rugby and more), fetched per sport group by `/api/sports` and cached at the edge (10s) | All groups every 60s; while something is live and a scores page is open, the groups with live games every 10s |
+| Sports | ESPN: ~200 built-in leagues plus leagues discovered from ESPN's catalogue (football, basketball, tennis, MLB, NHL, MMA, golf, motorsport, rugby and more), fetched per sport group by `/api/sports` and cached at the edge (10s) | All groups every 60s; while something is live and a scores page is open, the groups with live games every 10s |
 | Trader Tracker | Polymarket Data API (`pm:0x…`), Panta positions (`sol:<wallet>`) | Every 20s per tracked trader |
 | Reference markets | Polymarket Gamma + CLOB WebSocket | Streamed prices, trades every 8s |
 
@@ -144,10 +144,15 @@ The services emit events on a small bus. `app.js` patches the visible page in pl
 
 ## Sports coverage, search and filters
 
+- **Not offered:** the sports and leagues below are excluded everywhere: scores, sportsbook, league pickers and menus, filters, search, the server feeds and Polymarket market lists.
+  - Sports: American Football (NFL, college, CFL) and Australian Football (AFL).
+  - Football leagues: FIFA Friendly Matches, Club Friendlies, Primera A (Colombia), J2 League, Morocco (Botola Pro), Liga MX, Liga Nacional (Guatemala), NWSL, Liga Profesional (Argentina), USL Championship, Brazil Série B.
+  - The rules live in one place, `SPORT_EXCLUDED` / `sportExcluded()` in `js/services/leagues.js`. They match by sport, ESPN league key, Polymarket league code or league name, so leagues found through ESPN's catalogue or Polymarket's listings are excluded too.
+
 - **Leagues.** `js/services/leagues.js` lists about 200 leagues across three kinds of event: team games, player-vs-player matches (tennis, MMA) and leaderboards (golf, motorsport). `/api/sports` also reads ESPN's league catalogue for football, basketball and rugby, so leagues ESPN adds appear automatically.
 - **Sports page:**
   - **Search:** teams, players, leagues and tournaments.
-  - **Top leagues:** one-tap shortcuts (Premier League, La Liga, Serie A, Bundesliga, Ligue 1, Champions League, Europa League, MLS, Saudi Pro League, NBA, WNBA, NFL, MLB, NHL, ATP, WTA, UFC, F1).
+  - **Top leagues:** one-tap shortcuts (Premier League, La Liga, Serie A, Bundesliga, Ligue 1, Champions League, Europa League, MLS, Saudi Pro League, NBA, WNBA, MLB, NHL, ATP, WTA, UFC, F1).
   - **League pages:** picking any league (shortcut, the league picker, or `#/sports?league=soccer/esp.1`) opens its schedule: live games, fixtures for the next 4 weeks and results from the last 7 days, whatever day it is. The picker always lists every known league, not only those playing today.
   - **Filters:** status (All / Live / Upcoming / Finished), sport chips with counts, **Has markets** (only events with a related Panta or Polymarket market), **Following**, and a reset button.
 - **Markets on games.** `/api/pmgames` loads Polymarket's game markets (win / draw / spread) for every league Polymarket covers. Nexis matches each one to its ESPN game by both team names and a start time within 30 hours. Game cards show the win and draw prices, and each market opens in the Polymarket section so it can be traded without leaving Nexis. Polymarket usually lists a game a few days before it starts and doesn't cover every league, so lower divisions and far-off fixtures often have no market yet. Panta markets whose titles name the teams are listed as well.
