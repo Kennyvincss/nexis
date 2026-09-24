@@ -29,13 +29,14 @@ function trimMarket(x) {
 }
 function trimEvent(e, league) {
   const mk = (e.markets || []).filter(x => !x.closed && x.active !== false && jparse(x.clobTokenIds).length === 2 && jparse(x.outcomePrices).length === 2);
-  if (!mk.length) return null;
+  const ended = !!(e.ended || e.closed);
+  if (!mk.length && !ended) return null;
   const start = ms(e.startTime) || ms(mk.map(x => x.gameStartTime).find(Boolean)) || ms(e.eventDate) || ms(e.endDate);
   const rank = (x) => (x.sportsMarketType === 'moneyline' ? 0 : /draw|win/i.test(x.question || '') ? 1 : 2);
   mk.sort((a, b) => rank(a) - rank(b) || (Number(b.volumeNum ?? b.volume) || 0) - (Number(a.volumeNum ?? a.volume) || 0));
   const series = (e.series || [])[0] || {};
   return { id: String(e.id), slug: e.slug, title: e.title, start, league, series: series.title || e.seriesSlug || '', tags: (e.tags || []).map(t => t.label).filter(Boolean).slice(0, 8), image: e.icon || e.image,
-    live: !!e.live, ended: !!e.ended, score: e.score || '', period: e.period || '', elapsed: e.elapsed || '', volume: Number(e.volume) || 0, markets: mk.slice(0, 60).map(trimMarket) };
+    live: !!e.live && !ended, ended, score: e.score || '', period: e.period || '', elapsed: e.elapsed || '', volume: Number(e.volume) || 0, markets: mk.slice(0, 60).map(trimMarket) };
 }
 async function pool(items, n, deadline, fn) {
   const out = []; let i = 0;
@@ -52,8 +53,9 @@ module.exports = async (req, res) => {
   const since = new Date(Date.now() - 12 * 3600e3).toISOString();
   // Open events for a filter, soonest first (end date ascending), a few pages deep. If Gamma rejects the
   // ordering parameters, fall back to one plain page.
-  async function pages(filter, maxPages) {
+  async function pages(filter, maxPages, closed) {
     const out = [];
+    if (closed) { const evs = await getJson(`${GAMMA}/events?${filter}&closed=true&end_date_min=${encodeURIComponent(new Date(Date.now() - 3 * 86400e3).toISOString())}&order=endDate&ascending=false&limit=100`, 6000); return Array.isArray(evs) ? evs : []; }
     for (let pg = 0; pg < maxPages && Date.now() < deadline; pg++) {
       let evs;
       try { evs = await getJson(`${GAMMA}/events?${filter}&active=true&closed=false&archived=false&end_date_min=${encodeURIComponent(since)}&order=endDate&ascending=true&limit=100&offset=${pg * 100}`, 6000); }
@@ -68,25 +70,32 @@ module.exports = async (req, res) => {
   try { const j = await getJson(`${GAMMA}/sports`, 6000); sports = Array.isArray(j) ? j : []; } catch (e) { errors.push('sports: ' + e.message); }
   const series = [...new Map(sports.flatMap(s => String(s.series || '').split(',').map(id => id.trim()).filter(Boolean).map(id => [id, s.sport || ''])))].sort((a, b) => rankOf(a[1]) - rankOf(b[1]));
   const jobs = [...series.map(([id, league]) => ({ filter: 'series_id=' + encodeURIComponent(id), league, max: 3 })),
+    // Results: games that finished in the last 3 days, for the main leagues (one page each, newest first).
+    ...series.filter(([, league]) => rankOf(league) < 999).map(([id, league]) => ({ filter: 'series_id=' + encodeURIComponent(id), league, max: 1, closed: true })),
     // Catch-all passes, so a league missing from the sports list (or a failed series) still shows up.
     { filter: 'tag_slug=soccer', league: '', max: 5 }, { filter: 'tag_slug=games', league: '', max: 5 }];
-  const lists = await pool(jobs, 16, deadline, async (j) => { try { return (await pages(j.filter, j.max)).map(e => [e, j.league]); } catch (e) { errors.push(j.filter + ': ' + e.message); throw e; } });
+  const lists = await pool(jobs, 16, deadline, async (j) => { try { return (await pages(j.filter, j.max, j.closed)).map(e => [e, j.league]); } catch (e) { errors.push(j.filter + ': ' + e.message); throw e; } });
   // Series results first, so a game keeps its league code when a tag pass sees it too.
   const raw = lists.flat().sort((a, b) => (a[1] ? 0 : 1) - (b[1] ? 0 : 1));
-  const seen = new Set(); const events = []; const why = { notGame: 0, noMarkets: 0, outOfWindow: 0, ended: 0 };
+  const seen = new Set(); const events = []; const results = []; const why = { notGame: 0, noMarkets: 0, outOfWindow: 0, ended: 0 };
   raw.forEach(([e, league]) => {
     if (!e || seen.has(String(e.id))) return; seen.add(String(e.id));
     if (!isGame(e.title)) { why.notGame++; return; }
-    const t = trimEvent(e, league); if (!t) { why.noMarkets++; return; } if (t.ended) { why.ended++; return; }
+    const t = trimEvent(e, league); if (!t) { why.noMarkets++; return; }
+    if (t.ended) { // results: last 3 days, markets dropped (nothing to bet on)
+      if (!t.start || t.start < Date.now() - 3 * 86400e3 || t.start > Date.now()) { why.ended++; return; }
+      t.markets = []; results.push(t); return;
+    }
     if (!t.start || t.start < lo || t.start > hi) { why.outOfWindow++; return; }
     events.push(t);
   });
   if (debug) {
     const per = {}; events.forEach(e => { const k = e.league || '(tag pass)'; per[k] = (per[k] || 0) + 1; });
-    return send(res, 200, { ms: Date.now() - t0, series: series.length, seriesCodes: series.map(x => x[1]).slice(0, 200), rawEvents: raw.length, uniqueEvents: seen.size, kept: events.length, dropped: why, perLeague: per, errors: errors.slice(0, 20), sample: events.slice(0, 5).map(e => ({ title: e.title, league: e.league, start: new Date(e.start).toISOString(), markets: e.markets.length })) }, { 'cache-control': 'no-store' });
+    return send(res, 200, { ms: Date.now() - t0, series: series.length, seriesCodes: series.map(x => x[1]).slice(0, 200), rawEvents: raw.length, uniqueEvents: seen.size, kept: events.length, results: results.length, dropped: why, perLeague: per, errors: errors.slice(0, 20), sample: events.slice(0, 5).map(e => ({ title: e.title, league: e.league, start: new Date(e.start).toISOString(), markets: e.markets.length })) }, { 'cache-control': 'no-store' });
   }
   if (!events.length && !raw.length) return send(res, 502, { error: 'Polymarket unavailable', code: 'POLYMARKET_UNAVAILABLE' }, { 'cache-control': 'no-store' });
-  events.sort((a, b) => a.start - b.start);
+  events.sort((a, b) => a.start - b.start); results.sort((a, b) => b.start - a.start);
+  events.push(...results.slice(0, 400));
   const body = JSON.stringify({ at: Date.now(), ms: Date.now() - t0, events });
   memo = { at: Date.now(), body };
   return send(res, 200, body, cacheHdr);

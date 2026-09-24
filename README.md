@@ -62,7 +62,8 @@ js/vendor/polymarket-trade.js  Polymarket CLOB client + viem bundle (MIT), loade
 js/vendor/privy-core.js  Privy browser SDK bundle (Apache-2.0), loaded only for email codes; rebuild with `npm run vendor:privy`
 api/panta.js          Panta proxy: adds X-Api-Key server-side; allowlisted paths only
 api/sports.js         every league's ESPN scoreboard in one trimmed, edge-cached response (or one league's schedule with ?league=)
-api/pmgames.js        Polymarket's per-game sports markets for every league it covers, trimmed and edge-cached (60s)
+api/pmgames.js        the sportsbook's game list from Polymarket (upcoming, live, results from the last 3 days), trimmed and edge-cached (60s)
+api/book.js           sportsbook registry: which Panta market holds each bet on each game (verified on Solana before it's recorded)
 api/data.js           public-feed proxy (Polymarket, ESPN, CoinGecko, Coinbase); allowlisted hosts, short cache
 api/rpc.js            Solana JSON-RPC proxy; allowlisted methods
 api/config.js         reports which integrations are configured (never the secrets)
@@ -88,20 +89,47 @@ The services emit events on a small bus. `app.js` patches the visible page in pl
 
 ## Sportsbook
 
-`#/sports` opens a sportsbook built from every game Polymarket has markets for. A game with no market isn't listed. ESPN supplies scores, clocks and crests whenever it has the same game.
+`#/sports` opens a sportsbook. Games (upcoming, live, and results from the last 3 days) come from Polymarket's sports listings via `/api/pmgames`. Bets are placed on **Panta** from the user's Solana wallet; Polymarket is not used for betting. ESPN supplies scores, clocks, crests and match stats when it has the same game.
 
-- **Layout:** sports and leagues on the left (busiest first), games with their headline odds in the middle, and the bet slip on the right. On phones the slip opens from a floating button.
-- **Filters:** Live and Upcoming tabs, Any time / Today / Tomorrow, and search by team, player or league.
-- **Odds:** decimal (2.50), fractional (3/2) or American (+150). Odds are 1 ÷ the price to buy that outcome on Polymarket, so a $10 stake at 2.50 returns $25 if it wins, before slippage. Prices refresh every minute and stream live near kick-off.
-- **Game pages (`#/book/<id>`):** every market for the game, grouped as Match result (1X2), Handicap, Totals, Both teams to score and Other (props).
+- **Layout:**
+  - bet-type tabs: **3 Way & O/U**, **Double Chance** and **GG/NG** for football, **Winner** for other sports;
+  - games grouped by day ("24/09 Thursday") and league;
+  - each row shows kick-off time and game ID, teams, a stats link, one odds column per selection, and "+N" for more bets;
+  - Live, Upcoming and Results tabs, search (teams, leagues, game ID), and decimal, fractional or American odds.
+- **Bets are Panta markets:** each bet is YES or NO on a Panta market. Each game has a fixed set of props, one Panta market each:
+  - football: home win, draw, away win, 3+ goals (O/U 2.5) and both teams to score;
+  - other sports: the winner;
+  - any Polymarket market for the game (handicaps, other lines, props) can be mirrored as its own prop (`pm:<id>`).
+
+  | Selection | Panta market and side |
+  |---|---|
+  | 1 | home win, YES |
+  | X | draw, YES |
+  | 2 | away win, YES |
+  | 1X | away win, NO |
+  | 12 | draw, NO |
+  | X2 | home win, NO |
+  | Over / Under 2.5 | O/U 2.5, YES / NO |
+  | GG / NG | both teams to score, YES / NO |
+
+  Draw No Bet isn't offered, because a YES/NO market can't refund stakes on a draw.
+- **First bettor creates the market:** if a prop has no Panta market yet, the first bettor creates it on Panta in the same flow, then places the bet. They pay Panta's creation fee, which is shown in the review, and sign one extra transaction.
+  - Each market has a fixed question, a resolution rule (regular time only; extra time and penalties don't count; cancelled if not played within 48h) and sources (ESPN match page, Polymarket event, BBC scores).
+  - Trading ends at kick-off, so there's no in-play betting. Panta's Resolution Agent settles the market.
+- **Registry (`/api/book`):** records which Panta market holds each prop, so everyone after the first bettor uses the same market. It uses the same Upstash Redis as server accounts.
+  - Before recording a market, the server checks on Solana (`SOLANA_RPC_URL`) that the creation transaction succeeded, touches the market account and contains the question.
+  - It also checks against Polymarket that the question names both teams, or is the exact Polymarket question for `pm:` props.
+  - The first registration wins.
+- **Odds:** the Panta price once the market exists. Before that, an estimate from Polymarket's prices, marked with *. The review shows Panta's real price, shares and fees before anything is signed.
 - **Bet slip:**
-  - selections and stakes are kept in this browser;
-  - each selection is a single bet, placed as a Polymarket market order (FOK) in USDC on Polygon, from the wallet set up in the Polymarket section (minimum $1);
-  - accumulators aren't available, because Polymarket has no parlay product.
-- **Where games come from:** `/api/pmgames` walks every league on Polymarket's sports list, fetching soonest games first and the top leagues (Premier League, La Liga, Serie A, Bundesliga, Ligue 1, the European cups, then US leagues) before the rest. It also runs catch-all `soccer` and `games` tag passes, so a league missing from that list still appears. `/api/pmgames?debug=1` shows counts per league and why events were dropped.
-- **League order:** the top leagues are listed first everywhere, and the rest follow by volume.
-- **Code:** `js/services/book.js` builds the sportsbook from `/api/pmgames` (league names, sides, bet categories, odds formats, the slip). `js/views/book.js` renders the pages.
-- **Scores & results:** a tab on the Sports page keeps the full ESPN views described below: all leagues, league pages, results and fixtures.
+  - singles, kept in the browser; minimum $1; USDC balance checked first;
+  - review, then one or two signatures per bet (create market if needed, then buy);
+  - bets appear in Portfolio, where winnings are claimed after Panta settles.
+- **Code:**
+  - `js/services/book.js`: games, props, questions and rules, odds, registry lookups, slip;
+  - `js/views/book.js`: pages and the bet flow;
+  - `api/book.js`: registry.
+- **Scores & results:** a tab on the Sports page keeps the full ESPN views described below.
 
 ## Sports coverage, search and filters
 
