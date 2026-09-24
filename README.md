@@ -82,7 +82,7 @@ The services emit events on a small bus. `app.js` patches the visible page in pl
 | Price charts (Panta) | Recorded by Nexis | Panta has no price-history endpoint, so Nexis records the prices it observes. Charts are labelled that way. |
 | Portfolio | Panta positions + Solana RPC | Positions every 20s, balances every 30s |
 | Crypto | CoinGecko `/coins/markets`, `market_chart`; Coinbase `ticker` WebSocket | Tick-by-tick for assets listed on Coinbase, otherwise every 30s |
-| Sports | ESPN: ~200 built-in leagues plus leagues discovered from ESPN's catalogue (football, basketball, tennis, NFL/college, MLB, NHL, MMA, golf, motorsport, rugby and more), fetched per sport group by `/api/sports` and cached at the edge | Every 12s while something is live, otherwise 60s |
+| Sports | ESPN: ~200 built-in leagues plus leagues discovered from ESPN's catalogue (football, basketball, tennis, NFL/college, MLB, NHL, MMA, golf, motorsport, rugby and more), fetched per sport group by `/api/sports` and cached at the edge (10s) | All groups every 60s; while something is live and a scores page is open, the groups with live games every 10s |
 | Trader Tracker | Polymarket Data API (`pm:0x…`), Panta positions (`sol:<wallet>`) | Every 20s per tracked trader |
 | Reference markets | Polymarket Gamma + CLOB WebSocket | Streamed prices, trades every 8s |
 

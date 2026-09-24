@@ -28,7 +28,8 @@ const Poly = {
   },
   /** Per-game sports markets (every league Polymarket covers) from /api/pmgames, for matching to ESPN games. */
   games: [], gamesAt: 0, gamesState: 'idle',
-  async loadGames() {
+  loadGames() { if (!this._gl) this._gl = this._loadGames().finally(() => { this._gl = null; }); return this._gl; },
+  async _loadGames() {
     try {
       const r = await Net.api('pmgames', { timeout: 35000 }); if (!r || !Array.isArray(r.events)) throw new Error('Unexpected response');
       this.games = r.events.map(e => {
@@ -48,9 +49,9 @@ const Poly = {
   },
   url(m) { return `https://polymarket.com/event/${encodeURIComponent(m.eventSlug || m.slug || '')}`; },
   subscribe() {
-    // Busiest markets first; game markets only once they have volume or kick off within a day.
-    const ms = [...this.markets.values()].filter(m => !m.game || m.vol24 > 0 || Math.abs((m.start || 0) - now()) < DAY).sort((a, b) => (a.game ? 1 : 0) - (b.game ? 1 : 0) || b.vol24 - a.vol24);
-    const ids = ms.flatMap(m => m.tokens).slice(0, 400); const key = ids.join(','); if (!ids.length || key === this._key) return; this._key = key;
+    // Busiest markets first; game markets only around kick-off (3h before to 4h after), when prices move.
+    const ms = [...this.markets.values()].filter(m => !m.game || ((m.start || 0) - now() < 3 * HOUR && now() - (m.start || 0) < 4 * HOUR)).sort((a, b) => (a.game ? 1 : 0) - (b.game ? 1 : 0) || b.vol24 - a.vol24);
+    const ids = ms.flatMap(m => m.tokens).slice(0, 240); const key = ids.join(','); if (!ids.length || key === this._key) return; this._key = key;
     if (!this.ws) this.ws = new Socket('wss://ws-subscriptions-clob.polymarket.com/ws/market', { name: 'clob', onOpen: (ws) => { ws.send(JSON.stringify({ assets_ids: this._key.split(','), type: 'market' })); clearInterval(this._ping); this._ping = setInterval(() => this.ws.send('PING'), 10000); }, onMessage: (d) => (Array.isArray(d) ? d : [d]).forEach(x => this.onMsg(x)) });
     if (this.ws.open) this.ws.send({ assets_ids: ids, type: 'market' }); else this.ws.connect();
   },
@@ -66,7 +67,10 @@ const Poly = {
     [m.bid, m.ask] = r.idx === 0 ? [bb, ba] : [1 - ba, 1 - bb];
     this.setYes(m, m.ask - m.bid <= .1 ? (m.bid + m.ask) / 2 : (m.last ?? m.yes));
   },
-  setYes(m, y) { if (Math.abs(y - m.yes) < 1e-4) return; const prev = m.yes; m.yes = clamp(y, 0, 1); if (m.hist && m.hist.length) m.hist[m.hist.length - 1] = [now(), m.yes]; Feeds.set('polymarket', 'live'); Bus.emit('poly:price', { m, prev }); },
+  setYes(m, y) { if (Math.abs(y - m.yes) < 1e-4) return; const prev = m.yes; m.yes = clamp(y, 0, 1); if (m.hist && m.hist.length) m.hist[m.hist.length - 1] = [now(), m.yes]; Feeds.set('polymarket', 'live'); this.queuePrice(m, prev); },
+  /** Price ticks are coalesced: at most one repaint per market every 300ms, however fast the stream is. */
+  _dirty: new Map(), _flushT: null,
+  queuePrice(m, prev) { if (!this._dirty.has(m.id)) this._dirty.set(m.id, { m, prev }); if (!this._flushT) this._flushT = setTimeout(() => { this._flushT = null; const list = [...this._dirty.values()]; this._dirty.clear(); if (document.hidden) return; list.forEach(x => Bus.emit('poly:price', x)); }, 300); },
   normTrade: (x) => ({ key: [x.transactionHash, x.asset, x.size, x.timestamp].join('|'), tx: x.transactionHash, cid: x.conditionId, wallet: String(x.proxyWallet || '').toLowerCase(), who: x.name || x.pseudonym || shortW(x.proxyWallet), img: x.profileImage, title: x.title, outcome: x.outcome, yesSide: +x.outcomeIndex === 0, side: x.side, price: nz(x.price), size: nz(x.size), usd: nz(x.size) * nz(x.price), t: toMs(x.timestamp), slug: x.slug, eventSlug: x.eventSlug }),
   addTrades(list, cid) {
     const fresh = [];

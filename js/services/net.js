@@ -84,12 +84,14 @@ class Socket {
   stop() { this.stopped = true; clearTimeout(this.t); try { this.ws && this.ws.close(); } catch (e) {} }
 }
 
-/** Runs fn every `ms` while the tab is visible (and once immediately). Returns a stop function. */
+/** Runs fn every `ms` while the tab is visible (and once immediately). Returns a stop function; stop.now() runs it immediately. */
 function Poller(fn, ms, { immediate = true } = {}) {
   let t = null, stopped = false, busy = false;
   const run = async () => { if (stopped) return; if (!document.hidden && !busy) { busy = true; try { await fn(); } catch (e) { console.warn(e); } busy = false; } t = setTimeout(run, typeof ms === 'function' ? ms() : ms); };
   if (immediate) run(); else t = setTimeout(run, typeof ms === 'function' ? ms() : ms);
   const onVis = () => { if (!document.hidden && !stopped) { clearTimeout(t); run(); } };
   document.addEventListener('visibilitychange', onVis);
-  return () => { stopped = true; clearTimeout(t); document.removeEventListener('visibilitychange', onVis); };
+  const stop = () => { stopped = true; clearTimeout(t); document.removeEventListener('visibilitychange', onVis); };
+  stop.now = () => { if (!stopped) { clearTimeout(t); run(); } }; // run now, then continue on the (re-evaluated) interval
+  return stop;
 }

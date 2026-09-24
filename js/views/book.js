@@ -52,10 +52,9 @@ function bkNav(all, st) {
 }
 function bkModeTabs(mode) { return `<div class="seg text" role="tablist" aria-label="Sports view"><button class="${mode === 'book' ? 'on' : ''}" data-action="bkMode" data-v="book">Sportsbook</button><button class="${mode === 'scores' ? 'on' : ''}" data-action="bkMode" data-v="scores">Scores &amp; results</button></div>`; }
 async function bkLoad() {
-  const waits = [];
-  if (Poly.gamesState === 'idle') waits.push(Poly.loadGames());
-  if (Sports.state === 'idle') waits.push(Sports.poll());
-  if (waits.length) await Promise.allSettled(waits);
+  // Only the Polymarket games are needed to draw the page; ESPN scores fill in when they arrive.
+  if (Poly.gamesState === 'idle') { const load = Poly.loadGames(); if (!Poly.games.length) await load; }
+  if (Sports.state === 'idle') Sports.poll().catch(() => {});
   Sports.loadRange(now(), now() + 7 * DAY).catch(() => {}); // ESPN scores/crests for the week's games (repaints when ready)
   // Restore a previously connected Polymarket wallet so the bet slip can place bets without visiting setup.
   if (!PMTrade._re && PMTrade.saved()) { PMTrade._re = true; PMTrade.discover(); PMTrade.reconnect().then(() => PMTrade.checkRegion()).catch(() => {}); }

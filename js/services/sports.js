@@ -16,7 +16,10 @@ const dayStart = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return 
 /* Team / player name matching between ESPN and Polymarket ("Arsenal" ~ "Arsenal FC", "Man City" ≁ "Manchester United"). */
 const NAME_STOP = new Set(['fc', 'cf', 'afc', 'sc', 'ac', 'as', 'cd', 'ud', 'sd', 'club', 'de', 'del', 'la', 'the', 'fk', 'sk', 'bk', 'if', 'ss', 'calcio', 'futbol', 'football', 'and', 'st', 'saint', 'sv', 'vfl', 'vfb', 'tsg', 'rc', 'rcd', 'ca', 'cr', 'se', 'ec', 'bc', 'kc', 'nk', 'hnk', 'gnk', 'jk', 'ogc', 'sl', 'us', 'ssc']);
 const NAME_ALIAS = { internazionale: 'inter', 'man': 'manchester', utd: 'united', spurs: 'tottenham', wolves: 'wolverhampton', psg: 'paris', atletico: 'atletico', bayern: 'bayern', munchen: 'munich' };
-const nameTokens = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/&/g, ' ').replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(w => w && !NAME_STOP.has(w) && !/^\d{4}$/.test(w)).map(w => NAME_ALIAS[w] || w);
+const _tokCache = new Map();
+/** Team/player name → comparable tokens. Memoised: the same few thousand names are compared constantly. */
+const nameTokens = (s) => { const k = String(s || ''); let v = _tokCache.get(k); if (!v) { if (_tokCache.size > 20000) _tokCache.clear(); v = tokenize(k); _tokCache.set(k, v); } return v; };
+const tokenize = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/&/g, ' ').replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(w => w && !NAME_STOP.has(w) && !/^\d{4}$/.test(w)).map(w => NAME_ALIAS[w] || w);
 const subsetOf = (a, b) => a.length > 0 && a.every(w => b.includes(w));
 function teamMatch(t, polyName, abbrs) {
   const P = nameTokens(polyName); if (!P.length) return false;
@@ -81,8 +84,8 @@ const Sports = {
   /** Every sport group via /api/sports (one cached request each, in parallel); if all fail, the main
       leagues directly from ESPN. */
   meta: new Map(SPORT_LEAGUES.map(L => [L[0] + '/' + L[1], L])),
-  async fetchBoards(dates) {
-    const res = await Promise.allSettled(SPORT_GROUPS.map(G => Net.api(`sports?group=${G.id}${dates ? '&dates=' + dates : ''}`, { timeout: 35000 })));
+  async fetchBoards(dates, groups) {
+    const res = await Promise.allSettled((groups || SPORT_GROUPS).map(G => Net.api(`sports?group=${G.id}${dates ? '&dates=' + dates : ''}`, { timeout: 35000 })));
     if (res.some(r => r.status === 'fulfilled')) {
       const out = [];
       res.forEach(r => {
@@ -98,8 +101,15 @@ const Sports = {
     const d = await Promise.allSettled(SPORT_LEAGUES_CORE.map(L => Net.data(`${ESPN}/${L[0]}/${L[1]}/scoreboard${dates ? '?dates=' + dates + '&limit=500' : ''}`)));
     return d.map((r, i) => ({ ...r, L: SPORT_LEAGUES_CORE[i] }));
   },
-  async poll() {
-    const res = await this.fetchBoards('');
+  /** Live scores. Every 60s all sport groups; in between (every 10s while games are live) only the groups
+      that have live games, so a live match somewhere doesn't mean re-downloading every league. */
+  poll() { if (!this._inflight) this._inflight = this._poll().finally(() => { this._inflight = null; }); return this._inflight; },
+  /** Called when a page showing scores opens: refresh now if the last update is older than 10s. */
+  kick() { if (this.state !== 'idle' && now() - (this.updatedAt || 0) > 10000) { if (this._poller) this._poller.now(); else this.poll().catch(() => {}); } },
+  async _poll() {
+    const full = !this._fullAt || now() - this._fullAt > 55e3 || !this.liveGroups || !this.liveGroups.size;
+    const res = await this.fetchBoards('', full ? null : SPORT_GROUPS.filter(G => this.liveGroups.has(G.id)));
+    if (full) this._fullAt = now();
     let ok = 0, live = false;
     res.forEach((r, i) => {
       if (r.status !== 'fulfilled' || !r.value || !Array.isArray(r.value.events)) return; ok++;
@@ -110,7 +120,9 @@ const Sports = {
         if (prev) this.diff(prev, g);
       }));
     });
-    this.anyLive = live;
+    const groupOf = (sp) => (SPORT_GROUPS.find(G => G.sports.includes(sp)) || {}).id;
+    this.liveGroups = new Set([...this.games.values()].filter(g => g.state === 'in').map(g => groupOf(g.sp)).filter(Boolean));
+    this.anyLive = live || this.liveGroups.size > 0;
     if (ok) { this.state = 'live'; this.error = null; this.updatedAt = now(); Feeds.set('sports', 'live'); }
     else { this.error = (res.find(r => r.status === 'rejected') || {}).reason; this.state = this.games.size ? 'stale' : 'offline'; Feeds.set('sports', this.state, this.error); }
     Bus.emit('sports');
@@ -160,9 +172,17 @@ const Sports = {
     return { panta, poly: [...own, ...other, ...fieldPoly].slice(0, 10), pmEvent: game };
   },
   /** The Polymarket game event for an ESPN game: both sides' names match and it starts within 30 hours. */
+  _pm: new Map(), _pmAt: 0, _pmIdx: null,
   pmGame(g) {
     if (!g.home || !g.away || !Poly.games.length) return null;
-    return Poly.games.find(p => Math.abs(p.start - g.start) < 30 * HOUR && ((teamMatch(g.home, p.a, p.abbrs) && teamMatch(g.away, p.b, p.abbrs)) || (teamMatch(g.home, p.b, p.abbrs) && teamMatch(g.away, p.a, p.abbrs)))) || null;
+    // Cache per game until the Polymarket list changes; only Polymarket games within 30h are compared (sorted index).
+    if (this._pmAt !== Poly.gamesAt) { this._pmAt = Poly.gamesAt; this._pm.clear(); this._pmIdx = Poly.games.slice().sort((a, b) => a.start - b.start); }
+    const key = `${g.id}|${g.start}|${g.home.name}|${g.away.name}`; if (this._pm.has(key)) return this._pm.get(key);
+    const idx = this._pmIdx; let lo = 0, hi = idx.length; const from = g.start - 30 * HOUR;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (idx[mid].start < from) lo = mid + 1; else hi = mid; }
+    let hit = null;
+    for (let i = lo; i < idx.length && idx[i].start < g.start + 30 * HOUR; i++) { const p = idx[i]; if ((teamMatch(g.home, p.a, p.abbrs) && teamMatch(g.away, p.b, p.abbrs)) || (teamMatch(g.home, p.b, p.abbrs) && teamMatch(g.away, p.a, p.abbrs))) { hit = p; break; } }
+    if (this._pm.size > 20000) this._pm.clear(); this._pm.set(key, hit); return hit;
   },
   /** Loads every league's schedule between two local days (inclusive). ESPN dates are US time, so we
       ask for one extra day each side and filter by the viewer's local day. Cached: 10 min, 2 min for today. */
@@ -220,5 +240,9 @@ const Sports = {
     if (g) this.games.set(g.id, g); return g;
   },
   list() { return [...this.games.values()].sort((a, b) => ({ in: 0, pre: 1, post: 2 }[a.state] - { in: 0, pre: 1, post: 2 }[b.state]) || (a.state === 'post' ? b.start - a.start : a.start - b.start)); },
-  start() { Poller(() => this.poll(), () => this.anyLive ? 12000 : 60000); },
+  start() {
+    // Fast refresh only while something is live and a page showing scores is open.
+    const watching = () => { try { return ['sports', 'event', 'book', 'home', ''].includes(current.route); } catch (e) { return true; } };
+    this._poller = Poller(() => this.poll(), () => this.anyLive && watching() ? 10000 : 60000);
+  },
 };
