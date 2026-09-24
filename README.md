@@ -86,6 +86,21 @@ The services emit events on a small bus. `app.js` patches the visible page in pl
 | Trader Tracker | Polymarket Data API (`pm:0x…`), Panta positions (`sol:<wallet>`) | Every 20s per tracked trader |
 | Reference markets | Polymarket Gamma + CLOB WebSocket | Streamed prices, trades every 8s |
 
+## Sportsbook
+
+`#/sports` opens a sportsbook built from every game Polymarket has markets for. A game with no market isn't listed. ESPN supplies scores, clocks and crests whenever it has the same game.
+
+- **Layout:** sports and leagues on the left (busiest first), games with their headline odds in the middle, and the bet slip on the right. On phones the slip opens from a floating button.
+- **Filters:** Live and Upcoming tabs, Any time / Today / Tomorrow, and search by team, player or league.
+- **Odds:** decimal (2.50), fractional (3/2) or American (+150). Odds are 1 ÷ the price to buy that outcome on Polymarket, so a $10 stake at 2.50 returns $25 if it wins, before slippage. Prices refresh every minute and stream live near kick-off.
+- **Game pages (`#/book/<id>`):** every market for the game, grouped as Match result (1X2), Handicap, Totals, Both teams to score and Other (props).
+- **Bet slip:**
+  - selections and stakes are kept in this browser;
+  - each selection is a single bet, placed as a Polymarket market order (FOK) in USDC on Polygon, from the wallet set up in the Polymarket section (minimum $1);
+  - accumulators aren't available, because Polymarket has no parlay product.
+- **Code:** `js/services/book.js` builds the sportsbook from `/api/pmgames` (league names, sides, bet categories, odds formats, the slip). `js/views/book.js` renders the pages.
+- **Scores & results:** a tab on the Sports page keeps the full ESPN views described below: all leagues, league pages, results and fixtures.
+
 ## Sports coverage, search and filters
 
 - **Leagues.** `js/services/leagues.js` lists about 200 leagues across three kinds of event: team games, player-vs-player matches (tennis, MMA) and leaderboards (golf, motorsport). `/api/sports` also reads ESPN's league catalogue for football, basketball and rugby, so leagues ESPN adds appear automatically.

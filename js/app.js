@@ -51,7 +51,7 @@ function shellHtml() {
   </nav>`;
 }
 function renderChrome(route) {
-  const navFor = { market: 'markets', event: 'sports', search: '' }[route] ?? route;
+  const navFor = { market: 'markets', event: 'sports', book: 'sports', search: '' }[route] ?? route;
   $$('[data-nav]').forEach(a => a.classList.toggle('on', a.dataset.nav === navFor));
   const nl = $('#nav-live'); if (nl) { const n = Sports.list().filter(g => g.state === 'in').length; nl.innerHTML = n ? `<span class="live-dot red"></span>${n}` : ''; }
   const u = Notify.unread();
@@ -160,6 +160,7 @@ function bindView(route, arg, params) {
     viewStops.push(Poller(() => PMTrade.address ? Promise.all([PMTrade.loadAccount(), PMTrade.refresh()]) : null, 20000, { immediate: false }));
     if (arg) { pmPaintBook(); viewStops.push(Poller(() => pmPaintBook(), 8000, { immediate: false })); const pm = Poly.markets.get(arg); if (pm) Poly.history(pm).then(() => { const c = $(`.chart-box[data-chart="poly"][data-id="${arg}"]`); if (c) mountChartEl(c); }).catch(() => {}); }
   }
+  if (route === 'sports' || route === 'book') bindBook();
   if (route === 'sports') { const lg = $('#sp-league'); if (lg) lg.addEventListener('change', () => { Object.assign(UI.sports, { league: lg.value, q: '', status: 'all', limit: 60 }); history.replaceState(null, '', '#/sports'); refresh(); window.scrollTo(0, 0); }); debounceInput('#sp-q', 250, (v) => { UI.sports.q = v; UI.sports.limit = 60; refreshKeepFocus('#sp-q'); }); }
   if (route === 'sports') { const on = $('.daystrip button.on'); if (on) on.scrollIntoView({ inline: 'center', block: 'nearest' }); }
   if (route === 'event' && arg) { paintEventSummary(arg); viewStops.push(Poller(() => paintEventSummary(arg), () => { const g = Sports.games.get(arg); return g && g.state === 'in' ? 12000 : 60000; }, { immediate: false })); }
@@ -215,6 +216,19 @@ const A_APP = {
   spStatus: (el) => { UI.sports.status = el.dataset.v; UI.sports.limit = 60; refresh(); },
   spSport: (el) => { UI.sports.sport = el.dataset.v; UI.sports.league = ''; UI.sports.limit = 60; refresh(); },
   spToggle: (el) => { UI.sports[el.dataset.k] = !UI.sports[el.dataset.k]; UI.sports.limit = 60; refresh(); },
+  bkMode: (el) => { UI.sports.mode = el.dataset.v; if (el.dataset.v === 'book') UI.sports.league = ''; history.replaceState(null, '', '#/sports'); refresh(); },
+  bkSport: (el) => { Object.assign(UI.book, { sport: el.dataset.v, league: '', limit: 60 }); refresh(); },
+  bkLeague: (el) => { const k = el.dataset.v; const g = k && Book.games().find(x => x.leagueKey === k); Object.assign(UI.book, { league: k, sport: g ? g.sport : UI.book.sport, limit: 60 }); refresh(); window.scrollTo(0, 0); },
+  bkTab: (el) => { UI.book.tab = el.dataset.v; UI.book.limit = 60; refresh(); },
+  bkWhen: (el) => { UI.book.when = el.dataset.v; UI.book.limit = 60; refresh(); },
+  bkMore: () => { UI.book.limit += 60; refresh(); },
+  bkClearQ: () => { UI.book.q = ''; refresh(); },
+  bkCat: (el) => { UI.book.cat = el.dataset.v; refresh(); },
+  bkPick: (el) => { Book.toggle(el.dataset.k, { label: el.dataset.l, market: el.dataset.mk, game: (() => { const g = Book.get(el.dataset.g); return g ? `${g.home.short} vs ${g.away.short}` : ''; })(), gid: el.dataset.g }); },
+  bkRemove: (el) => Book.remove(el.dataset.k),
+  bkClear: () => Book.clear(),
+  bkPlace: () => bkPlace(),
+  bkSlipOpen: () => { openModal(`${modalHead('Bet slip')}<div class="modal-body" id="bk-slip-modal" style="padding:0">${bkSlip()}</div>`, { label: 'Bet slip' }); bkBindSlip(); },
   spReset: () => { Object.assign(UI.sports, { q: '', sport: 'all', league: '', status: 'all', bettable: false, following: false, limit: 60 }); refresh(); },
   spLeague: (el, ev) => { if (ev) ev.preventDefault(); Object.assign(UI.sports, { league: el.dataset.v || '', q: '', status: 'all', limit: 60 }); history.replaceState(null, '', '#/sports'); refresh(); window.scrollTo(0, 0); },
   spClear: () => { UI.sports.q = ''; refresh(); },

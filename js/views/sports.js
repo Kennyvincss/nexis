@@ -64,7 +64,7 @@ function sportsSelection(day) {
 }
 const SPORT_ORDER = ['Football', 'Basketball', 'Tennis', 'American Football', 'Baseball', 'Hockey', 'MMA', 'Golf', 'Motorsport', 'Rugby', 'Australian Football', 'Lacrosse', 'Volleyball', 'Field Hockey', 'Water Polo'];
 const gameText = (g) => [g.name, g.league, g.tournament, g.round, g.sport, g.home && g.home.name, g.away && g.away.name, g.home && g.home.abbr, g.away && g.away.abbr, g.venue, ...(g.leaders || []).slice(0, 20).map(r => r.name)].filter(Boolean).join(' ').toLowerCase();
-Views.sports = async (params) => {
+Views.sportsScores = async (params) => {
   const st = UI.sports; if (params.get('q') != null) st.q = params.get('q'); if (params.get('day')) st.day = params.get('day'); st.day = st.day || 'today';
   st.status = st.status || 'all'; st.sport = st.sport || 'all'; st.q = st.q || ''; st.limit = st.limit || 60;
   if (params.get('league')) st.league = params.get('league');
@@ -72,7 +72,7 @@ Views.sports = async (params) => {
   if (st.league) return sportsLeagueView(st);
   const days = sportsDays(); if (!days.some(d => d.k === st.day)) st.day = 'today';
   const sel = sportsSelection(st.day);
-  const head = `<div class="page-head"><div><h1>Sports</h1><p>Football, basketball, tennis, US sports, MMA, golf, motorsport, rugby and more — live scores, results and fixtures, with the markets you can trade on each.</p></div>${srcBadge('espn')}</div>`;
+  const head = `<div class="page-head"><div><h1>Sports</h1><p>Live scores, results and fixtures from ESPN for football, basketball, tennis, US sports, MMA, golf, motorsport, rugby and more.</p></div><div class="row" style="gap:8px">${bkModeTabs('scores')}${srcBadge('espn')}</div></div>`;
   if (Sports.state === 'idle') await Sports.poll();
   let rangeErr = null; try { await Sports.loadRange(sel.from, sel.to); } catch (e) { rangeErr = e; }
   const rs = Sports.rangeState(sel.from, sel.to);
