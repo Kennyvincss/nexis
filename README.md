@@ -98,6 +98,8 @@ The services emit events on a small bus. `app.js` patches the visible page in pl
   - selections and stakes are kept in this browser;
   - each selection is a single bet, placed as a Polymarket market order (FOK) in USDC on Polygon, from the wallet set up in the Polymarket section (minimum $1);
   - accumulators aren't available, because Polymarket has no parlay product.
+- **Where games come from:** `/api/pmgames` walks every league on Polymarket's sports list, fetching soonest games first and the top leagues (Premier League, La Liga, Serie A, Bundesliga, Ligue 1, the European cups, then US leagues) before the rest. It also runs catch-all `soccer` and `games` tag passes, so a league missing from that list still appears. `/api/pmgames?debug=1` shows counts per league and why events were dropped.
+- **League order:** the top leagues are listed first everywhere, and the rest follow by volume.
 - **Code:** `js/services/book.js` builds the sportsbook from `/api/pmgames` (league names, sides, bet categories, odds formats, the slip). `js/views/book.js` renders the pages.
 - **Scores & results:** a tab on the Sports page keeps the full ESPN views described below: all leagues, league pages, results and fixtures.
 

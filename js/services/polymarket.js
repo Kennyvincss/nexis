@@ -33,7 +33,7 @@ const Poly = {
       const r = await Net.api('pmgames', { timeout: 35000 }); if (!r || !Array.isArray(r.events)) throw new Error('Unexpected response');
       this.games = r.events.map(e => {
         const mids = (e.markets || []).map(x => { const m = this.upsert(x, e, 'sports'); Object.assign(m, { game: e.id, start: e.start, smt: x.sportsMarketType || '', line: x.line != null ? nz(x.line) : null, group: x.groupItemTitle || '' }); return m.id; });
-        const [a, b] = String(e.title || '').split(/\s+(?:vs\.?|v\.?|@)\s+/i);
+        const [a, b] = String(e.title || '').replace(/\s*[-–:|]\s*(?:game|match)?\s*\d.*$/i, '').split(/\s+(?:vs\.?|v\.?|@|-|–)\s+/i);
         const abbrs = String(e.slug || '').split('-').slice(1).filter(w => /^[a-z]{2,4}$/.test(w));
         return { id: e.id, slug: e.slug, title: e.title, league: e.league, series: e.series || '', tags: e.tags || [], image: e.image, live: !!e.live, score: e.score || '', period: e.period || '', elapsed: e.elapsed || '', volume: nz(e.volume), start: e.start, a: a || '', b: b || '', abbrs, mids };
       }).filter(g => g.a && g.b && g.mids.length);
