@@ -24,6 +24,9 @@ const BOOK_CODES = {
 const BOOK_REGION = { eng: 'England', esp: 'Spain', ita: 'Italy', ger: 'Germany', fra: 'France', ned: 'Netherlands', por: 'Portugal', sco: 'Scotland', tur: 'Turkey', bel: 'Belgium', aut: 'Austria', sui: 'Switzerland', den: 'Denmark', nor: 'Norway', swe: 'Sweden', gre: 'Greece', usa: 'USA', can: 'Canada', mex: 'Mexico', bra: 'Brazil', arg: 'Argentina', col: 'Colombia', chi: 'Chile', ksa: 'Saudi Arabia', jpn: 'Japan', kor: 'South Korea', chn: 'China', aus: 'Australia', uefa: 'Europe', fifa: 'International', conmebol: 'South America', concacaf: 'North America', caf: 'Africa', afc: 'Asia', club: 'International' };
 const BOOK_SPORTS = ['Football', 'Basketball', 'Tennis', 'American Football', 'Baseball', 'Hockey', 'MMA', 'Boxing', 'Cricket', 'Rugby', 'Australian Football', 'Motorsport', 'Golf', 'Esports', 'Other'];
 const BOOK_CATS = ['Match result', 'Handicap', 'Totals', 'Both teams to score', 'Other'];
+/* Leagues listed first (in this order) wherever leagues are listed; the rest follow by volume. */
+const BOOK_TOP = ['Premier League', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1', 'Champions League', 'UEFA Champions League', 'Europa League', 'UEFA Europa League', 'Conference League', 'UEFA Conference League', 'Eredivisie', 'Primeira Liga', 'MLS', 'Saudi Pro League', 'NBA', 'NFL', 'MLB', 'NHL', 'WNBA', 'ATP', 'WTA', 'UFC'];
+const bookRank = (name) => { const i = BOOK_TOP.indexOf(name); return i < 0 ? 999 : i; };
 
 const Book = {
   _v: '', _list: [],
@@ -46,7 +49,9 @@ const Book = {
       const C = BOOK_CODES[p.league];
       if (L) return { key: L[0] + '/' + L[1], name: L[2], sport: L[3], region: BOOK_REGION[String(L[1]).split('.')[0]] || (C && C[2]) || '' };
       if (C) return { key: 'pm/' + p.league, name: C[0], sport: C[1], region: C[2] };
-      const name = String(p.series || '').replace(/\b(19|20)\d\d(\s*[-/]\s*(19|20)?\d\d)?\b/g, '').replace(/\s+/g, ' ').trim() || (p.league ? p.league.toUpperCase() : 'Other');
+      let name = String(p.series || '').replace(/\b(19|20)\d\d(\s*[-/]\s*(19|20)?\d\d)?\b/g, '').replace(/\s+/g, ' ').trim() || (p.league ? p.league.toUpperCase() : 'Other');
+      const known = { 'english premier league': 'Premier League', 'epl': 'Premier League', 'laliga': 'La Liga', 'la liga': 'La Liga', 'serie a': 'Serie A', 'bundesliga': 'Bundesliga', 'ligue 1': 'Ligue 1', 'uefa champions league': 'Champions League', 'champions league': 'Champions League', 'uefa europa league': 'Europa League', 'europa league': 'Europa League' }[name.toLowerCase()];
+      if (known) { const B = Object.entries(BOOK_CODES).find(([, v]) => v[0] === known); return { key: B ? 'pm/' + B[0] : 'pm/' + known.toLowerCase(), name: known, sport: 'Football', region: B ? B[1][2] : '' }; }
       return { key: 'pm/' + (p.league || name.toLowerCase()), name, sport: this.sportFromTags(p.tags), region: '' };
     };
     const out = [];
@@ -54,7 +59,8 @@ const Book = {
       const markets = p.mids.map(id => Poly.markets.get(id)).filter(m => m && !(m.end && m.end < now() - 6 * HOUR)); if (!markets.length) return;
       const e = espn.get(p.id) || null; const L = leagueOf(p, e);
       // Sides: ESPN's home/away when matched (which Polymarket name is home?), else Polymarket's order.
-      let home = { name: p.a, short: p.a.replace(/\s+(FC|CF|AFC|SC)$/i, ''), logo: null, score: null }, away = { name: p.b, short: p.b.replace(/\s+(FC|CF|AFC|SC)$/i, ''), logo: null, score: null };
+      const trim = (n) => n.replace(/\s+(FC|CF|AFC|SC)$/i, '').replace(/^(FC|AFC|CF|SC)\s+/i, '');
+      let home = { name: p.a, short: trim(p.a), logo: null, score: null }, away = { name: p.b, short: trim(p.b), logo: null, score: null };
       if (e) { const flip = teamMatch(e.home, p.b, p.abbrs) && !teamMatch(e.home, p.a, p.abbrs); const H = e.home, A = e.away; home = { name: H.name, short: H.short, logo: H.logo, score: H.score, pm: flip ? p.b : p.a }; away = { name: A.name, short: A.short, logo: A.logo, score: A.score, pm: flip ? p.a : p.b }; }
       else { home.pm = p.a; away.pm = p.b; const sc = /^(\d+)\s*-\s*(\d+)$/.exec(p.score || ''); if (sc) { home.score = +sc[1]; away.score = +sc[2]; } }
       const state = e ? e.state : p.live ? 'in' : p.start < now() - 4 * HOUR ? 'post' : 'pre';

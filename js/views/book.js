@@ -43,7 +43,7 @@ function bkFilter(list, st, { ignoreSport, ignoreLeague } = {}) {
 function bkNav(all, st) {
   const bySport = {}; all.forEach(g => { (bySport[g.sport] = bySport[g.sport] || []).push(g); });
   const sports = Object.keys(bySport).sort((a, b) => (BOOK_SPORTS.indexOf(a) + 1 || 99) - (BOOK_SPORTS.indexOf(b) + 1 || 99));
-  const leaguesOf = (sp) => { const L = {}; bySport[sp].forEach(g => { const x = L[g.leagueKey] = L[g.leagueKey] || { key: g.leagueKey, name: g.league, region: g.region, n: 0, vol: 0 }; x.n++; x.vol += g.vol || 0; }); return Object.values(L).sort((a, b) => b.vol - a.vol || b.n - a.n); };
+  const leaguesOf = (sp) => { const L = {}; bySport[sp].forEach(g => { const x = L[g.leagueKey] = L[g.leagueKey] || { key: g.leagueKey, name: g.league, region: g.region, n: 0, vol: 0 }; x.n++; x.vol += g.vol || 0; }); return Object.values(L).sort((a, b) => bookRank(a.name) - bookRank(b.name) || b.vol - a.vol || b.n - a.n); };
   return `<nav class="bk-nav card" aria-label="Sports and leagues">
     <button class="bk-nav-i ${st.sport === 'all' ? 'on' : ''}" data-action="bkSport" data-v="all">${ic('grid', 'sm')}<span>All sports</span><span class="num mut">${all.length}</span></button>
     ${sports.map(sp => `<button class="bk-nav-i ${st.sport === sp && !st.league ? 'on' : ''}" data-action="bkSport" data-v="${esc(sp)}">${ic(SPORT_IC[sp] || 'ball', 'sm')}<span>${esc(sp)}</span><span class="num mut">${bySport[sp].length}</span></button>
@@ -78,7 +78,7 @@ Views.sports = async (params, arg) => {
   const shown = list.slice(0, st.limit);
   // Group by league (busiest league first), games by kick-off inside each.
   const groups = new Map(); shown.forEach(g => { if (!groups.has(g.leagueKey)) groups.set(g.leagueKey, { name: g.league, region: g.region, sport: g.sport, games: [] }); groups.get(g.leagueKey).games.push(g); });
-  const glist = [...groups.values()].sort((a, b) => (b.games.some(g => g.state === 'in') ? 1 : 0) - (a.games.some(g => g.state === 'in') ? 1 : 0) || b.games.reduce((n, g) => n + (g.vol || 0), 0) - a.games.reduce((n, g) => n + (g.vol || 0), 0));
+  const glist = [...groups.values()].sort((a, b) => (b.games.some(g => g.state === 'in') ? 1 : 0) - (a.games.some(g => g.state === 'in') ? 1 : 0) || bookRank(a.name) - bookRank(b.name) || b.games.reduce((n, g) => n + (g.vol || 0), 0) - a.games.reduce((n, g) => n + (g.vol || 0), 0));
   const sportsHere = [...new Set(all.map(g => g.sport))].sort((a, b) => (BOOK_SPORTS.indexOf(a) + 1 || 99) - (BOOK_SPORTS.indexOf(b) + 1 || 99));
   const hdr = (x) => x.games[0] && x.games[0].main.three ? '<span>1</span><span>X</span><span>2</span>' : '<span>1</span><span>2</span>';
   return `<div class="page bk">${head}
