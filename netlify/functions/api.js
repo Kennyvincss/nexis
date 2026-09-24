@@ -10,6 +10,7 @@ const ROUTES = {
   ai: () => require('../../api/ai.js'),
   auth: () => require('../../api/auth.js'),
   sports: () => require('../../api/sports.js'),
+  pmgames: () => require('../../api/pmgames.js'),
 };
 
 exports.handler = async (event) => {

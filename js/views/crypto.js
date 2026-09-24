@@ -30,12 +30,12 @@ function pantaRow(m) {
     ${m.tradable ? `<div class="mrow-b"><button class="btn btn-yes sm" data-action="quickTrade" data-id="${m.id}" data-side="YES">Yes <span class="num" data-py="${m.id}">${m.yes != null ? cents(m.yes) : '—'}</span></button><button class="btn btn-no sm" data-action="quickTrade" data-id="${m.id}" data-side="NO">No <span class="num" data-pn="${m.id}">${m.no != null ? cents(m.no) : '—'}</span></button></div>` : phaseTag(m) || '<span class="tag">Closed</span>'}
     <span class="mrow-v num mut">${m.volume != null ? kusd(m.volume) : '—'}</span></div>`;
 }
-function polyRow(m) { return `<div class="mrow"><a class="mrow-l" href="#/market/${m.id}"><b>${esc(m.q)}</b><span class="mut" style="font-size:11.5px">Polymarket · view only</span></a><div class="mrow-p"><span class="num" data-lpct="${m.id}">${Math.round(m.yes * 100)}%</span></div><a class="btn btn-ghost sm" href="${Poly.url(m)}" target="_blank" rel="noopener">Polymarket ${ic('ext', 'sm')}</a><span class="mrow-v num mut">${kusd(m.vol)}</span></div>`; }
+function polyRow(m) { return `<div class="mrow"><a class="mrow-l" href="#/polymarket/${m.id}"><b>${esc(m.q)}</b><span class="mut" style="font-size:11.5px">Polymarket · trade in Nexis</span></a><div class="mrow-p"><span class="num" data-lpct="${m.id}">${Math.round(m.yes * 100)}%</span></div><a class="btn btn-ghost sm" href="#/polymarket/${m.id}">Trade</a><span class="mrow-v num mut">${kusd(m.vol)}</span></div>`; }
 function relatedMarketsCard(rel, emptyText) {
   const blocked = pantaState('related markets');
   return `<div class="card"><div class="card-head"><h3>Related prediction markets</h3>${srcBadge('panta', true)}</div>
     ${rel.panta.length ? rel.panta.map(pantaRow).join('') : `<p class="mut" style="padding:14px 18px;font-size:13px">${blocked && !Panta.markets.size ? 'Panta isn’t connected on this server, so tradable markets can’t be listed.' : esc(emptyText)} <a class="link" style="display:inline" href="#/create">Create one</a></p>`}
-    ${rel.poly.length ? `<div class="card-head" style="border-top:1px solid var(--line)"><h3 style="font-size:13px">On Polymarket</h3>${srcBadge('poly', true)}</div>${rel.poly.map(polyRow).join('')}` : ''}</div>`;
+    ${rel.poly.length ? `<div class="card-head" style="border-top:1px solid var(--line)"><h3 style="font-size:13px">${rel.pmEvent ? 'This game on Polymarket' : 'On Polymarket'}</h3>${srcBadge('pmtrade', true)}</div>${rel.poly.map(polyRow).join('')}` : ''}</div>`;
 }
 
 Views.crypto = async (params, id) => id ? cryptoDetail(id) : cryptoIndex();

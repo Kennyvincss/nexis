@@ -50,7 +50,7 @@ js/services/          one module per external integration
   wallet.js           blockchain/wallet service (Phantom/Backpack/Solflare, balances, sign + send, confirmation)
   crypto.js           crypto price service (CoinGecko + Coinbase WebSocket)
   sports.js           sports data service (ESPN scoreboard + match summary)
-  polymarket.js       reference markets + global trades tape (view only)
+  polymarket.js       Polymarket markets (top events + per-game sports markets) and the global trades tape
   traders.js          trader activity service (Trader Tracker, Panta trades tape)
   pmtrade.js          Polymarket trading (EVM wallet, Polygon approvals, CLOB orders)
   notifications.js    notifications service (in-app + optional desktop)
@@ -61,7 +61,8 @@ js/app.js             router, actions, live DOM updates, boot
 js/vendor/polymarket-trade.js  Polymarket CLOB client + viem bundle (MIT), loaded only in the Polymarket section; rebuild with `npm run vendor:polymarket`
 js/vendor/privy-core.js  Privy browser SDK bundle (Apache-2.0), loaded only for email codes; rebuild with `npm run vendor:privy`
 api/panta.js          Panta proxy: adds X-Api-Key server-side; allowlisted paths only
-api/sports.js         every league's ESPN scoreboard in one trimmed, edge-cached response
+api/sports.js         every league's ESPN scoreboard in one trimmed, edge-cached response (or one league's schedule with ?league=)
+api/pmgames.js        Polymarket's per-game sports markets for every league it covers, trimmed and edge-cached (60s)
 api/data.js           public-feed proxy (Polymarket, ESPN, CoinGecko, Coinbase); allowlisted hosts, short cache
 api/rpc.js            Solana JSON-RPC proxy; allowlisted methods
 api/config.js         reports which integrations are configured (never the secrets)
@@ -90,7 +91,10 @@ The services emit events on a small bus. `app.js` patches the visible page in pl
 - **Leagues.** `js/services/leagues.js` lists about 200 leagues across three kinds of event: team games, player-vs-player matches (tennis, MMA) and leaderboards (golf, motorsport). `/api/sports` also reads ESPN's league catalogue for football, basketball and rugby, so leagues ESPN adds appear automatically.
 - **Sports page:**
   - **Search:** teams, players, leagues and tournaments.
-  - **Filters:** status (All / Live / Upcoming / Finished), sport chips with counts, a league picker grouped by sport, **Has markets** (only events with a related Panta or Polymarket market), **Following**, and a reset button.
+  - **Top leagues:** one-tap shortcuts (Premier League, La Liga, Serie A, Bundesliga, Ligue 1, Champions League, Europa League, MLS, Saudi Pro League, NBA, WNBA, NFL, MLB, NHL, ATP, WTA, UFC, F1).
+  - **League pages:** picking any league (shortcut, the league picker, or `#/sports?league=soccer/esp.1`) opens its schedule: live games, fixtures for the next 4 weeks and results from the last 7 days, whatever day it is. The picker always lists every known league, not only those playing today.
+  - **Filters:** status (All / Live / Upcoming / Finished), sport chips with counts, **Has markets** (only events with a related Panta or Polymarket market), **Following**, and a reset button.
+- **Markets on games.** `/api/pmgames` loads Polymarket's game markets (win / draw / spread) for every league Polymarket covers. Nexis matches each one to its ESPN game by both team names and a start time within 30 hours. Game cards show the win and draw prices, and each market opens in the Polymarket section so it can be traded without leaving Nexis. Polymarket usually lists a game a few days before it starts and doesn't cover every league, so lower divisions and far-off fixtures often have no market yet. Panta markets whose titles name the teams are listed as well.
   - **Days:** a day picker covering the last and next 7 days.
 - **Coverage limits.** ESPN's free API doesn't cover every league in the world; much lower-division football and most non-US basketball, for example, are missing. Complete global coverage needs a paid sports-data provider, which can be added as another source for `/api/sports`.
 

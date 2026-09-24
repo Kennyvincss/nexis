@@ -26,6 +26,20 @@ const Poly = {
       this.state = 'live'; Feeds.set('polymarket', 'live'); this.subscribe(); Bus.emit('poly');
     } catch (e) { this.state = this.markets.size ? 'stale' : 'offline'; Feeds.set('polymarket', this.state, e); Bus.emit('poly'); }
   },
+  /** Per-game sports markets (every league Polymarket covers) from /api/pmgames, for matching to ESPN games. */
+  games: [], gamesAt: 0, gamesState: 'idle',
+  async loadGames() {
+    try {
+      const r = await Net.api('pmgames', { timeout: 35000 }); if (!r || !Array.isArray(r.events)) throw new Error('Unexpected response');
+      this.games = r.events.map(e => {
+        const mids = (e.markets || []).map(x => this.upsert(x, e, 'sports')).map(m => { m.game = e.id; m.start = e.start; return m.id; });
+        const [a, b] = String(e.title || '').split(/\s+(?:vs\.?|v\.?|@)\s+/i);
+        const abbrs = String(e.slug || '').split('-').slice(1).filter(w => /^[a-z]{2,4}$/.test(w));
+        return { id: e.id, slug: e.slug, title: e.title, league: e.league, start: e.start, a: a || '', b: b || '', abbrs, mids };
+      }).filter(g => g.a && g.b && g.mids.length);
+      this.gamesAt = now(); this.gamesState = 'live'; this.subscribe(); Bus.emit('poly'); Bus.emit('sports');
+    } catch (e) { this.gamesState = this.games.length ? 'stale' : 'offline'; }
+  },
   upsert(x, e, cat) {
     const id = 'pm-' + x.id; const outs = jparse(x.outcomes); const px = jparse(x.outcomePrices).map(Number); const tok = jparse(x.clobTokenIds).map(String);
     const f = { id, src: 'polymarket', q: x.question || (e && e.title), yesLabel: outs[0] || 'Yes', noLabel: outs[1] || 'No', yes: clamp(nz(px[0], .5), 0, 1), vol: nz(x.volumeNum ?? x.volume), vol24: nz(x.volume24hr), liq: nz(x.liquidityNum ?? x.liquidity), chg: nz(x.oneDayPriceChange), bid: x.bestBid != null ? nz(x.bestBid, null) : null, ask: x.bestAsk != null ? nz(x.bestAsk, null) : null, end: toMs(x.endDate), conditionId: x.conditionId, tokens: tok, slug: x.slug, eventSlug: (e && e.slug) || x.eventSlug, cat: cat || 'other', image: x.icon || x.image || (e && e.icon), rule: (x.description || '').slice(0, 800) };
@@ -34,7 +48,9 @@ const Poly = {
   },
   url(m) { return `https://polymarket.com/event/${encodeURIComponent(m.eventSlug || m.slug || '')}`; },
   subscribe() {
-    const ids = [...this.byToken.keys()].slice(0, 240); const key = ids.join(','); if (!ids.length || key === this._key) return; this._key = key;
+    // Busiest markets first; game markets only once they have volume or kick off within a day.
+    const ms = [...this.markets.values()].filter(m => !m.game || m.vol24 > 0 || Math.abs((m.start || 0) - now()) < DAY).sort((a, b) => (a.game ? 1 : 0) - (b.game ? 1 : 0) || b.vol24 - a.vol24);
+    const ids = ms.flatMap(m => m.tokens).slice(0, 400); const key = ids.join(','); if (!ids.length || key === this._key) return; this._key = key;
     if (!this.ws) this.ws = new Socket('wss://ws-subscriptions-clob.polymarket.com/ws/market', { name: 'clob', onOpen: (ws) => { ws.send(JSON.stringify({ assets_ids: this._key.split(','), type: 'market' })); clearInterval(this._ping); this._ping = setInterval(() => this.ws.send('PING'), 10000); }, onMessage: (d) => (Array.isArray(d) ? d : [d]).forEach(x => this.onMsg(x)) });
     if (this.ws.open) this.ws.send({ assets_ids: ids, type: 'market' }); else this.ws.connect();
   },
@@ -67,5 +83,5 @@ const Poly = {
   async history(m) { if (m.histLoaded) return m.hist; const j = await Net.data(`${CLOB}/prices-history?market=${m.tokens[0]}&interval=1m&fidelity=60`); m.hist = (j.history || []).map(h => [toMs(h.t), nz(h.p)]).filter(x => x[1] > 0); m.hist.push([now(), m.yes]); m.histLoaded = true; return m.hist; },
   async oi(m) { const r = await Net.data(`${PDATA}/oi?market=${m.conditionId}`); const v = Array.isArray(r) ? r[0] && r[0].value : r && r.value; m.oi = v != null ? nz(v) : null; return m.oi; },
   async holders(m) { const r = await Net.data(`${PDATA}/holders?market=${m.conditionId}&limit=8`); return (Array.isArray(r) ? r : []).flatMap(g => (g.holders || []).map(h => ({ wallet: String(h.proxyWallet || '').toLowerCase(), name: h.name || h.pseudonym || shortW(h.proxyWallet), img: h.profileImage, amount: nz(h.amount), idx: +h.outcomeIndex }))).sort((a, b) => b.amount - a.amount).slice(0, 10); },
-  start() { Poller(() => this.load(), 30000); Poller(() => this.pollTrades(), 8000); },
+  start() { Poller(() => this.load(), 30000); Poller(() => this.pollTrades(), 8000); Poller(() => this.loadGames(), 120000); },
 };

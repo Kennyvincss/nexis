@@ -1,6 +1,7 @@
 // Every league's ESPN scoreboard for one sport group, in one trimmed, edge-cached response.
 //   GET /api/sports?group=soccer                       today (live scores)
 //   GET /api/sports?group=soccer&dates=YYYYMMDD-YYYYMMDD  results / fixtures
+//   GET /api/sports?league=soccer/eng.1&dates=...          one league's schedule (league pages)
 // Groups and the built-in league list: js/services/leagues.js. Groups marked `discover` also pull
 // ESPN's league catalogue, so leagues ESPN adds appear automatically.
 // Returns { at, group, leagues: [[key, name, label, kind, ok]], events: [[key, event]] }.
@@ -62,8 +63,14 @@ async function pool(items, n, deadline, fn) {
 }
 
 module.exports = async (req, res) => {
-  const q = req.query || {}; const dates = String(q.dates || ''); const gid = String(q.group || '');
-  const G = SPORT_GROUPS.find(g => g.id === gid);
+  const q = req.query || {}; const dates = String(q.dates || ''); const lkey = String(q.league || '');
+  let gid = String(q.group || ''); let G = SPORT_GROUPS.find(g => g.id === gid);
+  if (lkey) {
+    const m = /^([a-z-]+)\/([a-z0-9._-]{1,60})$/i.exec(lkey);
+    if (!m || !SPORT_LABEL_OF_PATH[m[1]]) return send(res, 400, { error: 'league must look like soccer/eng.1' });
+    const L = SPORT_LEAGUES.find(x => x[0] === m[1] && x[1] === m[2]);
+    G = { id: 'league', sports: [m[1]], only: { sp: m[1], slug: m[2], name: L ? L[2] : null, label: SPORT_LABEL_OF_PATH[m[1]], kind: (L && L[4]) || SPORT_KIND_OF_PATH[m[1]] || 'team' } }; gid = 'league:' + lkey;
+  }
   if (!G) return send(res, 400, { error: 'group must be one of ' + SPORT_GROUPS.map(g => g.id).join(', ') });
   if (dates && !/^\d{8}(-\d{8})?$/.test(dates)) return send(res, 400, { error: 'dates must be YYYYMMDD or YYYYMMDD-YYYYMMDD' });
   const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -74,14 +81,16 @@ module.exports = async (req, res) => {
   if (m && Date.now() - m.at < ttl * 1000) return send(res, 200, m.body, cacheHdr);
 
   const t0 = Date.now(); const deadline = t0 + BUDGET_MS;
-  const list = SPORT_LEAGUES.filter(L => G.sports.includes(L[0])).map(L => ({ sp: L[0], slug: L[1], name: L[2], label: L[3], kind: L[4] || 'team' }));
-  if (G.discover) {
+  const list = G.only ? [G.only] : SPORT_LEAGUES.filter(L => G.sports.includes(L[0])).map(L => ({ sp: L[0], slug: L[1], name: L[2], label: L[3], kind: L[4] || 'team' }));
+  if (G.discover && !G.only) {
     const known = new Set(list.map(l => l.sp + '/' + l.slug));
     const found = (await Promise.all(G.sports.map(async sp => (await discover(sp)).map(slug => ({ sp, slug }))))).flat();
     found.forEach(({ sp, slug }) => { if (!known.has(sp + '/' + slug)) { known.add(sp + '/' + slug); list.push({ sp, slug, name: null, label: SPORT_LABEL_OF_PATH[sp] || sp, kind: SPORT_KIND_OF_PATH[sp] || 'team', discovered: true }); } });
   }
   const now = Date.now();
-  const todo = list.filter(l => dates || !((quiet.get(l.sp + '/' + l.slug) || 0) > now));
+  const todo = list.filter(l => dates || G.only || !((quiet.get(l.sp + '/' + l.slug) || 0) > now));
+  // Leagues skipped because they were quiet still belong in the list, so the league picker can offer them.
+  const skippedQuiet = list.filter(l => !todo.includes(l) && !l.discovered);
   const results = await pool(todo, 24, deadline, async (l) => getJson(`${ESPN}/${l.sp}/${l.slug}/scoreboard?limit=500${dates ? '&dates=' + dates : ''}`, 4500));
 
   const leagues = []; const events = []; let okN = 0;
@@ -95,7 +104,8 @@ module.exports = async (req, res) => {
     leagues.push([key, l.name || lg.name || lg.abbreviation || l.slug, l.label, l.kind, 1]);
     evs.forEach(e => events.push([key, trimEvent(e, l.kind)]));
   });
-  if (!okN && !events.length) return send(res, 502, { error: 'ESPN unavailable', code: 'ESPN_UNAVAILABLE' }, { 'cache-control': 'no-store' });
+  skippedQuiet.forEach(l => leagues.push([l.sp + '/' + l.slug, l.name || l.slug, l.label, l.kind, 1]));
+  if (!okN && !events.length && !skippedQuiet.length) return send(res, 502, { error: 'ESPN unavailable', code: 'ESPN_UNAVAILABLE' }, { 'cache-control': 'no-store' });
   const body = JSON.stringify({ at: Date.now(), group: gid, ms: Date.now() - t0, leagues, events });
   memo.set(mkey, { at: Date.now(), body }); if (memo.size > 80) memo.delete(memo.keys().next().value);
   return send(res, 200, body, cacheHdr);

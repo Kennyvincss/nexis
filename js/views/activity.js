@@ -41,7 +41,7 @@ function searchRowsHtml(r, close = false) {
   return (r.panta.length ? `<h5>Panta markets</h5>${r.panta.map(m => `<a href="#/market/${m.id}"${ca}><span style="flex:1;font-size:13.5px">${esc(m.title)}</span><span class="num up">${m.yes != null ? cents(m.yes) : '—'}</span></a>`).join('')}` : '')
     + (r.coins.length ? `<h5>Crypto</h5>${r.coins.map(c => `<a href="#/crypto/${esc(c.id)}"${ca}>${coinImg(c, 20)}<span style="flex:1">${esc(c.name)} <span class="mut">${esc(c.sym)}</span></span><span class="num">${fmtPx(c.price)}</span></a>`).join('')}` : '')
     + (r.games.length ? `<h5>Sports</h5>${r.games.map(g => `<a href="#/event/${g.id}"${ca}>${ic(SPORT_IC[g.sport] || 'ball', 'sm')}<span style="flex:1">${g.kind === 'field' ? esc(g.name) : `${esc(g.home.short)} ${scoreText(g)} ${esc(g.away.short)}`} <span class="mut" style="font-size:11.5px">${esc(g.league)}</span></span><span class="mut" style="font-size:12px">${esc(g.state === 'in' ? 'LIVE' : Sports.label(g))}</span></a>`).join('')}` : '')
-    + (r.poly.length ? `<h5>Polymarket (view only)</h5>${r.poly.map(m => `<a href="#/market/${m.id}"${ca}><span style="flex:1;font-size:13.5px">${esc(m.q)}</span><span class="num">${cents(m.yes)}</span></a>`).join('')}` : '');
+    + (r.poly.length ? `<h5>Polymarket</h5>${r.poly.map(m => `<a href="#/polymarket/${m.id}"${ca}><span style="flex:1;font-size:13.5px">${esc(m.q)}</span><span class="num">${cents(m.yes)}</span></a>`).join('')}` : '');
 }
 function openSearch() {
   closeModal(true);
