@@ -160,6 +160,7 @@ function bindView(route, arg, params) {
     viewStops.push(Poller(() => PMTrade.address ? Promise.all([PMTrade.loadAccount(), PMTrade.refresh()]) : null, 20000, { immediate: false }));
     if (arg) { pmPaintBook(); viewStops.push(Poller(() => pmPaintBook(), 8000, { immediate: false })); const pm = Poly.markets.get(arg); if (pm) Poly.history(pm).then(() => { const c = $(`.chart-box[data-chart="poly"][data-id="${arg}"]`); if (c) mountChartEl(c); }).catch(() => {}); }
   }
+  if (route === 'sports') { const lg = $('#sp-league'); if (lg) lg.addEventListener('change', () => { UI.sports.league = lg.value; refresh(); }); }
   if (route === 'sports') { const on = $('.daystrip button.on'); if (on) on.scrollIntoView({ inline: 'center', block: 'nearest' }); }
   if (route === 'event' && arg) { paintEventSummary(arg); viewStops.push(Poller(() => paintEventSummary(arg), () => { const g = Sports.games.get(arg); return g && g.state === 'in' ? 12000 : 60000; }, { immediate: false })); }
   if (route === 'tracker' && !arg) {

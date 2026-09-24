@@ -219,7 +219,8 @@ function drawMulti(el, cfg) {
   const hit = svg.querySelector('.hit'); hit.addEventListener('mousemove', e => move(e.clientX)); hit.addEventListener('touchmove', e => move(e.touches[0].clientX), { passive: true }); const leave = () => { hov.style.display = 'none'; tip.style.opacity = 0; }; hit.addEventListener('mouseleave', leave); hit.addEventListener('touchend', leave);
 }
 
-const SPORT_IC = { Football: 'soccer', Basketball: 'basketball', 'American Football': 'amfootball' };
+const SPORT_IC = { Football: 'soccer', Basketball: 'basketball', 'American Football': 'amfootball', Baseball: 'baseball', Hockey: 'hockey', 'Australian Football': 'amfootball' };
+Object.assign(P, { baseball: '<circle cx="12" cy="12" r="9"/><path d="M6.5 5.5c2 2 2 11 0 13M17.5 5.5c-2 2-2 11 0 13"/>', hockey: '<path d="M4 3l7 14h8a2 2 0 0 1 0 4H9a2 2 0 0 1-1.8-1.1L2 6"/><ellipse cx="17" cy="14" rx="3" ry="1.3"/>' });
 Object.assign(P, { target: P.target, coin: '<circle cx="12" cy="12" r="9"/><path d="M14.8 9a2.8 2.8 0 0 0-2.8-1.5c-1.7 0-2.8.9-2.8 2.1 0 2.9 5.6 1.6 5.6 4.6 0 1.2-1.2 2.3-2.8 2.3a3 3 0 0 1-2.9-1.7M12 6v1.5M12 16.5V18"/>', plug: '<path d="M9 2v6M15 2v6M6 8h12v3a6 6 0 0 1-12 0zM12 17v5"/>', ext: '<path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>' });
 
 /* ---------- misc helpers ---------- */

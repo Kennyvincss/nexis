@@ -9,6 +9,7 @@ const ROUTES = {
   email: () => require('../../api/email.js'),
   ai: () => require('../../api/ai.js'),
   auth: () => require('../../api/auth.js'),
+  sports: () => require('../../api/sports.js'),
 };
 
 exports.handler = async (event) => {

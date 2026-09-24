@@ -47,6 +47,7 @@ function sportsSelection(day) {
   const d = new Date(+day.slice(0, 4), +day.slice(4, 6) - 1, +day.slice(6, 8)).getTime();
   return { from: d, to: d, order: d < t ? -1 : 1, title: new Date(d).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) };
 }
+const SPORT_ORDER = ['Football', 'Basketball', 'American Football', 'Baseball', 'Hockey', 'Australian Football'];
 Views.sports = async (params) => {
   const st = UI.sports; if (params.get('f')) st.filter = params.get('f'); if (params.get('day')) st.day = params.get('day'); st.day = st.day || 'today';
   const days = sportsDays(); if (!days.some(d => d.k === st.day)) st.day = 'today';
@@ -59,17 +60,23 @@ Views.sports = async (params) => {
   let pool = Sports.between(sel.from, sel.to);
   if (sel.today) Sports.list().filter(g => g.state === 'in').forEach(g => { if (!pool.includes(g)) pool.push(g); });
   if (st.day === 'past') pool = pool.filter(g => g.state !== 'pre');
-  const F = { All: () => true, Live: (g) => g.state === 'in', Following: (g) => isFollowed(g.id), Football: (g) => g.sport === 'Football', Basketball: (g) => g.sport === 'Basketball', 'American Football': (g) => g.sport === 'American Football' };
+  const F = { All: () => true, Live: (g) => g.state === 'in', Following: (g) => isFollowed(g.id) };
+  const sportsHere = [...new Set(pool.map(g => g.sport))].sort((a, b) => SPORT_ORDER.indexOf(a) - SPORT_ORDER.indexOf(b)); sportsHere.forEach(sp => { F[sp] = (g) => g.sport === sp; });
+  if (!F[st.filter]) st.filter = 'All';
+  const leagueRank = (name) => { const i = LEAGUES.findIndex(L => L[2] === name); return i < 0 ? 999 : i; };
+  const leaguesHere = [...new Set(pool.filter(F[st.filter]).map(g => g.league))].sort((a, b) => leagueRank(a) - leagueRank(b));
+  if (st.league && !leaguesHere.includes(st.league)) st.league = '';
   if (!sel.today && st.filter === 'Live') st.filter = 'All';
   const chips = Object.keys(F).filter(k => k !== 'Live' || sel.today); const live = pool.filter(F.Live).length;
-  const list = pool.filter(F[st.filter] || F.All).sort((a, b) => ({ in: 0, pre: 1, post: 2 }[a.state] - { in: 0, pre: 1, post: 2 }[b.state]) * (sel.multi ? 0 : 1) || (a.start - b.start) * sel.order);
+  const list = pool.filter(F[st.filter] || F.All).filter(g => !st.league || g.league === st.league).sort((a, b) => ({ in: 0, pre: 1, post: 2 }[a.state] - { in: 0, pre: 1, post: 2 }[b.state]) * (sel.multi ? 0 : 1) || (a.start - b.start) * sel.order);
   const groups = {}; list.forEach(g => { const k = sel.multi ? new Date(g.start).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : g.league; (groups[k] = groups[k] || []).push(g); });
-  const partial = rs && rs.failed && rs.ok ? `<div class="sim-note" style="margin-bottom:14px">${ic('info', 'sm')}<span>${rs.failed} league${rs.failed === 1 ? '' : 's'} didn’t load from ESPN just now. Retrying automatically.</span></div>` : '';
+  const groupList = Object.entries(groups); if (!sel.multi) groupList.sort((a, b) => leagueRank(a[0]) - leagueRank(b[0]));
+  const partial = rs && rs.failed > rs.ok ? `<div class="sim-note" style="margin-bottom:14px">${ic('info', 'sm')}<span>${rs.failed} league${rs.failed === 1 ? '' : 's'} didn’t load from ESPN just now. Retrying automatically.</span></div>` : '';
   return `<div class="page">${head}${daysHtml(days, st.day)}
-    <div class="row wrap" style="gap:8px;margin:14px 0 18px">${chips.map(k => `<button class="chip ${k === st.filter ? 'on' : ''}" data-action="sportFilter" data-f="${esc(k)}">${k === 'Live' ? `<span class="live-dot red"></span>Live${live ? ' · ' + live : ''}` : esc(k)}</button>`).join('')}</div>
+    <div class="row wrap" style="gap:8px;margin:14px 0 18px">${chips.map(k => `<button class="chip ${k === st.filter ? 'on' : ''}" data-action="sportFilter" data-f="${esc(k)}">${k === 'Live' ? `<span class="live-dot red"></span>Live${live ? ' · ' + live : ''}` : esc(k)}</button>`).join('')}${leaguesHere.length > 1 ? `<select class="select" id="sp-league" style="width:auto;height:32px;padding:0 10px;margin-left:auto" aria-label="League"><option value="">All leagues · ${leaguesHere.length}</option>${leaguesHere.map(l => `<option value="${esc(l)}" ${l === st.league ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>` : ''}</div>
     ${Sports.state === 'stale' && sel.today ? `<div class="sim-note" style="margin-bottom:14px">${ic('alert', 'sm')}<span>ESPN didn’t respond to the last refresh — scores may be behind. Retrying.</span></div>` : ''}${partial}
     ${sel.title ? `<h2 style="font-size:17px;margin-bottom:12px">${esc(sel.title)}</h2>` : ''}
-    ${list.length ? Object.entries(groups).map(([k, gs]) => `<section class="section" style="margin-top:${sel.title ? 14 : 22}px"><div class="section-head"><h2 style="font-size:15px">${esc(k)}</h2><span class="mut" style="font-size:12px">${gs.length} game${gs.length === 1 ? '' : 's'}</span></div><div class="grid gauto">${gs.map(gameCard).join('')}</div></section>`).join('')
+    ${list.length ? groupList.map(([k, gs]) => `<section class="section" style="margin-top:${sel.title ? 14 : 22}px"><div class="section-head"><h2 style="font-size:15px">${esc(k)}</h2><span class="mut" style="font-size:12px">${gs.length} game${gs.length === 1 ? '' : 's'}</span></div><div class="grid gauto">${gs.map(gameCard).join('')}</div></section>`).join('')
       : `<div class="card">${emptyState({ icon: 'soccer', title: st.filter === 'Live' ? 'No games live right now' : st.filter === 'Following' ? 'You’re not following any of these games' : 'No games', body: st.filter === 'Following' ? 'Follow a game to get goal, kick-off and full-time alerts.' : st.day === 'past' ? 'No results in the last 7 days for these leagues.' : st.day === 'next' ? 'No fixtures scheduled in the next 7 days for these leagues.' : 'Nothing scheduled on this day for the leagues Nexis follows.' })}</div>`}
   </div>`;
 };
