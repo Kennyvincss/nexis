@@ -29,7 +29,7 @@ const BOOK_TOP = ['Premier League', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1
 const bookRank = (name) => { const i = BOOK_TOP.indexOf(name); return i < 0 ? 999 : i; };
 
 const Book = {
-  _v: '', _list: [],
+  _v: '', _list: [], _lay: new Map(),
   /** All sportsbook games (recomputed when Polymarket or ESPN data changes). */
   games() {
     const v = `${Poly.gamesAt}|${Sports.games.size}|${Sports.updatedAt || 0}|${Object.keys(Sports.ranges).length}`;
@@ -66,7 +66,10 @@ const Book = {
       const state = e ? e.state : p.live ? 'in' : p.start < now() - 4 * HOUR ? 'post' : 'pre';
       if (state === 'post') return; // finished games aren't bettable
       const g = { id: String(p.id), pm: p, espn: e, start: e ? e.start : p.start, state, clock: e ? (e.detail || e.clock) : [p.period, p.elapsed].filter(Boolean).join(' '), home, away, league: L.name, leagueKey: L.key, sport: L.sport || 'Other', region: L.region, markets, vol: p.volume };
-      g.groups = this.group(g); g.main = this.main(g); g.nMarkets = g.groups.reduce((n, x) => n + x.items.length, 0);
+      // Market layout depends only on the Polymarket data and which side is home: cache it per game.
+      const ck = `${p.id}|${Poly.gamesAt}|${home.name}|${away.name}`; let lay = this._lay.get(p.id);
+      if (!lay || lay.k !== ck) { lay = { k: ck, groups: this.group(g), main: this.main(g) }; this._lay.set(p.id, lay); }
+      g.groups = lay.groups; g.main = lay.main; g.nMarkets = g.groups.reduce((n, x) => n + x.items.length, 0);
       out.push(g);
     });
     return out.sort((a, b) => a.start - b.start);

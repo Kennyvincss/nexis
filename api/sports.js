@@ -75,7 +75,7 @@ module.exports = async (req, res) => {
   if (dates && !/^\d{8}(-\d{8})?$/.test(dates)) return send(res, 400, { error: 'dates must be YYYYMMDD or YYYYMMDD-YYYYMMDD' });
   const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
   const [from, to] = dates ? dates.split('-').concat(dates.split('-')[0]).slice(0, 2) : [today, today];
-  const ttl = !dates ? 15 : to < today ? 900 : from > today ? 300 : 30;
+  const ttl = !dates ? 10 : to < today ? 900 : from > today ? 300 : 30;
   const cacheHdr = { 'cache-control': `public, s-maxage=${ttl}, stale-while-revalidate=${ttl * 4}` };
   const mkey = gid + '|' + (dates || 'today'); const m = memo.get(mkey);
   if (m && Date.now() - m.at < ttl * 1000) return send(res, 200, m.body, cacheHdr);
