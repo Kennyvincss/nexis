@@ -64,7 +64,12 @@ function bkFilter(list, st) {
     && (!terms.length || terms.every(w => [g.home.name, g.away.name, g.home.short, g.away.short, g.league, g.region, g.sport, g.pm.title, Book.shortId(g)].join(' ').toLowerCase().includes(w))));
 }
 /** Leagues of one sport with open games: top leagues first, then by volume. */
-function bkLeagues(all, sp) { const L = {}; all.forEach(g => { if (g.state === 'post' || g.sport !== sp) return; const x = L[g.leagueKey] = L[g.leagueKey] || { key: g.leagueKey, name: g.league, region: g.region, n: 0, vol: 0 }; x.n++; x.vol += g.vol || 0; }); return Object.values(L).sort((a, b) => bookRank(a.name) - bookRank(b.name) || b.vol - a.vol || b.n - a.n); }
+function bkLeagues(all, sp) {
+  const L = {};
+  if (sp === 'Football') FOOTBALL_PINNED.forEach(p => { L[p.key] = { key: p.key, name: p.name, region: p.region, n: 0, vol: 0, pinned: true }; }); // always listed
+  all.forEach(g => { if (g.state === 'post' || g.sport !== sp) return; const x = L[g.leagueKey] = L[g.leagueKey] || { key: g.leagueKey, name: g.league, region: g.region, n: 0, vol: 0 }; x.n++; x.vol += g.vol || 0; });
+  return Object.values(L).sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || bookRank(a.name) - bookRank(b.name) || b.vol - a.vol || b.n - a.n);
+}
 function bkNav(all, st) {
   const live = all.filter(g => g.state !== 'post');
   const bySport = {}; live.forEach(g => { (bySport[g.sport] = bySport[g.sport] || []).push(g); });
@@ -95,7 +100,8 @@ Views.sports = async (params, arg) => {
     return `<div class="page">${head}${body}</div>`;
   }
   if (st.sport !== 'all' && !all.some(g => g.sport === st.sport)) { st.sport = 'all'; st.league = ''; }
-  if (st.league && !all.some(g => g.leagueKey === st.league)) st.league = '';
+  if (st.league && !all.some(g => g.leagueKey === st.league) && !FOOTBALL_PINNED.some(p => p.key === st.league)) st.league = '';
+  if (st.league && FOOTBALL_PINNED.some(p => p.key === st.league)) st.sport = 'Football';
   const liveN = bkFilter(all, { ...st, tab: 'live', when: 'all' }).length;
   let list = bkFilter(all, st);
   list = st.tab === 'results' ? list.sort((a, b) => b.start - a.start) : list.sort((a, b) => (a.state === 'in' ? 0 : 1) - (b.state === 'in' ? 0 : 1) || a.start - b.start);
@@ -105,7 +111,7 @@ Views.sports = async (params, arg) => {
   const days = new Map(); shown.forEach(g => { const k = g.state === 'in' ? 'Live now' : bkDay(g.start); if (!days.has(k)) days.set(k, new Map()); const L = days.get(k); if (!L.has(g.leagueKey)) L.set(g.leagueKey, []); L.get(g.leagueKey).push(g); });
   const anyFootball = shown.some(g => g.football); const tabs = anyFootball ? BOOK_FOOTBALL_TABS : ((shown.find(g => !g.football) || {}).tabs || BOOK_FOOTBALL_TABS);
   if (!tabs.some(t => t.id === st.bt)) st.bt = tabs[0].id;
-  const sportsHere = [...new Set(all.filter(g => g.state !== 'post').map(g => g.sport))].sort((a, b) => (BOOK_SPORTS.indexOf(a) + 1 || 99) - (BOOK_SPORTS.indexOf(b) + 1 || 99));
+  const sportsHere = [...new Set(['Football', ...all.filter(g => g.state !== 'post').map(g => g.sport)])].sort((a, b) => (BOOK_SPORTS.indexOf(a) + 1 || 99) - (BOOK_SPORTS.indexOf(b) + 1 || 99));
   const anyEst = shown.some(g => g.state === 'pre' && bkCols(g).some(c => c && Book.quote(g, c.prop, c.side).src === 'est'));
   const section = ([day, leagues]) => `<section class="bk-day"><h2 class="bk-dayh">${esc(day)}</h2>${[...leagues.values()].sort((a, b) => bookRank(a[0].league) - bookRank(b[0].league)).map(gs => { const slots = bkSlots(gs); const cols = slots.map(i => (gs.map(g => bkCols(g)[i]).find(Boolean))); return `<div class="card bk-league"><div class="bk-lhead"><span>${ic(SPORT_IC[gs[0].sport] || 'ball', 'sm')}<b>${esc(gs[0].league)}</b>${gs[0].region && gs[0].region !== 'World' ? `<span class="mut"> · ${esc(gs[0].region)}</span>` : ''}</span>${gs[0].state === 'post' ? '<span class="bk-cols" style="--n:1"><span>Result</span></span>' : `<span class="bk-cols" style="--n:${cols.length}">${cols.map((c, ci) => `<span>${esc(!c ? '' : c.sub && gs.every(g => (bkCols(g)[slots[ci]] || {}).sub === c.sub) ? (c.h === '1' || c.h === '2' ? c.h + ' ' + c.sub : c.sub) : c.h)}</span>`).join('')}</span>`}</div>${gs.map(g => bkRow(g, slots)).join('')}</div>`; }).join('')}</section>`;
   return `<div class="page bk">${head}
@@ -113,7 +119,7 @@ Views.sports = async (params, arg) => {
       <div class="bk-main">
         <div class="bk-pick">
           <label class="bk-dd"><span>Sport</span><select class="select" id="bk-sport" aria-label="Sport"><option value="all">All sports (${all.filter(g => g.state !== 'post').length})</option>${sportsHere.map(sp => `<option value="${esc(sp)}" ${st.sport === sp ? 'selected' : ''}>${esc(sp)} (${all.filter(g => g.state !== 'post' && g.sport === sp).length})</option>`).join('')}</select></label>
-          <label class="bk-dd"><span>League</span><select class="select" id="bk-league" aria-label="League"><option value="">All leagues</option>${(st.sport === 'all' ? sportsHere : [st.sport]).map(sp => { const ls = bkLeagues(all, sp); return ls.length ? `<optgroup label="${esc(sp)}">${ls.map(l => `<option value="${esc(l.key)}" ${st.league === l.key ? 'selected' : ''}>${esc(l.name)}${l.region && l.region !== 'World' ? ' · ' + esc(l.region) : ''} (${l.n})</option>`).join('')}</optgroup>` : ''; }).join('')}</select></label>
+          <label class="bk-dd"><span>League</span><select class="select" id="bk-league" aria-label="League"><option value="">All leagues</option>${[...new Set([...(st.sport === 'all' || st.sport === 'Football' ? ['Football'] : []), ...(st.sport === 'all' ? sportsHere : [st.sport])])].map(sp => { const ls = bkLeagues(all, sp); return ls.length ? `<optgroup label="${esc(sp)}">${ls.map(l => `<option value="${esc(l.key)}" ${st.league === l.key ? 'selected' : ''}>${esc(l.name)}${l.region && l.region !== 'World' ? ' · ' + esc(l.region) : ''} (${l.n})</option>`).join('')}</optgroup>` : ''; }).join('')}</select></label>
         </div>
         <div class="sp-filters">
           <label class="search-trigger sp-search">${ic('search', 'sm')}<input id="bk-q" value="${esc(st.q)}" placeholder="Search teams, leagues or game ID" autocomplete="off" aria-label="Search games">${st.q ? '<button class="iconbtn" data-action="bkClearQ" aria-label="Clear search" style="width:26px;height:26px">' + ic('x', 'sm') + '</button>' : ''}</label>
@@ -126,7 +132,7 @@ Views.sports = async (params, arg) => {
         ${st.tab === 'results' ? '' : `<div class="bk-bt" role="tablist" aria-label="Bet type">${tabs.map(t => `<button role="tab" aria-selected="${st.bt === t.id}" class="${st.bt === t.id ? 'on' : ''}" data-action="bkBt" data-v="${t.id}">${esc(t.label)}</button>`).join('')}</div>`}
         ${days.size ? [...days.entries()].map(section).join('')
           + (list.length > shown.length ? `<div style="text-align:center;margin-top:16px"><button class="btn btn-ghost" data-action="bkMore">Show more · ${list.length - shown.length} left</button></div>` : '')
-          : `<div class="card" style="margin-top:14px">${emptyState({ icon: 'soccer', title: st.q ? `Nothing matches “${esc(st.q)}”` : st.tab === 'live' ? 'Nothing live right now' : st.tab === 'results' ? 'No results yet' : 'No games here', body: st.tab === 'live' ? 'Live games appear here once they kick off.' : st.tab === 'results' ? 'Games that finished in the last 3 days appear here.' : 'Try another sport, league or time.' })}</div>`}
+          : `<div class="card" style="margin-top:14px">${emptyState({ icon: 'soccer', title: st.q ? `Nothing matches “${esc(st.q)}”` : st.tab === 'live' ? 'Nothing live right now' : st.tab === 'results' ? 'No results yet' : st.league ? `No ${esc((FOOTBALL_PINNED.find(p => p.key === st.league) || {}).name || 'games')} games listed right now` : 'No games here', body: st.tab === 'live' ? 'Live games appear here once they kick off.' : st.tab === 'results' ? 'Games that finished in the last 3 days appear here.' : 'Try another sport, league or time.' })}</div>`}
         ${anyEst && st.tab !== 'results' ? `<p class="mut" style="font-size:12px;margin-top:12px">* Estimated odds, from Polymarket, for bets that don’t have a Panta market yet. You see Panta’s actual price before you sign.</p>` : ''}
       </div>
       <aside class="bk-slip-col"><div id="bk-slip">${bkSlip()}</div></aside>
@@ -248,7 +254,7 @@ function bkBindSlip() {
 function bindBook() {
   debounceInput('#bk-q', 250, (v) => { UI.book.q = v; UI.book.limit = 80; refreshKeepFocus('#bk-q'); });
   const sp = $('#bk-sport'); if (sp) sp.addEventListener('change', () => { Object.assign(UI.book, { sport: sp.value, league: '', limit: 80 }); refresh(); });
-  const lg = $('#bk-league'); if (lg) lg.addEventListener('change', () => { const k = lg.value; const g = k && Book.games().find(x => x.leagueKey === k); Object.assign(UI.book, { league: k, sport: g ? g.sport : UI.book.sport, limit: 80 }); refresh(); });
+  const lg = $('#bk-league'); if (lg) lg.addEventListener('change', () => { const k = lg.value; const g = k && Book.games().find(x => x.leagueKey === k); Object.assign(UI.book, { league: k, sport: FOOTBALL_PINNED.some(p => p.key === k) ? 'Football' : g ? g.sport : UI.book.sport, limit: 80 }); refresh(); });
   const f = $('#bk-fmt'); if (f) f.addEventListener('change', () => { UI.book.fmt = f.value; try { localStorage.setItem('nexis-odds', f.value); } catch (e) { /* storage unavailable */ } refresh(); });
   bkBindSlip();
 }
