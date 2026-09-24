@@ -207,10 +207,11 @@ const Book = {
     s.push(g.football ? 'https://www.bbc.com/sport/football/scores-fixtures' : 'https://www.espn.com/');
     return s;
   },
-  /** Everything Panta's market-creation endpoint needs for one prop. Trading closes at kick-off. */
+  /** Everything Panta's market-creation endpoint needs for one prop. Trading runs until about full time (in-play). */
   createBody(g, prop) {
     const q = this.question(g, prop); if (!q) return null; const t = Math.floor(Date.now() / 1000);
-    const end = Math.floor(g.start / 1000); const settle = end + (g.football ? 3 : 5) * 3600;
+    // Trading stays open through the game (in-play): until about full time; settles after it.
+    const ko = Math.floor(g.start / 1000); const settle = ko + (g.football ? 3 : 5) * 3600; const end = Math.min(settle - 1800, Math.max(ko + (g.football ? 2 : 3.5) * 3600, t + 15 * 60));
     const image = [g.image, g.home.logo, g.away.logo].find(u => /^https:\/\//.test(u || '')) || 'https://a.espncdn.com/i/teamlogos/soccer/500/default-team-logo-500.png';
     return { question: q, title: q, description: `${g.league}: ${g.home.name} vs ${g.away.name}. Created from Nexis Sports.`, resolutionRule: this.rule(g, prop), sourcesOfTruth: this.sources(g), category: 'sports', marketType: 'breaking', startTime: t, endTime: end, resolutionTime: settle, imageUrl: image, region: g.region || 'Global' };
   },
@@ -245,8 +246,23 @@ const Book = {
   /* ---------- estimated odds ---------- */
   /** Goals model for a football game, fitted like a bookmaker's: home and away scoring rates (Poisson) that
       reproduce Polymarket's 1X2 prices and, when listed, its over/under 2.5 price. Half-time uses 45% of each rate. */
+  /** Live state of a game for in-play pricing: minute (0 before kick-off), current score, whether half-time has passed. */
+  liveInfo(g) {
+    if (g.state !== 'in') return { live: false, min: 0, sh: 0, sa: 0, htDone: false };
+    // ESPN: displayClock "67'" / "45'+2'", detail "HT"; Polymarket only: elapsed "67", period "1H" / "HT" / "2H".
+    const clk = String(g.espn ? (g.espn.clock || g.espn.detail || '') : (g.pm.elapsed || ''));
+    const per = String(g.espn ? (g.espn.detail || '') : (g.pm.period || ''));
+    const ht = /\bHT\b|half.?time/i.test(clk + ' ' + per);
+    let min = ht ? 45 : nz((/(\d+)/.exec(clk) || [])[1], 0); min = clamp(min, 0, 90);
+    const period = g.espn ? nz(g.espn.period, 0) : /2H|second/i.test(per) ? 2 : 0;
+    return { live: true, min, sh: nz(g.home.score, 0), sa: nz(g.away.score, 0), htDone: ht || period >= 2 || min > 45 };
+  },
+  /** Goals model for a football game, fitted like a bookmaker's: home and away scoring rates (Poisson) that reproduce
+      Polymarket's 1X2 prices and, when listed, its over/under 2.5 price. In play, the fit is for the goals still to
+      come on top of the current score, over the time left (45% of goals in the first half, 55% in the second). */
   model(g) {
-    const k = g.id + '|' + Poly.gamesAt; const c = this._model.get(g.id); if (c && c.k === k) return c.v;
+    const L = this.liveInfo(g);
+    const k = g.id + '|' + Poly.gamesAt + '|' + L.sh + '-' + L.sa + '|' + Math.floor(L.min) + '|' + L.htDone; const c = this._model.get(g.id); if (c && c.k === k) return c.v;
     const yes = g.markets.filter(m => /^yes$/i.test(m.yesLabel));
     const pick = (side) => yes.find(x => !/draw/i.test(x.q) && /\bwin\b/i.test(x.q) && this.side(g, x.q) === side);
     const mh = pick('home'), ma = pick('away'), md = yes.find(x => /\bdraw\b/i.test(x.q));
@@ -254,23 +270,28 @@ const Book = {
     if (mh && ma) {
       let ph = mh.yes, pa = ma.yes, pd = md ? md.yes : Math.max(0.05, 1 - ph - pa); const sum = ph + pa + pd; ph /= sum; pa /= sum; pd /= sum;
       const ou = g.markets.find(x => this.isTotal(x) && this.lineOf(x) === 2.5); const pOver = ou ? (/under/i.test(ou.yesLabel) ? 1 - ou.yes : ou.yes) : null;
+      const w1 = 0.45 * Math.max(0, 45 - L.min) / 45, w2 = 0.55 * (L.min <= 45 ? 1 : Math.max(0, 90 - L.min) / 45), W = Math.max(w1 + w2, 1e-4);
       const pois = (l) => { const out = [Math.exp(-l)]; for (let i = 1; i <= 10; i++) out.push(out[i - 1] * l / i); return out; };
       const grid = (lh, la) => { const H = pois(lh), A = pois(la); return H.map(x => A.map(y => x * y)); };
-      const sums = (G) => { let w = 0, d = 0, l = 0; G.forEach((r, i) => r.forEach((p, j) => { if (i > j) w += p; else if (i === j) d += p; else l += p; })); return { w, d, l }; };
-      const split = (T) => { let lo = 0.01, hi = 0.99; for (let n = 0; n < 40; n++) { const s = (lo + hi) / 2; const r = sums(grid(T * s, T * (1 - s))); if (r.w - r.l < ph - pa) lo = s; else hi = s; } return (lo + hi) / 2; };
-      let T;
-      if (pOver != null) { let lo = 0.2, hi = 7; for (let n = 0; n < 40; n++) { const mid = (lo + hi) / 2; const P = pois(mid); const under = P[0] + P[1] + P[2]; if (1 - under < pOver) lo = mid; else hi = mid; } T = (lo + hi) / 2; }
-      else { let lo = 0.3, hi = 7; for (let n = 0; n < 30; n++) { const mid = (lo + hi) / 2; const s = split(mid); const d = sums(grid(mid * s, mid * (1 - s))).d; if (d > pd) lo = mid; else hi = mid; } T = (lo + hi) / 2; }
-      const s = split(T); v = { lh: T * s, la: T * (1 - s), grid, pois };
+      const sums = (G) => { let w = 0, d = 0, l = 0; G.forEach((r, i) => r.forEach((p, j) => { const a = i + L.sh, b = j + L.sa; if (a > b) w += p; else if (a === b) d += p; else l += p; })); return { w, d, l }; };
+      const split = (T) => { let lo = 0.01, hi = 0.99; for (let n = 0; n < 40; n++) { const s = (lo + hi) / 2; const r = sums(grid(T * s * W, T * (1 - s) * W)); if (r.w - r.l < ph - pa) lo = s; else hi = s; } return (lo + hi) / 2; };
+      const need = 3 - L.sh - L.sa; // goals still needed for over 2.5
+      let T = 2.7;
+      if (pOver != null && need > 0 && pOver > 0.01 && pOver < 0.99) { let lo = 0.2, hi = 8; for (let n = 0; n < 40; n++) { const mid = (lo + hi) / 2; const P = pois(mid * W); let under = 0; for (let x = 0; x < need; x++) under += P[x]; if (1 - under < pOver) lo = mid; else hi = mid; } T = (lo + hi) / 2; }
+      else if (!L.live) { let lo = 0.3, hi = 7; for (let n = 0; n < 30; n++) { const mid = (lo + hi) / 2; const s = split(mid); const d = sums(grid(mid * s, mid * (1 - s))).d; if (d > pd) lo = mid; else hi = mid; } T = (lo + hi) / 2; }
+      const s = split(T); v = { T, s, W, w1, w2, ...L, grid, pois, lh: T * s, la: T * (1 - s) };
     }
     if (this._model.size > 5000) this._model.clear(); this._model.set(g.id, { k, v }); return v;
   },
-  /** Probability of YES for a prop from the goals model (football). */
+  /** Probability of YES for a prop from the goals model (football), from the current score when in play. */
   modelP(g, prop) {
     const M = this.model(g); if (!M) return null; let m;
-    { const x = this.modelX(g, M, prop); if (x != null) return x; }
-    const G = /^ht/.test(prop) ? M.grid(M.lh * 0.45, M.la * 0.45) : M.grid(M.lh, M.la);
-    const sum = (f) => { let p = 0; G.forEach((r, i) => r.forEach((x, j) => { if (f(i, j)) p += x; })); return p; };
+    { const x = this.modelX(g, M, prop); if (x !== undefined) return x; }
+    const half = /^ht/.test(prop);
+    if (half && M.htDone) return null; // decided at half-time
+    const f = half ? M.w1 : M.W;
+    const G = M.grid(M.T * M.s * f, M.T * (1 - M.s) * f);
+    const sum = (fn) => { let p = 0; G.forEach((r, i) => r.forEach((x, j) => { if (fn(i + M.sh, j + M.sa)) p += x; })); return p; };
     if (prop === 'home' || prop === 'ht_home') return sum((i, j) => i > j);
     if (prop === 'draw' || prop === 'ht_draw') return sum((i, j) => i === j);
     if (prop === 'away' || prop === 'ht_away') return sum((i, j) => i < j);
@@ -297,11 +318,26 @@ const Book = {
     return this.modelP(g, prop);
   },
   /** Price to buy one side, where it comes from, and whether it can be bet right now. */
+  /** Whether a prop can be bet right now: before kick-off, and in play until the 90th minute, except bets that are
+      already decided (half-time bets after the break, first scorer after a goal) or can't be priced live (corners, cards). */
+  canBet(g, prop) {
+    if (g.state === 'pre') return g.start > now() + 60e3 || g.start > now() - 5 * 60e3;
+    if (g.state !== 'in') return false;
+    if (!g.football) return true;
+    const L = this.liveInfo(g);
+    if (L.min >= 90) return false;
+    if (/^(ht_|htou|htft_)/.test(prop) && L.htDone) return false;
+    if (/^fts_/.test(prop) && L.sh + L.sa > 0) return false;
+    if (/^(cor|crd)/.test(prop)) return false;
+    return true;
+  },
   quote(g, prop, side) {
-    const open = g.state === 'pre' && g.start > now() + 2 * 60e3;
+    let open = this.canBet(g, prop);
     const pm = this.pantaFor(g, prop);
-    if (pm && pm.yes != null && !pm.pending) { const p = side === 'YES' ? pm.yes : (pm.no != null ? pm.no : 1 - pm.yes); return { p, src: 'panta', open: open && pm.tradable !== false, market: pm }; }
+    const decided = (p) => p != null && (p < 0.01 || p > 0.99); // a (near-)certain outcome isn't offered
+    if (pm && pm.yes != null && !pm.pending) { const p = side === 'YES' ? pm.yes : (pm.no != null ? pm.no : 1 - pm.yes); return { p, src: 'panta', open: open && pm.tradable !== false && !decided(p), market: pm }; }
     const e = this.estimate(g, prop); const p = e == null ? null : side === 'YES' ? e : 1 - e;
+    if (g.state === 'in' && (e == null || decided(p))) open = false;
     return { p, src: 'est', open, market: pm };
   },
   /* ---------- more football bet types: HT/FT, first to score, corners, cards, both teams to score ---------- */
@@ -350,17 +386,19 @@ const Book = {
     let m;
     const cdf = (l, k) => { let t = Math.exp(-l), s = t; for (let i = 1; i <= k; i++) { t *= l / i; s += t; } return s; };
     const over = (l, line) => 1 - cdf(l, Math.floor(line));
-    if (!M._ft) { const G = M.grid(M.lh, M.la); let w = 0, l = 0; G.forEach((r, i) => r.forEach((x, j) => { if (i > j) w += x; else if (i < j) l += x; })); M._ft = { w, l }; }
-    const edge = M._ft.w - M._ft.l;
     if ((m = /^htft_([hda])([hda])$/.exec(prop))) {
+      if (M.htDone) return null; // the half-time part is already decided
       if (!M._htft) {
-        const G1 = M.grid(M.lh * 0.45, M.la * 0.45), G2 = M.grid(M.lh * 0.55, M.la * 0.55); const out = {}; const code = (d) => d > 0 ? 'h' : d < 0 ? 'a' : 'd';
-        for (let i1 = 0; i1 <= 7; i1++) for (let j1 = 0; j1 <= 7; j1++) { const p1 = G1[i1][j1]; if (p1 < 1e-9) continue; for (let i2 = 0; i2 <= 7; i2++) for (let j2 = 0; j2 <= 7; j2++) { const k = code(i1 - j1) + code(i1 + i2 - j1 - j2); out[k] = (out[k] || 0) + p1 * G2[i2][j2]; } }
+        const G1 = M.grid(M.T * M.s * M.w1, M.T * (1 - M.s) * M.w1), G2 = M.grid(M.T * M.s * M.w2, M.T * (1 - M.s) * M.w2); const out = {}; const code = (d) => d > 0 ? 'h' : d < 0 ? 'a' : 'd';
+        for (let i1 = 0; i1 <= 7; i1++) for (let j1 = 0; j1 <= 7; j1++) { const p1 = G1[i1][j1]; if (p1 < 1e-9) continue; const a1 = i1 + M.sh, b1 = j1 + M.sa; for (let i2 = 0; i2 <= 7; i2++) for (let j2 = 0; j2 <= 7; j2++) { const k = code(a1 - b1) + code(a1 + i2 - b1 - j2); out[k] = (out[k] || 0) + p1 * G2[i2][j2]; } }
         M._htft = out;
       }
       return M._htft[m[1] + m[2]] || 0;
     }
-    if ((m = /^fts_(home|away)$/.exec(prop))) { const T = M.lh + M.la; const any = 1 - Math.exp(-T); return any * (m[1] === 'home' ? M.lh : M.la) / T; }
+    if ((m = /^fts_(home|away)$/.exec(prop))) { if (M.sh + M.sa > 0) return null; const l = M.T * M.W; return (1 - Math.exp(-l)) * (m[1] === 'home' ? M.s : 1 - M.s); }
+    if (/^(cor|crd)/.test(prop) && M.live) return null; // no live corner/card data to price from
+    if (!M._edge) { const G = M.grid(M.lh, M.la); let w = 0, l = 0; G.forEach((r, i) => r.forEach((x, j) => { if (i > j) w += x; else if (i < j) l += x; })); M._edge = w - l; }
+    const edge = M._edge;
     const cShare = clamp(0.5 + edge * 0.35, 0.3, 0.7), CT = 10.2;
     if ((m = /^cor_o(\d+)5$/.exec(prop))) return over(CT, +m[1] + 0.5);
     if ((m = /^cor([ha])_o(\d)5$/.exec(prop))) return over(CT * (m[1] === 'h' ? cShare : 1 - cShare), +m[2] + 0.5);
@@ -368,7 +406,7 @@ const Book = {
     const kShare = clamp(0.5 - edge * 0.2, 0.35, 0.65), KT = 4.3;
     if ((m = /^crd_o(\d)5$/.exec(prop))) return over(KT, +m[1] + 0.5);
     if ((m = /^crd([ha])_o(\d)5$/.exec(prop))) return over(KT * (m[1] === 'h' ? kShare : 1 - kShare), +m[2] + 0.5);
-    return null;
+    return undefined;
   },
   odds(p, fmt) {
     if (!(p > 0 && p < 1)) return '—'; const d = 1 / p;
@@ -416,7 +454,8 @@ Object.assign(Book, {
       + ' Each question is settled as it would be on its own: football results use the score after regular time (90 minutes plus stoppage time) unless the question is about half-time; corners and cards come from the official match statistics.'
       + ' If any of these matches is abandoned or not played within 48 hours of its scheduled start, this market is cancelled.');
     if (rule.length > 2048) return { error: 'These selections are too long to fit one Panta market rule (2048 characters). Remove a selection.' };
-    const first = Math.min(...legs.map(l => l.g.start)), last = Math.max(...legs.map(l => l.g.start));
+    // Trading closes when the first leg's game ends (legs can be in play); settles after the last one.
+    const first = Math.min(...legs.map(l => l.g.start + (l.g.football ? 2 : 3.5) * 3600e3)), last = Math.max(...legs.map(l => l.g.start));
     const sources = [...new Set(legs.flatMap(l => this.sources(l.g)))].slice(0, 20);
     const image = legs.map(l => [l.g.image, l.g.home.logo, l.g.away.logo].find(u => /^https:\/\//.test(u || ''))).find(Boolean) || 'https://a.espncdn.com/i/teamlogos/soccer/500/default-team-logo-500.png';
     return { question, title: `Accumulator (${n} selections)`, description: legs.map(desc).join(' · ').slice(0, 2000), resolutionRule: rule, sourcesOfTruth: sources, category: 'sports', marketType: 'breaking',

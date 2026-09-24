@@ -120,11 +120,16 @@ The services emit events on a small bus. `app.js` patches the visible page in pl
   Double Chance reuses the result markets: "Home or Draw" is NO on "away win". "No goal" is NO on "over 0.5". Draw No Bet isn't offered, because a YES/NO market can't refund stakes on a draw.
 - **First bettor creates the market:** if a prop has no Panta market yet, the first bettor creates it on Panta in the same flow, then places the bet. They pay Panta's creation fee, which is shown in the review, and sign one extra transaction.
   - Each market has a fixed question, a resolution rule (regular time only; extra time and penalties don't count; cancelled if not played within 48h) and sources (ESPN match page, Polymarket event, BBC scores).
-  - Trading ends at kick-off, so there's no in-play betting. Panta's Resolution Agent settles the market.
+  - Trading stays open through the game, until about full time, so bets can be placed in play. Panta's Resolution Agent settles the market.
 - **Registry (`/api/book`):** records which Panta market holds each prop, so everyone after the first bettor uses the same market. It uses the same Upstash Redis as server accounts.
   - Before recording a market, the server checks on Solana (`SOLANA_RPC_URL`) that the creation transaction succeeded, touches the market account and contains the question.
   - It also checks against Polymarket that the question names both teams, or is the exact Polymarket question for `pm:` props.
   - The first registration wins.
+- **In-play betting:** bets can be placed while a game is live, until the 90th minute.
+  - Estimated odds follow the game: the goals model is re-fitted to Polymarket's live 1X2 (and O/U 2.5 when listed) for the goals still to come, on top of the current score and time left.
+  - Bets that are already decided close automatically: half-time bets after the break, First Team to Score after a goal, and impossible or near-certain outcomes (under 1% or over 99%).
+  - Corners and cards are pre-match only, because there's no live data to price them.
+  - Panta markets created from now on stay open until about 2 hours after kick-off (3.5 hours for other sports). Markets created before this change close at kick-off.
 - **Odds:** the Panta price once the market exists. Until then, estimates (marked with *):
   - Polymarket's own price where it lists the same bet;
   - otherwise a goals model fitted like a bookmaker's: home and away Poisson scoring rates that reproduce Polymarket's 1X2 prices and its over/under 2.5 price when listed. It prices goal lines, handicaps, half-time (45% of each rate), HT/FT, correct score and first to score.

@@ -188,7 +188,7 @@ Views.book = async (params, id) => {
     <div class="bk-game">
       <div style="min-width:0">
         ${g.state === 'post' ? `<div class="card" style="margin-top:16px">${emptyState({ icon: 'check', title: 'Full time', body: 'Betting has closed. Panta’s Resolution Agent settles each market from the result; winning bets can be claimed in Portfolio.' })}</div>`
-          : `${g.state === 'in' ? `<div class="sim-note" style="margin-top:16px">${ic('info', 'sm')}<span>Betting closes at kick-off; in-play bets aren’t available.</span></div>` : ''}
+          : `${g.state === 'in' ? `<div class="sim-note" style="margin-top:16px">${ic('info', 'sm')}<span><b>In play.</b> Odds follow the score and the clock. Bets close at the 90th minute; half-time bets close at the break, First Team to Score after the first goal, and corners and cards are pre-match only.</span></div>` : ''}
         <div class="bk-bt" role="tablist" aria-label="Bet type" style="margin-top:16px">${[{ id: 'all', title: 'All' }, ...sections].map(x => `<button role="tab" aria-selected="${gc === x.id}" class="${gc === x.id ? 'on' : ''}" data-action="bkGcat" data-v="${x.id}">${esc(x.title)}</button>`).join('')}</div>
         ${visible.map(x => `<h2 class="bk-cat">${esc(x.title)}</h2><div class="bk-mkts">${x.cards.join('')}</div>${x.note ? `<p class="mut" style="font-size:12px;margin-top:6px">${esc(x.note)}</p>` : ''}`).join('')}
         <p class="mut" style="font-size:12px;margin-top:12px">* Estimated odds, from Polymarket, for bets that don’t have a Panta market yet. Each bet is a YES/NO position on a Panta market, settled by Panta’s Resolution Agent from the result.</p>`}
@@ -215,7 +215,7 @@ function bkSlip() {
     return `<div class="bk-slip-i ${ok ? '' : 'off'}">
       <div class="row" style="gap:8px;align-items:flex-start"><div style="flex:1;min-width:0"><b style="font-size:13.5px">${esc(s.label)}</b><div class="mut" style="font-size:11.5px">${esc(s.market || '')}</div><div class="mut" style="font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(game)}</div></div>
         <b class="num" data-bko="${esc(s.key)}">${ok ? oddTxt(s) : '—'}</b><button class="iconbtn" data-action="bkRemove" data-k="${esc(s.key)}" aria-label="Remove selection" style="width:26px;height:26px">${ic('x', 'sm')}</button></div>
-      ${!ok ? `<div class="mut" style="font-size:12px;margin-top:6px">${s.g && s.g.state !== 'pre' ? 'Betting closed at kick-off' : 'No longer available'}</div>`
+      ${!ok ? `<div class="mut" style="font-size:12px;margin-top:6px">${s.g && s.g.state === 'post' ? 'Game finished' : s.g && s.g.state === 'in' ? 'Closed for this stage of the game' : 'No longer available'}</div>`
         : acc ? '' : `<div class="row" style="gap:8px;margin-top:8px"><label class="bk-stake"><span class="mut">$</span><input inputmode="decimal" data-bk-stake="${esc(s.key)}" value="${esc(Book.stakes[s.key] || '')}" aria-label="Stake in USDC"></label><span class="mut" style="font-size:12px;margin-left:auto">Potential winnings <b class="num" data-bk-ret="${esc(s.key)}" style="color:var(--text)">${p ? usd(s.stake / p) : '—'}</b></span></div>
         ${s.q.market ? '' : `<div class="mut" style="font-size:11.5px;margin-top:6px">${ic('plus', 'sm')} First bet on this option: you’ll create its Panta market (fee shown before you sign).</div>`}`}
     </div>`;
