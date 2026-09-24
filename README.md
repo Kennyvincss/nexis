@@ -81,9 +81,18 @@ The services emit events on a small bus. `app.js` patches the visible page in pl
 | Price charts (Panta) | Recorded by Nexis | Panta has no price-history endpoint, so Nexis records the prices it observes. Charts are labelled that way. |
 | Portfolio | Panta positions + Solana RPC | Positions every 20s, balances every 30s |
 | Crypto | CoinGecko `/coins/markets`, `market_chart`; Coinbase `ticker` WebSocket | Tick-by-tick for assets listed on Coinbase, otherwise every 30s |
-| Sports | ESPN scoreboard + summary, 87 team-sport leagues (`js/services/leagues.js`) fetched together by `/api/sports` and cached at the edge | Every 12s while a game is live, otherwise 60s |
+| Sports | ESPN: ~200 built-in leagues plus leagues discovered from ESPN's catalogue (football, basketball, tennis, NFL/college, MLB, NHL, MMA, golf, motorsport, rugby and more), fetched per sport group by `/api/sports` and cached at the edge | Every 12s while something is live, otherwise 60s |
 | Trader Tracker | Polymarket Data API (`pm:0x…`), Panta positions (`sol:<wallet>`) | Every 20s per tracked trader |
 | Reference markets | Polymarket Gamma + CLOB WebSocket | Streamed prices, trades every 8s |
+
+## Sports coverage, search and filters
+
+- **Leagues.** `js/services/leagues.js` lists about 200 leagues across three kinds of event: team games, player-vs-player matches (tennis, MMA) and leaderboards (golf, motorsport). `/api/sports` also reads ESPN's league catalogue for football, basketball and rugby, so leagues ESPN adds appear automatically.
+- **Sports page:**
+  - **Search:** teams, players, leagues and tournaments.
+  - **Filters:** status (All / Live / Upcoming / Finished), sport chips with counts, a league picker grouped by sport, **Has markets** (only events with a related Panta or Polymarket market), **Following**, and a reset button.
+  - **Days:** a day picker covering the last and next 7 days.
+- **Coverage limits.** ESPN's free API doesn't cover every league in the world; much lower-division football and most non-US basketball, for example, are missing. Complete global coverage needs a paid sports-data provider, which can be added as another source for `/api/sports`.
 
 ## Trading on Panta
 

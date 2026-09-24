@@ -29,34 +29,75 @@ const Sports = {
     const odds = (c.odds || [])[0];
     return { id: `${lg.replace(/[^a-z0-9]/gi, '')}-${e.id}`, espnId: e.id, sp, lg, league, sport, name: e.name || `${away.name} at ${home.name}`, start: toMs(e.date), state: ty.state || 'pre', statusName: ty.name || '', detail: ty.shortDetail || ty.detail || '', completed: !!ty.completed, clock: st.displayClock || '', period: nz(st.period, 0), home, away, venue: (c.venue && c.venue.fullName) || '', city: c.venue && c.venue.address && [c.venue.address.city, c.venue.address.country].filter(Boolean).join(', '), broadcast: (c.broadcasts || []).flatMap(b => b.names || []).join(', '), details, odds: odds ? { text: odds.details || '', ou: odds.overUnder ?? null, provider: odds.provider && odds.provider.name } : null, lastPlay: c.situation && c.situation.lastPlay && c.situation.lastPlay.text, notes: (c.notes || []).map(n => n.headline).filter(Boolean).join(' · ') };
   },
+  kindOf(L) { return L[4] || SPORT_KIND_OF_PATH[L[0]] || 'team'; },
+  /** Any ESPN event → one or more games: team fixture, player-vs-player matches, or one leaderboard. */
+  parseAll(L, e) {
+    const kind = this.kindOf(L);
+    if (kind === 'match') return this.parseMatches(L, e);
+    if (kind === 'field') { const g = this.parseField(L, e); return g ? [g] : []; }
+    const g = this.parse(L, e); if (g) g.kind = 'team'; return g ? [g] : [];
+  },
+  statusOf(st) { const ty = (st && st.type) || {}; return { state: ty.state || 'pre', statusName: ty.name || '', detail: ty.shortDetail || ty.detail || ty.description || '', completed: !!ty.completed, clock: (st && st.displayClock) || '', period: nz(st && st.period, 0) }; },
+  player(c) {
+    const a = c.athlete || {}; const name = a.displayName || (c.team && c.team.displayName) || 'TBD';
+    const sets = (c.linescores || []).map(l => ({ v: l.value != null ? nz(l.value) : nz(l.displayValue, null), tb: l.tiebreak }));
+    return { id: String(c.id || name), name, short: a.shortName || name, abbr: name.split(/\s+/).map(w => w[0]).join('').slice(0, 3).toUpperCase(), color: '#2A3140', ink: '#fff', logo: (a.flag && a.flag.href) || (c.team && c.team.logo) || null, flag: a.flag && a.flag.alt, score: null, winner: !!c.winner, sets, record: (c.records && c.records[0] && c.records[0].summary) || '', form: '', stats: {}, leaders: [] };
+  },
+  parseMatches([sp, lg, league, sport], e) {
+    const lgId = lg.replace(/[^a-z0-9]/gi, ''); const out = [];
+    const blocks = e.groupings ? e.groupings.map(g => ({ label: g.grouping && g.grouping.displayName, comps: g.competitions || [] })) : [{ label: '', comps: e.competitions || [] }];
+    blocks.forEach(b => b.comps.forEach(c => {
+      const cs = (c.competitors || []).slice().sort((x, y) => (x.order || 9) - (y.order || 9)); if (cs.length < 2) return;
+      const P1 = this.player(cs[0]), P2 = this.player(cs[1]); const st = this.statusOf(c.status || e.status);
+      if (P1.sets.length || P2.sets.length) { let a = 0, b2 = 0; P1.sets.forEach((x, i) => { const y = P2.sets[i]; if (!y || x.v == null || y.v == null) return; if (x.v > y.v) a++; else if (y.v > x.v) b2++; }); if (st.state !== 'pre') { P1.score = a; P2.score = b2; } }
+      const setLine = P1.sets.length ? P1.sets.map((x, i) => `${x.v ?? '-'}-${(P2.sets[i] || {}).v ?? '-'}`).join('  ') : '';
+      const round = [b.label, c.round && c.round.displayName, c.type && c.type.text].filter(Boolean).join(' · ');
+      out.push({ id: `${lgId}-${c.id}`, espnId: c.id, eventId: e.id, kind: 'match', sp, lg, league, sport, name: `${P1.name} vs ${P2.name}`, tournament: e.name || '', round, start: toMs(c.date || e.date), ...st,
+        home: P1, away: P2, setLine, venue: (c.venue && c.venue.fullName) || '', city: '', broadcast: '', details: [], odds: null, lastPlay: '', notes: [e.name, round].filter(Boolean).join(' · ') });
+    }));
+    return out;
+  },
+  parseField([sp, lg, league, sport], e) {
+    const comps = e.competitions || []; if (!comps.length) return null;
+    const c = comps.find(x => this.statusOf(x.status).state === 'in') || comps.slice().reverse().find(x => /race|round|final/i.test((x.type && (x.type.text || x.type.abbreviation)) || '')) || comps[comps.length - 1];
+    const st = this.statusOf(e.status && e.status.type && e.status.type.state !== 'pre' ? e.status : c.status || e.status);
+    const rows = (c.competitors || []).map((x, i) => ({ pos: (x.status && x.status.position && x.status.position.displayName) || String(x.order || i + 1), name: (x.athlete && x.athlete.displayName) || (x.team && x.team.displayName) || '—', flag: x.athlete && x.athlete.flag && x.athlete.flag.href, score: x.score != null ? String(x.score) : '', thru: x.status && (x.status.thru != null ? String(x.status.thru) : x.status.displayValue) || '' }));
+    return { id: `${lg.replace(/[^a-z0-9]/gi, '')}-${e.id}`, espnId: e.id, kind: 'field', sp, lg, league, sport, name: e.name || league, tournament: e.name || '', start: toMs(e.date), end: toMs(e.endDate), ...st,
+      session: (c.type && (c.type.text || c.type.abbreviation)) || '', leaders: rows, home: null, away: null, venue: (c.venue && c.venue.fullName) || '', details: [], notes: '' };
+  },
   label(g) { if (g.state === 'pre') return /postpon|cancel|suspend|delay/i.test(g.statusName) ? g.detail : `${fmtDate(g.start, { weekday: 'short', month: 'short', day: 'numeric' })} · ${new Date(g.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`; if (g.state === 'post') return g.detail || 'Final'; return g.detail || g.clock; },
   isLive(g) { return g.state === 'in'; },
-  /** All leagues via /api/sports (one cached request); if that fails, the main leagues directly from ESPN. */
+  /** Every sport group via /api/sports (one cached request each, in parallel); if all fail, the main
+      leagues directly from ESPN. */
+  meta: new Map(SPORT_LEAGUES.map(L => [L[0] + '/' + L[1], L])),
   async fetchBoards(dates) {
-    try {
-      const j = await Net.api('sports' + (dates ? '?dates=' + dates : ''), { timeout: 20000 });
-      const by = new Map(); (j.leagues || []).forEach(([i, ok]) => { if (ok && LEAGUES[i]) by.set(i, { status: 'fulfilled', L: LEAGUES[i], value: { events: [] } }); });
-      (j.events || []).forEach(([i, e]) => { const r = by.get(i); if (r) r.value.events.push(e); });
-      (j.leagues || []).forEach(([i, ok]) => { if (!ok && LEAGUES[i]) by.set(i, { status: 'rejected', L: LEAGUES[i], reason: new Error('League unavailable') }); });
-      this.via = 'server'; return [...by.values()];
-    } catch (e) {
-      this.via = 'direct';
-      const res = await Promise.allSettled(SPORT_LEAGUES_CORE.map(L => Net.data(`${ESPN}/${L[0]}/${L[1]}/scoreboard${dates ? '?dates=' + dates + '&limit=500' : ''}`)));
-      return res.map((r, i) => ({ ...r, L: SPORT_LEAGUES_CORE[i] }));
+    const res = await Promise.allSettled(SPORT_GROUPS.map(G => Net.api(`sports?group=${G.id}${dates ? '&dates=' + dates : ''}`, { timeout: 35000 })));
+    if (res.some(r => r.status === 'fulfilled')) {
+      const out = [];
+      res.forEach(r => {
+        if (r.status !== 'fulfilled') { out.push({ status: 'rejected', reason: r.reason }); return; }
+        const by = new Map();
+        (r.value.leagues || []).forEach(([key, name, label, kind, ok]) => { const [sp, ...rest] = key.split('/'); const L = [sp, rest.join('/'), name || rest.join('/'), label, kind]; if (!this.meta.has(key)) this.meta.set(key, L); by.set(key, ok ? { status: 'fulfilled', L: this.meta.get(key), value: { events: [] } } : { status: 'rejected', L, reason: new Error('League unavailable') }); });
+        (r.value.events || []).forEach(([key, e]) => { const x = by.get(key); if (x && x.value) x.value.events.push(e); });
+        out.push(...by.values());
+      });
+      this.via = 'server'; return out;
     }
+    this.via = 'direct';
+    const d = await Promise.allSettled(SPORT_LEAGUES_CORE.map(L => Net.data(`${ESPN}/${L[0]}/${L[1]}/scoreboard${dates ? '?dates=' + dates + '&limit=500' : ''}`)));
+    return d.map((r, i) => ({ ...r, L: SPORT_LEAGUES_CORE[i] }));
   },
   async poll() {
     const res = await this.fetchBoards('');
     let ok = 0, live = false;
     res.forEach((r, i) => {
       if (r.status !== 'fulfilled' || !r.value || !Array.isArray(r.value.events)) return; ok++;
-      r.value.events.forEach(e => {
-        const g = this.parse(r.L || LEAGUES[i], e); if (!g) return;
+      r.value.events.forEach(e => this.parseAll(r.L, e).forEach(g => {
         if (g.state === 'pre' && g.start - now() > 3 * DAY) return;
-        if (g.state === 'post' && now() - g.start > 30 * HOUR) return;
+        if (g.state === 'post' && now() - (g.end || g.start) > 30 * HOUR) return;
         const prev = this.games.get(g.id); this.games.set(g.id, g); if (g.state === 'in') live = true;
         if (prev) this.diff(prev, g);
-      });
+      }));
     });
     this.anyLive = live;
     if (ok) { this.state = 'live'; this.error = null; this.updatedAt = now(); Feeds.set('sports', 'live'); }
@@ -65,7 +106,7 @@ const Sports = {
   },
   diff(a, b) {
     const followed = Store.s && Store.s.followedEvents.includes(b.id);
-    if (b.home.score != null && a.home.score != null && (b.home.score > a.home.score || b.away.score > a.away.score)) {
+    if (b.kind === 'team' && b.home.score != null && a.home.score != null && (b.home.score > a.home.score || b.away.score > a.away.score)) {
       const side = b.home.score > a.home.score ? 'home' : 'away'; const d = [...b.details].reverse().find(x => x.kind === 'goal' && x.side === side);
       const scorer = d && d.who ? ` — ${d.who}${d.min ? ' ' + d.min : ''}` : '';
       const txt = `${b.sport === 'Football' ? 'Goal' : 'Score'} · ${b[side].name}${scorer} · ${b.home.short} ${b.home.score}–${b.away.score} ${b.away.short}`;
@@ -73,8 +114,8 @@ const Sports = {
       if (followed && b.sport === 'Football') Notify.push({ kind: 'goal', icon: 'soccer', text: esc(txt), href: '#/event/' + b.id, toast: true, setting: 'notifyGoals' });
     }
     if (a.state !== b.state && followed) {
-      if (b.state === 'in') Notify.push({ kind: 'game', icon: 'whistle', text: `<b>${esc(b.home.short)} vs ${esc(b.away.short)}</b> has started`, href: '#/event/' + b.id, toast: true, setting: 'notifyGoals' });
-      if (b.state === 'post') Notify.push({ kind: 'game', icon: 'flag', text: `Final: <b>${esc(b.home.short)} ${b.home.score}–${b.away.score} ${esc(b.away.short)}</b>`, href: '#/event/' + b.id, toast: true, setting: 'notifyGoals' });
+      if (b.state === 'in') Notify.push({ kind: 'game', icon: 'whistle', text: `<b>${esc(this.title(b))}</b> has started`, href: '#/event/' + b.id, toast: true, setting: 'notifyGoals' });
+      if (b.state === 'post') Notify.push({ kind: 'game', icon: 'flag', text: b.kind === 'field' ? `Final: <b>${esc(b.name)}</b>${b.leaders[0] ? ' — ' + esc(b.leaders[0].name) + ' wins' : ''}` : b.kind === 'match' ? `Final: <b>${esc((b.home.winner ? b.home : b.away).name)}</b> beat ${esc((b.home.winner ? b.away : b.home).name)}${b.setLine ? ' · ' + esc(b.setLine) : ''}` : `Final: <b>${esc(b.home.short)} ${b.home.score}–${b.away.score} ${esc(b.away.short)}</b>`, href: '#/event/' + b.id, toast: true, setting: 'notifyGoals' });
     }
   },
   async summary(g) {
@@ -89,9 +130,16 @@ const Sports = {
     const s = { at: now(), teamStats, rosters, players, key, plays, leaders, attendance: r.gameInfo && r.gameInfo.attendance, officials: (r.gameInfo && r.gameInfo.officials || []).map(o => o.displayName).slice(0, 3), news: (r.news && r.news.articles || []).slice(0, 3).map(a => ({ title: a.headline, url: a.links && a.links.web && a.links.web.href })) };
     this.summaries[g.id] = s; return s;
   },
+  title(g) { return g.kind === 'field' ? g.name : `${g.home.short} vs ${g.away.short}`; },
   words(t) { return [t.name, t.short, t.abbr].filter(Boolean).map(x => x.toLowerCase()); },
+  _rel: {},
   related(g) {
-    const keys = [...new Set([...this.words(g.home), ...this.words(g.away)].filter(k => k.length >= 4 || /^[a-z]{3}$/.test(k)))];
+    const v = `${Panta.markets.size}|${Poly.markets.size}|${Panta.loadedAt}|${g.home ? g.home.name + g.away.name : g.name}`; const c = this._rel[g.id];
+    if (c && c.v === v) return c.r; const r = this.relatedRaw(g); this._rel[g.id] = { v, r }; return r;
+  },
+  relatedRaw(g) {
+    const names = g.kind === 'field' ? [g.name, ...g.leaders.slice(0, 10).map(r => r.name.split(' ').pop())].map(x => String(x).toLowerCase()) : [...this.words(g.home), ...this.words(g.away), ...(g.kind === 'match' ? [g.home.name.split(' ').pop(), g.away.name.split(' ').pop()].map(x => x.toLowerCase()) : [])];
+    const keys = [...new Set(names.filter(k => k.length >= 4 || /^[a-z]{3}$/.test(k)))];
     const hit = (title) => { const t = ' ' + String(title || '').toLowerCase() + ' '; const h = keys.filter(k => k.length >= 4 ? t.includes(k) : new RegExp(`\\b${k}\\b`).test(t)); return h.length; };
     const panta = [...Panta.markets.values()].filter(m => hit(m.title) >= 1 && !m.cancelled).sort((a, b) => hit(b.title) - hit(a.title)).slice(0, 8);
     const poly = [...Poly.markets.values()].filter(m => hit(m.q) >= 1).sort((a, b) => hit(b.q) - hit(a.q) || b.vol - a.vol).slice(0, 8);
@@ -108,7 +156,7 @@ const Sports = {
       const res = await this.fetchBoards(q);
       let ok = 0;
       res.forEach((r, i) => { if (r.status !== 'fulfilled' || !r.value || !Array.isArray(r.value.events)) return; ok++;
-        r.value.events.forEach(e => { const g = this.parse(r.L || LEAGUES[i], e); if (!g) return; const prev = this.games.get(g.id); if (!prev || prev.state !== 'in') this.games.set(g.id, g); }); });
+        r.value.events.forEach(e => this.parseAll(r.L, e).forEach(g => { const prev = this.games.get(g.id); if (!prev || prev.state !== 'in') this.games.set(g.id, g); })); });
       const out = { at: now(), ok, failed: res.length - ok, error: ok ? null : ((res.find(r => r.status === 'rejected') || {}).reason || new Error('No schedule data returned')) };
       this.ranges[key] = out; Bus.emit('sports'); return out;
     })();

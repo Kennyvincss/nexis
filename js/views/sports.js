@@ -7,7 +7,7 @@ function crest(t, size = '') {
   if (t.logo && /^https:\/\//.test(t.logo)) return `<span class="crest ${size}" style="background:var(--card-3);overflow:hidden"><img src="${esc(t.logo)}" alt="" style="width:78%;height:78%;object-fit:contain" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()"></span>`;
   return `<span class="crest ${size}" style="background:${esc(t.color)};color:${t.ink}">${esc((t.abbr || t.short || '?').slice(0, 3))}</span>`;
 }
-const scoreText = (g) => g.state === 'pre' || g.home.score == null ? 'vs' : `${g.home.score}–${g.away.score}`;
+const scoreText = (g) => g.kind === 'field' ? (g.leaders && g.leaders[0] ? g.leaders[0].name : '') : g.state === 'pre' || g.home.score == null ? 'vs' : `${g.home.score}–${g.away.score}`;
 function gameBadge(g) {
   if (g.state === 'in') return `<span class="live-badge sm"><span class="live-dot red"></span>${esc(g.detail || g.clock || 'LIVE')}</span>`;
   if (g.state === 'post') return `<span class="tag">${esc(g.detail || 'Final')}</span>`;
@@ -18,13 +18,16 @@ function scoreboardHtml(g, big = false) {
 }
 const isFollowed = (id) => !!(Store.s && Store.s.followedEvents.includes(id));
 function followBtn(g, sm = true) { const on = isFollowed(g.id); return `<button class="btn ${on ? 'btn-blue' : 'btn-ghost'} ${sm ? 'sm' : ''}" data-action="followEvent" data-id="${g.id}" aria-pressed="${on}" style="position:relative;z-index:2">${ic(on ? 'bell' : 'bellOff', 'sm')}${on ? 'Following' : 'Follow'}</button>`; }
+function leaderRows(g, n) { return (g.leaders || []).slice(0, n).map(r => `<div class="lb-row"><span class="num mut">${esc(r.pos)}</span>${r.flag ? `<img src="${esc(r.flag)}" alt="" width="16" height="11" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : '<span></span>'}<span class="lb-name">${esc(r.name)}</span><span class="num">${esc(r.score)}</span><span class="mut num">${esc(r.thru)}</span></div>`).join(''); }
 function gameCard(g) {
   const rel = Sports.related(g); const n = rel.panta.length + rel.poly.length;
-  return `<article class="ecard ${g.state === 'in' ? 'live' : ''}" data-game="${g.id}">
-    <div class="ecard-top">${ic(SPORT_IC[g.sport] || 'ball', 'sm')}<span style="white-space:nowrap">${esc(g.league)}</span><span style="margin-left:auto">${gameBadge(g)}</span></div>
-    <a href="#/event/${g.id}" class="ecard-link" aria-label="Open ${esc(g.name)}">${scoreboardHtml(g)}</a>
+  const top = `<div class="ecard-top">${ic(SPORT_IC[g.sport] || 'ball', 'sm')}<span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">${esc(g.league)}${g.kind !== 'team' && g.tournament && g.tournament !== g.league ? ' · ' + esc(g.tournament) : ''}</span><span style="margin-left:auto;flex:none">${gameBadge(g)}</span></div>`;
+  const body = g.kind === 'field'
+    ? `<a href="#/event/${g.id}" class="ecard-link" aria-label="Open ${esc(g.name)}"><b style="font-size:15px">${esc(g.name)}</b>${g.session ? ` <span class="mut" style="font-size:12px">${esc(g.session)}</span>` : ''}</a><div class="lb">${leaderRows(g, 5) || '<p class="mut" style="font-size:12.5px">Leaderboard appears when play starts.</p>'}</div>`
+    : `<a href="#/event/${g.id}" class="ecard-link" aria-label="Open ${esc(g.name)}">${scoreboardHtml(g)}</a>${g.kind === 'match' ? `<div class="mut num" style="font-size:12px;text-align:center">${esc(g.setLine || g.round || '')}</div>` : ''}`;
+  return `<article class="ecard ${g.state === 'in' ? 'live' : ''}" data-game="${g.id}">${top}${body}
     ${g.lastPlay && g.state === 'in' ? `<div class="mut" style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(g.lastPlay)}</div>` : ''}
-    <div class="mcard-foot"><span>${n ? `<b>${n}</b> related market${n === 1 ? '' : 's'}` : '<span class="mut">No markets yet</span>'}</span>${g.odds && g.odds.text ? `<span class="mut" title="${esc(g.odds.provider || 'Sportsbook')} line via ESPN">${esc(g.odds.text)}</span>` : ''}<span style="margin-left:auto">${followBtn(g)}</span></div>
+    <div class="mcard-foot"><span>${n ? `<b>${n}</b> market${n === 1 ? '' : 's'} to trade` : '<span class="mut">No markets yet</span>'}</span>${g.odds && g.odds.text ? `<span class="mut" title="${esc(g.odds.provider || 'Sportsbook')} line via ESPN">${esc(g.odds.text)}</span>` : ''}<span style="margin-left:auto">${followBtn(g)}</span></div>
   </article>`;
 }
 function sportsState() {
@@ -47,12 +50,14 @@ function sportsSelection(day) {
   const d = new Date(+day.slice(0, 4), +day.slice(4, 6) - 1, +day.slice(6, 8)).getTime();
   return { from: d, to: d, order: d < t ? -1 : 1, title: new Date(d).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) };
 }
-const SPORT_ORDER = ['Football', 'Basketball', 'American Football', 'Baseball', 'Hockey', 'Australian Football'];
+const SPORT_ORDER = ['Football', 'Basketball', 'Tennis', 'American Football', 'Baseball', 'Hockey', 'MMA', 'Golf', 'Motorsport', 'Rugby', 'Australian Football', 'Lacrosse', 'Volleyball', 'Field Hockey', 'Water Polo'];
+const gameText = (g) => [g.name, g.league, g.tournament, g.round, g.sport, g.home && g.home.name, g.away && g.away.name, g.home && g.home.abbr, g.away && g.away.abbr, g.venue, ...(g.leaders || []).slice(0, 20).map(r => r.name)].filter(Boolean).join(' ').toLowerCase();
 Views.sports = async (params) => {
-  const st = UI.sports; if (params.get('f')) st.filter = params.get('f'); if (params.get('day')) st.day = params.get('day'); st.day = st.day || 'today';
+  const st = UI.sports; if (params.get('q') != null) st.q = params.get('q'); if (params.get('day')) st.day = params.get('day'); st.day = st.day || 'today';
+  st.status = st.status || 'all'; st.sport = st.sport || 'all'; st.q = st.q || ''; st.limit = st.limit || 60;
   const days = sportsDays(); if (!days.some(d => d.k === st.day)) st.day = 'today';
   const sel = sportsSelection(st.day);
-  const head = `<div class="page-head"><div><h1>Sports</h1><p>Live scores update automatically. Pick a day to see results and upcoming fixtures.</p></div>${srcBadge('espn')}</div>`;
+  const head = `<div class="page-head"><div><h1>Sports</h1><p>Football, basketball, tennis, US sports, MMA, golf, motorsport, rugby and more — live scores, results and fixtures, with the markets you can trade on each.</p></div>${srcBadge('espn')}</div>`;
   if (Sports.state === 'idle') await Sports.poll();
   let rangeErr = null; try { await Sports.loadRange(sel.from, sel.to); } catch (e) { rangeErr = e; }
   const rs = Sports.rangeState(sel.from, sel.to);
@@ -60,24 +65,45 @@ Views.sports = async (params) => {
   let pool = Sports.between(sel.from, sel.to);
   if (sel.today) Sports.list().filter(g => g.state === 'in').forEach(g => { if (!pool.includes(g)) pool.push(g); });
   if (st.day === 'past') pool = pool.filter(g => g.state !== 'pre');
-  const F = { All: () => true, Live: (g) => g.state === 'in', Following: (g) => isFollowed(g.id) };
-  const sportsHere = [...new Set(pool.map(g => g.sport))].sort((a, b) => SPORT_ORDER.indexOf(a) - SPORT_ORDER.indexOf(b)); sportsHere.forEach(sp => { F[sp] = (g) => g.sport === sp; });
-  if (!F[st.filter]) st.filter = 'All';
+  // search
+  const q = st.q.trim().toLowerCase(); const terms = q.split(/\s+/).filter(Boolean);
+  if (terms.length) pool = pool.filter(g => { const t = gameText(g); return terms.every(w => t.includes(w)); });
+  // facets (computed before the sport/league/status filters so counts stay useful)
+  const bySport = {}; pool.forEach(g => bySport[g.sport] = (bySport[g.sport] || 0) + 1);
+  const sportsHere = Object.keys(bySport).sort((a, b) => (SPORT_ORDER.indexOf(a) + 1 || 99) - (SPORT_ORDER.indexOf(b) + 1 || 99));
+  if (st.sport !== 'all' && !bySport[st.sport]) st.sport = 'all';
+  const inSport = pool.filter(g => st.sport === 'all' || g.sport === st.sport);
   const leagueRank = (name) => { const i = LEAGUES.findIndex(L => L[2] === name); return i < 0 ? 999 : i; };
-  const leaguesHere = [...new Set(pool.filter(F[st.filter]).map(g => g.league))].sort((a, b) => leagueRank(a) - leagueRank(b));
-  if (st.league && !leaguesHere.includes(st.league)) st.league = '';
-  if (!sel.today && st.filter === 'Live') st.filter = 'All';
-  const chips = Object.keys(F).filter(k => k !== 'Live' || sel.today); const live = pool.filter(F.Live).length;
-  const list = pool.filter(F[st.filter] || F.All).filter(g => !st.league || g.league === st.league).sort((a, b) => ({ in: 0, pre: 1, post: 2 }[a.state] - { in: 0, pre: 1, post: 2 }[b.state]) * (sel.multi ? 0 : 1) || (a.start - b.start) * sel.order);
-  const groups = {}; list.forEach(g => { const k = sel.multi ? new Date(g.start).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : g.league; (groups[k] = groups[k] || []).push(g); });
+  const byLeague = {}; inSport.forEach(g => { const k = g.sport + '|' + g.league; byLeague[k] = (byLeague[k] || 0) + 1; });
+  if (st.league && !byLeague[st.league]) st.league = '';
+  const STATUS = { all: () => true, live: g => g.state === 'in', upcoming: g => g.state === 'pre', finished: g => g.state === 'post' };
+  const counts = { live: inSport.filter(STATUS.live).length, upcoming: inSport.filter(STATUS.upcoming).length, finished: inSport.filter(STATUS.finished).length };
+  let list = inSport.filter(g => !st.league || g.sport + '|' + g.league === st.league).filter(STATUS[st.status] || STATUS.all);
+  if (st.following) list = list.filter(g => isFollowed(g.id));
+  if (st.bettable) list = list.filter(g => { const r = Sports.related(g); return r.panta.length + r.poly.length > 0; });
+  list.sort((a, b) => ({ in: 0, pre: 1, post: 2 }[a.state] - { in: 0, pre: 1, post: 2 }[b.state]) * (sel.multi ? 0 : 1) || (sel.multi ? 0 : leagueRank(a.league) - leagueRank(b.league)) || (a.start - b.start) * sel.order);
+  const total = list.length; const shown = list.slice(0, st.limit);
+  const groups = {}; shown.forEach(g => { const k = sel.multi ? new Date(g.start).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : g.league + (g.kind !== 'team' ? '' : ''); (groups[k] = groups[k] || []).push(g); });
   const groupList = Object.entries(groups); if (!sel.multi) groupList.sort((a, b) => leagueRank(a[0]) - leagueRank(b[0]));
-  const partial = rs && rs.failed > rs.ok ? `<div class="sim-note" style="margin-bottom:14px">${ic('info', 'sm')}<span>${rs.failed} league${rs.failed === 1 ? '' : 's'} didn’t load from ESPN just now. Retrying automatically.</span></div>` : '';
+  const partial = rs && rs.failed > rs.ok ? `<div class="sim-note" style="margin-bottom:14px">${ic('info', 'sm')}<span>Some leagues didn’t load from ESPN just now. Retrying automatically.</span></div>` : '';
+  const leagueOpts = sportsHere.filter(sp => st.sport === 'all' || sp === st.sport).map(sp => { const ls = Object.keys(byLeague).filter(k => k.startsWith(sp + '|')).sort((a, b) => leagueRank(a.split('|')[1]) - leagueRank(b.split('|')[1])); return ls.length ? `<optgroup label="${esc(sp)}">${ls.map(k => `<option value="${esc(k)}" ${k === st.league ? 'selected' : ''}>${esc(k.split('|')[1])} (${byLeague[k]})</option>`).join('')}</optgroup>` : ''; }).join('');
   return `<div class="page">${head}${daysHtml(days, st.day)}
-    <div class="row wrap" style="gap:8px;margin:14px 0 18px">${chips.map(k => `<button class="chip ${k === st.filter ? 'on' : ''}" data-action="sportFilter" data-f="${esc(k)}">${k === 'Live' ? `<span class="live-dot red"></span>Live${live ? ' · ' + live : ''}` : esc(k)}</button>`).join('')}${leaguesHere.length > 1 ? `<select class="select" id="sp-league" style="width:auto;height:32px;padding:0 10px;margin-left:auto" aria-label="League"><option value="">All leagues · ${leaguesHere.length}</option>${leaguesHere.map(l => `<option value="${esc(l)}" ${l === st.league ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>` : ''}</div>
+    <div class="sp-filters">
+      <label class="search-trigger sp-search">${ic('search', 'sm')}<input id="sp-q" value="${esc(st.q)}" placeholder="Search teams, players, leagues, tournaments" autocomplete="off" aria-label="Search sports">${st.q ? '<button class="iconbtn" data-action="spClear" aria-label="Clear search" style="width:26px;height:26px">' + ic('x', 'sm') + '</button>' : ''}</label>
+      <div class="seg text">${[['all', 'All'], ['live', `Live${counts.live ? ' · ' + counts.live : ''}`], ['upcoming', `Upcoming${counts.upcoming ? ' · ' + counts.upcoming : ''}`], ['finished', `Finished${counts.finished ? ' · ' + counts.finished : ''}`]].map(([k, l]) => `<button class="${st.status === k ? 'on' : ''}" data-action="spStatus" data-v="${k}">${k === 'live' && counts.live ? '<span class="live-dot red" style="margin-right:6px"></span>' : ''}${l}</button>`).join('')}</div>
+    </div>
+    <div class="row wrap" style="gap:8px;margin:12px 0 6px"><button class="chip ${st.sport === 'all' ? 'on' : ''}" data-action="spSport" data-v="all">All sports · ${pool.length}</button>${sportsHere.map(sp => `<button class="chip ${st.sport === sp ? 'on' : ''}" data-action="spSport" data-v="${esc(sp)}">${ic(SPORT_IC[sp] || 'ball', 'sm')}${esc(sp)} · ${bySport[sp]}</button>`).join('')}</div>
+    <div class="row wrap" style="gap:8px;margin:6px 0 16px">
+      <select class="select" id="sp-league" style="width:auto;max-width:100%;height:34px;padding:0 10px" aria-label="League"><option value="">All leagues · ${Object.keys(byLeague).length}</option>${leagueOpts}</select>
+      <button class="chip ${st.bettable ? 'on' : ''}" data-action="spToggle" data-k="bettable" aria-pressed="${!!st.bettable}">${ic('chart', 'sm')}Has markets</button>
+      <button class="chip ${st.following ? 'on' : ''}" data-action="spToggle" data-k="following" aria-pressed="${!!st.following}">${ic('bell', 'sm')}Following</button>
+      ${st.q || st.sport !== 'all' || st.league || st.status !== 'all' || st.bettable || st.following ? '<button class="link" data-action="spReset">Reset filters</button>' : ''}
+      <span class="mut" style="margin-left:auto;font-size:12.5px">${total} ${total === 1 ? 'event' : 'events'}</span>
+    </div>
     ${Sports.state === 'stale' && sel.today ? `<div class="sim-note" style="margin-bottom:14px">${ic('alert', 'sm')}<span>ESPN didn’t respond to the last refresh — scores may be behind. Retrying.</span></div>` : ''}${partial}
     ${sel.title ? `<h2 style="font-size:17px;margin-bottom:12px">${esc(sel.title)}</h2>` : ''}
-    ${list.length ? groupList.map(([k, gs]) => `<section class="section" style="margin-top:${sel.title ? 14 : 22}px"><div class="section-head"><h2 style="font-size:15px">${esc(k)}</h2><span class="mut" style="font-size:12px">${gs.length} game${gs.length === 1 ? '' : 's'}</span></div><div class="grid gauto">${gs.map(gameCard).join('')}</div></section>`).join('')
-      : `<div class="card">${emptyState({ icon: 'soccer', title: st.filter === 'Live' ? 'No games live right now' : st.filter === 'Following' ? 'You’re not following any of these games' : 'No games', body: st.filter === 'Following' ? 'Follow a game to get goal, kick-off and full-time alerts.' : st.day === 'past' ? 'No results in the last 7 days for these leagues.' : st.day === 'next' ? 'No fixtures scheduled in the next 7 days for these leagues.' : 'Nothing scheduled on this day for the leagues Nexis follows.' })}</div>`}
+    ${shown.length ? groupList.map(([k, gs]) => `<section class="section" style="margin-top:${sel.title ? 14 : 18}px"><div class="section-head"><h2 style="font-size:15px">${esc(k)}</h2><span class="mut" style="font-size:12px">${gs.length} ${gs.length === 1 ? 'event' : 'events'}</span></div><div class="grid gauto">${gs.map(gameCard).join('')}</div></section>`).join('') + (total > shown.length ? `<div style="text-align:center;margin-top:18px"><button class="btn btn-ghost" data-action="spMore">Show more · ${total - shown.length} left</button></div>` : '')
+      : `<div class="card">${emptyState({ icon: 'soccer', title: q ? `Nothing matches “${esc(st.q)}”` : st.status === 'live' ? 'Nothing live right now' : st.following ? 'You’re not following any of these' : st.bettable ? 'No events with markets here' : 'No events', body: q ? 'Try a team, player, league or tournament name, or another day.' : st.bettable ? 'Only events with a related Panta or Polymarket market are shown. Turn off “Has markets” to see everything.' : st.day === 'past' ? 'No results in the last 7 days for this filter.' : st.day === 'next' ? 'No fixtures in the next 7 days for this filter.' : 'Nothing scheduled on this day for this filter.' })}</div>`}
   </div>`;
 };
 function daysHtml(days, cur) {
@@ -90,6 +116,7 @@ Views.event = async (params, id) => {
   let g = Sports.games.get(id); if (!g) { try { g = await Sports.fetchGame(id); } catch (e) { g = null; } }
   if (!g) { const b = sportsState(); return `<div class="page"><a class="link" href="#/sports">${ic('chevLeft', 'sm')}Sports</a><div style="margin-top:14px">${b || `<div class="card">${emptyState({ icon: 'soccer', title: 'Game not found', body: 'ESPN has no game with this link. It may have been removed, or the link is wrong.' })}</div>`}</div></div>`; }
   const rel = Sports.related(g); Panta.watch(rel.panta.map(m => m.id));
+  if (g.kind === 'match' || g.kind === 'field') return eventSimple(g, rel);
   return `<div class="page"><a class="link" href="#/sports">${ic('chevLeft', 'sm')}Sports</a>
     <div class="card ev-hero ${g.state === 'in' ? 'live' : ''}" style="margin-top:12px" id="ev-hero">${eventHero(g)}</div>
     <div class="mkt-layout" style="margin-top:16px"><div style="min-width:0" class="stack">
@@ -101,13 +128,41 @@ Views.event = async (params, id) => {
       <div class="card"><div class="card-head"><h3>Game info</h3></div><div id="ev-info">${gameInfo(g)}</div></div>
     </aside></div></div>`;
 };
+/* Tennis / MMA (player vs player) and golf / racing (leaderboard) event pages. */
+function eventSimple(g, rel) {
+  return `<div class="page"><a class="link" href="#/sports">${ic('chevLeft', 'sm')}Sports</a>
+    <div class="card ev-hero ${g.state === 'in' ? 'live' : ''}" style="margin-top:12px" id="ev-hero">${eventHero(g)}</div>
+    <div class="mkt-layout" style="margin-top:16px"><div style="min-width:0" class="stack">
+      <div class="card"><div class="card-head"><h3>${g.kind === 'field' ? 'Leaderboard' + (g.session ? ' · ' + esc(g.session) : '') : g.sport === 'Tennis' ? 'Set by set' : 'Fight'}</h3>${srcBadge('espn', true)}</div><div id="ev-board">${eventBoard(g)}</div></div>
+    </div><aside class="stack">
+      <div id="ev-markets">${relatedMarketsCard(rel, g.kind === 'field' ? `No Panta markets mention ${g.name} yet.` : `No Panta markets mention ${g.home.name} or ${g.away.name} yet.`)}</div>
+      <div class="card"><div class="card-head"><h3>Event info</h3></div><div id="ev-info">${gameInfo(g)}</div></div>
+    </aside></div></div>`;
+}
+function eventBoard(g) {
+  if (g.kind === 'field') return g.leaders.length ? `<div class="lb big"><div class="lb-row lb-head"><span>Pos</span><span></span><span>Name</span><span>${g.sport === 'Golf' ? 'To par' : 'Result'}</span><span>${g.sport === 'Golf' ? 'Thru' : ''}</span></div>${leaderRows(g, 40)}</div>` : `<p class="mut" style="padding:14px 18px;font-size:13px">${g.state === 'pre' ? 'The leaderboard appears once play starts.' : 'ESPN hasn’t published a leaderboard for this event.'}</p>`;
+  const n = Math.max(g.home.sets.length, g.away.sets.length);
+  if (!n) return `<p class="mut" style="padding:14px 18px;font-size:13px">${g.state === 'pre' ? 'Scores appear once the match starts.' : g.state === 'post' ? `${esc((g.home.winner ? g.home : g.away).name)} won${g.detail ? ' · ' + esc(g.detail) : ''}.` : 'Live — no score breakdown published.'}</p>`;
+  const row = (p, o) => `<tr><td>${p.logo ? `<img src="${esc(p.logo)}" alt="" width="18" height="12" style="vertical-align:middle;margin-right:6px" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}<b style="font-weight:${p.winner ? 700 : 500}">${esc(p.name)}</b>${p.winner ? ' ' + ic('check', 'sm') : ''}</td>${Array.from({ length: n }, (_, i) => { const x = p.sets[i], y = o.sets[i]; const won = x && y && x.v > y.v; return `<td class="r num" style="${won ? 'font-weight:700' : 'color:var(--muted)'}">${x && x.v != null ? x.v : ''}${x && x.tb != null ? `<sup>${x.tb}</sup>` : ''}</td>`; }).join('')}</tr>`;
+  return `<div class="table-wrap"><table class="t"><thead><tr><th>Player</th>${Array.from({ length: n }, (_, i) => `<th class="r">Set ${i + 1}</th>`).join('')}</tr></thead><tbody>${row(g.home, g.away)}${row(g.away, g.home)}</tbody></table></div>`;
+}
 function eventHero(g) {
+  if (g.kind === 'field') return `<div class="row" style="gap:8px;font-size:12.5px;color:var(--text-2)">${ic(SPORT_IC[g.sport] || 'ball', 'sm')}<span>${esc(g.league)}</span><span style="margin-left:auto" class="row">${gameBadge(g)}${followBtn(g)}</span></div>
+    <h1 style="font-size:clamp(22px,3vw,32px);margin:14px 0 6px">${esc(g.name)}</h1>
+    ${g.leaders[0] ? `<p class="dim" style="font-size:14px">${g.state === 'post' ? 'Winner' : 'Leader'}: <b style="color:var(--text)">${esc(g.leaders[0].name)}</b>${g.leaders[0].score ? ' · ' + esc(g.leaders[0].score) : ''}</p>` : ''}
+    <div class="row wrap ev-meta"><span>${ic('clock', 'sm')}${esc(g.state === 'pre' ? Sports.label(g) : g.detail || '')}</span>${g.session ? `<span>${ic('flag', 'sm')}${esc(g.session)}</span>` : ''}${g.venue ? `<span>${ic('flag', 'sm')}${esc(g.venue)}</span>` : ''}<span class="mut" style="margin-left:auto">Updated ${agoT(Sports.updatedAt || now())}</span></div>`;
+  if (g.kind === 'match') return `<div class="row" style="gap:8px;font-size:12.5px;color:var(--text-2)">${ic(SPORT_IC[g.sport] || 'ball', 'sm')}<span>${esc(g.league)}${g.tournament ? ' · ' + esc(g.tournament) : ''}</span><span style="margin-left:auto" class="row">${gameBadge(g)}${followBtn(g)}</span></div>
+    ${scoreboardHtml(g, true)}
+    ${g.setLine ? `<p class="num" style="text-align:center;font-size:15px;margin-bottom:6px">${esc(g.setLine)}</p>` : ''}
+    <div class="row wrap ev-meta"><span>${ic('clock', 'sm')}${esc(g.state === 'pre' ? Sports.label(g) : g.detail || '')}</span>${g.round ? `<span>${ic('trophy', 'sm')}${esc(g.round)}</span>` : ''}${g.venue ? `<span>${ic('flag', 'sm')}${esc(g.venue)}</span>` : ''}<span class="mut" style="margin-left:auto">Updated ${agoT(Sports.updatedAt || now())}</span></div>`;
   return `<div class="row" style="gap:8px;font-size:12.5px;color:var(--text-2)">${ic(SPORT_IC[g.sport] || 'ball', 'sm')}<span>${esc(g.league)}</span>${g.notes ? `<span class="mut">· ${esc(g.notes)}</span>` : ''}<span style="margin-left:auto" class="row">${gameBadge(g)}${followBtn(g)}</span></div>
     ${scoreboardHtml(g, true)}
     ${g.state === 'in' && g.lastPlay ? `<p class="dim" style="text-align:center;font-size:13px;margin-bottom:6px">${esc(g.lastPlay)}</p>` : ''}
     <div class="row wrap ev-meta"><span>${ic('clock', 'sm')}${esc(g.state === 'pre' ? Sports.label(g) : g.detail || '')}</span>${g.venue ? `<span>${ic('flag', 'sm')}${esc(g.venue)}${g.city ? ', ' + esc(g.city) : ''}</span>` : ''}${g.broadcast ? `<span>${ic('radio', 'sm')}${esc(g.broadcast)}</span>` : ''}${g.odds && g.odds.text ? `<span title="Sportsbook line published by ESPN">${ic('chart', 'sm')}${esc(g.odds.text)}${g.odds.ou != null ? ' · O/U ' + esc(g.odds.ou) : ''}${g.odds.provider ? ' <span class="mut">(' + esc(g.odds.provider) + ')</span>' : ''}</span>` : ''}<span class="mut" style="margin-left:auto">Updated ${agoT(Sports.updatedAt || now())}</span></div>`;
 }
 function gameInfo(g) {
+  if (g.kind === 'match' || g.kind === 'field') { const rows = [['Starts', new Date(g.start).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })], ['Ends', g.end ? fmtDate(g.end, { month: 'short', day: 'numeric' }) : ''], ['Status', g.detail || g.statusName], ['Competition', g.league], ['Event', g.tournament], [g.kind === 'field' ? 'Session' : 'Round', g.kind === 'field' ? g.session : g.round], ['Venue', g.venue], ['Records', g.kind === 'match' ? [g.home.record && `${g.home.short} ${g.home.record}`, g.away.record && `${g.away.short} ${g.away.record}`].filter(Boolean).join(' · ') : '']].filter(r => r[1]);
+    return rows.map(([k, v]) => `<div class="row" style="padding:10px 18px;border-bottom:1px solid var(--line);font-size:13px;gap:12px"><span class="mut" style="width:90px;flex:none">${k}</span><span>${esc(v)}</span></div>`).join(''); }
   const s = Sports.summaries[g.id];
   const rows = [['Kick-off', new Date(g.start).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })], ['Status', g.detail || g.statusName], ['Venue', g.venue], ['Broadcast', g.broadcast], ['Attendance', s && s.attendance ? Number(s.attendance).toLocaleString('en-US') : ''], ['Officials', s && s.officials.length ? s.officials.join(', ') : ''], ['Records', [g.home.record && `${g.home.short} ${g.home.record}`, g.away.record && `${g.away.short} ${g.away.record}`].filter(Boolean).join(' · ')], ['Form', [g.home.form && `${g.home.short} ${g.home.form}`, g.away.form && `${g.away.short} ${g.away.form}`].filter(Boolean).join(' · ')]].filter(r => r[1]);
   return rows.map(([k, v]) => `<div class="row" style="padding:10px 18px;border-bottom:1px solid var(--line);font-size:13px;gap:12px"><span class="mut" style="width:90px;flex:none">${k}</span><span>${esc(v)}</span></div>`).join('') + (s && s.news.length ? `<div style="padding:10px 18px">${s.news.map(n => n.url ? `<a class="link" style="display:flex;font-size:12.5px;margin:4px 0" href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)} ${ic('ext', 'sm')}</a>` : '').join('')}</div>` : '');
@@ -152,11 +207,13 @@ function lineupsBlock(g) {
 }
 async function paintEventSummary(id) {
   const g = Sports.games.get(id); if (!g || current.route !== 'event' || current.arg !== id) return;
+  if (g.kind === 'match' || g.kind === 'field') return paintEventParts(id);
   try { await Sports.summary(g); } catch (e) { const s = $('#ev-stats'); if (s && !Sports.summaries[id]) s.innerHTML = `<p class="mut" style="font-size:13px;padding:8px 0">Match details unavailable: ${esc(e.message)}</p>`; }
   if (current.arg !== id) return; paintEventParts(id);
 }
 function paintEventParts(id) {
   const g = Sports.games.get(id); if (!g) return;
+  if (g.kind === 'match' || g.kind === 'field') { const b = $('#ev-board'); if (b) { const h = eventBoard(g); if (b.innerHTML !== h) b.innerHTML = h; } const hero = $('#ev-hero'); if (hero) { const h = eventHero(g); if (hero.dataset.sig !== h) { hero.innerHTML = h; hero.dataset.sig = h; hero.classList.toggle('live', g.state === 'in'); } } const inf = $('#ev-info'); if (inf) inf.innerHTML = gameInfo(g); return; }
   const set = (sel, html) => { const el = $(sel); if (el && el.innerHTML !== html) el.innerHTML = html; };
   set('#ev-stats', statsBlock(g)); set('#ev-events', detailsTimeline(g)); set('#ev-lineups', lineupsBlock(g)); set('#ev-info', gameInfo(g));
   const hero = $('#ev-hero'); if (hero) { const h = eventHero(g); if (hero.dataset.sig !== h) { hero.innerHTML = h; hero.dataset.sig = h; hero.classList.toggle('live', g.state === 'in'); } }

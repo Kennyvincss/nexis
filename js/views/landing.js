@@ -3,7 +3,7 @@
    ===================================================================== */
 Views.landing = () => {
   const top = pantaList({ sort: 'volume' }).filter(m => m.tradable).slice(0, 2);
-  const live = Sports.list().filter(g => g.state === 'in').slice(0, 2);
+  const live = Sports.list().filter(g => g.state === 'in' && g.home).slice(0, 2);
   const coins = Crypto.coins.slice(0, 5);
   const feedsLive = Object.keys(FEEDS).filter(k => Feeds.live(k)).length;
   return `<div class="landing">
