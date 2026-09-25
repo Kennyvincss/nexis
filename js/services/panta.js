@@ -51,6 +51,8 @@ const Panta = {
     m.tradable = !m.resolved && !m.cancelled && (m.phase === 'primary' || m.status === 'open' || m.phase === '') && (!m.end || m.end > now());
     return m;
   },
+  /** Bets opened from Nexis Sports (one Panta market per game and bet type). They are listed in the sportsbook, not in Markets. */
+  isBook(m) { return !!m && (/Created from Nexis Sports\.\s*$/.test(m.description || '') || /^This market is about the .+ (match|game) .+ vs .+ scheduled for /.test(m.rule || '') || (typeof Book !== 'undefined' && Book.ownsMarket && Book.ownsMarket(m.id))); },
   /** Panta's catalogue often ships an empty title; the question may only appear in the detail response.
       A known question is never replaced by an empty one, and questions are remembered in this browser. */
   titles: null,

@@ -35,7 +35,7 @@ function polyCard(m) {
     <div class="mcard-foot"><span><b>${kusd(m.vol)}</b> vol</span><span><b>${kusd(m.liq)}</b> liq</span><a class="link" style="margin-left:auto;position:relative;z-index:2" href="${Poly.url(m)}" target="_blank" rel="noopener">Polymarket ${ic('ext', 'sm')}</a></div></article>`;
 }
 function pantaList({ cat = 'all', q = '', sort = 'volume', status = 'all' } = {}) {
-  let l = Panta.order.map(id => Panta.markets.get(id)).filter(Boolean).filter(m => !m.cancelled);
+  let l = Panta.order.map(id => Panta.markets.get(id)).filter(Boolean).filter(m => !m.cancelled && !Panta.isBook(m));
   if (status === 'open') l = l.filter(m => m.tradable); else if (status === 'closed') l = l.filter(m => !m.tradable);
   if (cat !== 'all') l = l.filter(m => m.category === cat);
   if (q) { const s = q.toLowerCase(); l = l.filter(m => (m.title + ' ' + m.description + ' ' + m.category).toLowerCase().includes(s)); }
@@ -47,7 +47,7 @@ function pantaList({ cat = 'all', q = '', sort = 'volume', status = 'all' } = {}
 Views.markets = async (params) => {
   const st = UI.markets; if (params.get('cat')) st.cat = params.get('cat'); if (params.get('src')) st.src = params.get('src');
   if (st.src === 'poly') {
-    let list = [...Poly.markets.values()]; if (st.cat !== 'all') list = list.filter(m => m.cat === st.cat); if (st.q) list = list.filter(m => m.q.toLowerCase().includes(st.q.toLowerCase()));
+    let list = [...Poly.markets.values()].filter(m => !m.game && !(m.end && m.end < now())); if (st.cat !== 'all') list = list.filter(m => m.cat === st.cat); if (st.q) list = list.filter(m => m.q.toLowerCase().includes(st.q.toLowerCase()));
     list.sort((a, b) => b.vol24 - a.vol24);
     return marketsFrame(st, list.length ? `<div class="grid gauto">${list.map(polyCard).join('')}</div>` : Poly.state === 'offline' ? unavailable('Polymarket data unavailable', 'Nexis couldn’t reach Polymarket. It retries automatically.') : skeletonCards(6), list.length, 'Reference markets from Polymarket. Prices stream live; trade them on Polymarket.');
   }
@@ -72,7 +72,7 @@ Views.market = async (params, id) => (id || '').startsWith('pm-') ? polyMarketVi
 async function pantaMarketView(id, params) {
   const blocked = pantaState('this market'); if (blocked && !Panta.markets.has(id)) return `<div class="page">${blocked}</div>`;
   let m = Panta.markets.get(id);
-  try { m = await Panta.detail(id); } catch (e) { if (!m) throw e; }
+  try { m = await Panta.detail(id); } catch (e) { if (!m) { if (e.status === 404 || /not found/i.test(e.message)) return `<div class="page"><a class="link" href="#/markets">${ic('chevLeft', 'sm')}Markets</a>${emptyState({ icon: 'compass', title: 'Market not found', body: 'Panta has no market with this ID. It may have been removed, or the link is incomplete.', cta: '<a class="btn btn-primary sm" href="#/markets">Browse markets</a>' })}</div>`; throw e; } }
   Panta.watch([id]); const tr = UI.trade[id] = UI.trade[id] || { side: params.get('side') || 'YES', amt: params.get('amt') || '10' };
   if (params.get('side')) { tr.side = params.get('side'); tr.amt = params.get('amt') || tr.amt; }
   const h = Panta.hist(id);
@@ -81,6 +81,7 @@ async function pantaMarketView(id, params) {
     <div class="mkt-layout" style="margin-top:12px"><div style="min-width:0">
       <div class="mkt-head">${m.image ? `<img class="mkt-img" src="${esc(m.image)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : `<span class="mkt-icon">${esc(catLabel(m.category).slice(0, 3).toUpperCase())}</span>`}<div style="min-width:0"><h1>${esc(m.title)}</h1>
         <div class="mkt-meta"><span class="tag">${esc(catLabel(m.category))}</span>${phaseTag(m)}${m.type === 'breaking' ? '<span class="tag amber">Breaking</span>' : ''}<span>${ic('clock', 'sm')}${esc(endsLabel(m))}</span>${srcBadge('panta')}</div></div></div>
+      ${Panta.isBook(m) ? `<div class="sim-note" style="margin-bottom:12px">${ic('info', 'sm')}<span>This bet was opened from Nexis Sports. <a class="link" style="display:inline;text-decoration:underline" href="#/sports">Open the sportsbook</a> to bet on this game with odds and a bet slip.</span></div>` : ''}
       <div class="price-row">
         <div><div class="lbl">YES</div><div class="big up" data-py="${id}">${m.yes != null ? cents(m.yes) : '—'}</div></div>
         <div><div class="lbl">NO</div><div class="big down" data-pn="${id}">${m.no != null ? cents(m.no) : '—'}</div></div>
@@ -108,6 +109,9 @@ async function pantaMarketView(id, params) {
     </aside></div></div>`;
 }
 function tradePanel(m, tr) {
+  if (m.resolved || m.cancelled) return `<div class="row"><h3 style="font-size:15px">Trade</h3><span class="mut" style="margin-left:auto;font-size:12px">Trading closed</span></div>
+    <div class="trade-closed">${m.cancelled ? `<div class="big-out mut">Cancelled</div><p class="mut" style="font-size:13px">This market was cancelled. Check your portfolio for any refund Panta issues.</p>` : `<div class="lbl mut" style="font-size:12px">Resolved</div><div class="big-out ${m.outcome === 'YES' ? 'up' : m.outcome === 'NO' ? 'down' : ''}">${esc(m.outcome || 'Pending payout')}</div><p class="mut" style="font-size:13px">${m.outcome ? `Each ${esc(m.outcome)} share pays $1. If you hold winning shares, claim them from your position below or in Portfolio.` : 'Panta has resolved this market. The outcome will show here once published.'}</p>`}
+    <a class="btn btn-ghost block" href="#/portfolio">Go to portfolio</a></div>`;
   const blocked = !m.tradable ? (m.resolved ? `Resolved${m.outcome ? ' ' + m.outcome : ''} — trading closed` : m.cancelled ? 'Market cancelled' : m.phase === 'secondary' ? 'This market is in its secondary (order-book) phase. Panta’s API currently supports primary-phase buys only.' : 'Trading has ended') : null;
   const px = tr.side === 'YES' ? m.yes : m.no; const amt = nz(tr.amt, 0);
   return `<div class="row"><h3 style="font-size:15px">Trade</h3><span class="mut" style="margin-left:auto;font-size:12px">USDC · signed by your wallet</span></div>
@@ -127,7 +131,7 @@ function aiPanel(m) {
 }
 async function paintPantaTrades(id) {
   const box = $('#pt-trades'); if (!box || box.dataset.mid !== id) return;
-  try { const list = await PantaTape.load(id); box.innerHTML = list.length ? `<table class="t tape"><tbody>${list.slice(0, 15).map(t => `<tr><td style="padding:9px 18px"><span class="${t.side === 'YES' ? 'up' : 'down'}" style="font-weight:600;font-size:12px">${t.side}</span> <a class="dim" style="font-size:12.5px" href="#/tracker/sol:${esc(t.wallet)}">${esc(shortW(t.wallet))}</a>${t.primary ? '' : ' <span class="tag" style="height:17px;font-size:10px">2°</span>'}</td><td class="r num" style="font-size:12.5px">${fmtNum(t.amount, 2)}</td><td class="r mut" style="font-size:12px;padding-right:18px">${t.t ? ago(t.t) : ''} <a href="${explorerTx(t.sig)}" target="_blank" rel="noopener" aria-label="View transaction">${ic('ext', 'sm')}</a></td></tr>`).join('')}</tbody></table>` : '<p class="mut" style="padding:14px 18px;font-size:13px">No trades yet on this market.</p>'; }
+  try { const list = await PantaTape.load(id); box.innerHTML = list.length ? `<table class="t tape"><tbody>${list.slice(0, 15).map(t => `<tr><td style="padding:9px 18px"><span class="${t.side === 'YES' ? 'up' : 'down'}" style="font-weight:600;font-size:12px">${t.side}</span> <a class="dim" style="font-size:12.5px" href="#/tracker/sol:${esc(t.wallet)}">${esc(shortW(t.wallet))}</a>${t.primary ? '' : ' <span class="tag" style="height:17px;font-size:10px">2°</span>'}</td><td class="r num" style="font-size:12.5px">${fmtNum(t.amount, 2)}</td><td class="r mut when" style="font-size:12px;padding-right:18px">${t.t ? ago(t.t) : ''}<a href="${explorerTx(t.sig)}" target="_blank" rel="noopener" aria-label="View transaction">${ic('ext', 'sm')}</a></td></tr>`).join('')}</tbody></table>` : '<p class="mut" style="padding:14px 18px;font-size:13px">No trades yet on this market.</p>'; }
   catch (e) { box.innerHTML = `<p class="mut" style="padding:14px 18px;font-size:13px">${esc(e.message)}</p>`; }
 }
 async function paintMyPosition(id) {
@@ -137,9 +141,10 @@ async function paintMyPosition(id) {
   catch (e) { box.innerHTML = `<div class="card-pad"><p class="mut" style="font-size:13px">Positions unavailable: ${esc(e.message)}</p></div>`; }
 }
 async function polyMarketView(id) {
+  if (!Poly.markets.has(id) && Poly.state !== 'offline') await Promise.allSettled([Poly.state === 'idle' || !Poly.markets.size ? Poly.loadOnce() : null, Poly.gamesState !== 'live' ? Poly.loadGames() : null]);
   const m = Poly.markets.get(id); if (!m) { if (Poly.state === 'offline') throw new Error('Polymarket data is unavailable right now.'); throw new Error('This market isn’t loaded — open it from Markets → Polymarket.'); }
   Promise.allSettled([Poly.history(m), Poly.oi(m), Poly.marketTrades(m), Poly.holders(m)]).then(([h, oi, tr, ho]) => {
-    if (current.arg !== id) return; const c = $(`.chart-box[data-chart="poly"][data-id="${id}"]`); if (c) mountChartEl(c);
+    if (current.arg !== id) return; if (h.status === 'rejected') m.histErr = true; const c = $(`.chart-box[data-chart="poly"][data-id="${id}"]`); if (c) mountChartEl(c);
     setText(`[data-moi="${id}"]`, m.oi != null ? usd(m.oi, 0) : '—');
     const tb = $('#pm-trades'); if (tb) tb.innerHTML = polyTape(Poly.mtrades[m.conditionId] || [], false);
     const hb = $('#pm-holders'); if (hb) hb.innerHTML = ho.status === 'fulfilled' && ho.value.length ? ho.value.map(h => `<a class="row" href="#/tracker/pm:${esc(h.wallet)}" style="padding:10px 16px;border-bottom:1px solid var(--line)">${avatarFor(h.name, h.img, 'sm')}<span style="font-size:13px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@${esc(h.name)}</span><span class="tag ${h.idx === 0 ? 'green' : 'red'}">${esc(h.idx === 0 ? m.yesLabel : m.noLabel)}</span><span class="num mut" style="margin-left:auto;font-size:12px">${kfmt(h.amount)} sh</span></a>`).join('') : '<p class="mut" style="padding:14px 18px;font-size:13px">Holder data unavailable.</p>';
@@ -162,7 +167,7 @@ function polyTape(list, showMarket = true, n = 20) {
   return `<table class="t tape"><tbody>${list.slice(0, n).map(t => `<tr><td style="padding:9px 18px"><span class="${t.yesSide ? 'up' : 'down'}" style="font-weight:600;font-size:12px">${t.side === 'SELL' ? 'SELL' : 'BUY'} ${esc(t.outcome || '')}</span> <a class="dim" style="font-size:12.5px" href="#/tracker/pm:${esc(t.wallet)}">@${esc(t.who)}</a>${showMarket && t.title ? `<div class="mut" style="font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px">${esc(t.title)}</div>` : ''}</td><td class="r num" style="font-size:12.5px">${usd(t.usd, t.usd < 100 ? 2 : 0)}</td><td class="r num" style="font-size:12.5px">${cents(t.price)}</td><td class="r mut" style="font-size:12px;padding-right:18px">${ago(t.t)}</td></tr>`).join('')}</tbody></table>`;
 }
 ChartKinds.panta = (el) => { const h = Panta.hist(el.dataset.id); if (h.length < 2) return; lineChart(el, { values: h.map(x => x[1] * 100), times: h.map(x => x[0]), fmt: v => v.toFixed(0) + '¢', color: 'var(--blue)', domain: [0, 100] }); };
-ChartKinds.poly = (el) => { const m = Poly.markets.get(el.dataset.id); if (!m || !m.hist || m.hist.length < 2) { el.innerHTML = '<p class="mut" style="padding:30px;text-align:center;font-size:13px">Loading price history…</p>'; return; } lineChart(el, { values: m.hist.map(x => x[1] * 100), times: m.hist.map(x => x[0]), fmt: v => v.toFixed(0) + '¢', color: 'var(--blue)', domain: [0, 100] }); };
+ChartKinds.poly = (el) => { const m = Poly.markets.get(el.dataset.id); if (!m || !m.hist || m.hist.length < 2) { el.innerHTML = `<p class="mut" style="padding:30px;text-align:center;font-size:13px">${m && (m.histErr || m.histLoaded) ? 'Price history isn’t available for this market right now.' : 'Loading price history…'}</p>`; if (m && (m.histErr || m.histLoaded)) el.style.height = 'auto'; return; } el.style.height = ''; lineChart(el, { values: m.hist.map(x => x[1] * 100), times: m.hist.map(x => x[0]), fmt: v => v.toFixed(0) + '¢', color: 'var(--blue)', domain: [0, 100] }); };
 
 /* ---------------- TRADING (Panta primary buy) ---------------- */
 function tradeGate(m) {

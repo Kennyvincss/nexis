@@ -241,6 +241,7 @@ const Book = {
 
   /* ---------- registry (/api/book) and Panta markets ---------- */
   reg: new Map(), regAt: new Map(), regOk: true,
+  regIds: new Set(), ownsMarket(id) { return this.regIds.has(id); },
   /** Props shown in the list (all tabs) — looked up in the registry for the visible games. */
   listProps(g) { return [...new Set(g.tabs.flatMap(t => t.cols.filter(Boolean).map(c => c.prop)))]; },
   /** Every prop on the game page. */
@@ -258,7 +259,7 @@ const Book = {
     if (!keys.length) return;
     for (let i = 0; i < keys.length; i += 300) {
       const part = keys.slice(i, i + 300);
-      try { const r = await Net.api('book?keys=' + encodeURIComponent(part.join(','))); this.regOk = true; part.forEach(k => { this.regAt.set(k, now()); const v = r.markets && r.markets[k]; if (v) { this.reg.set(k, v); Panta.rememberTitle(v.marketId, v.question); } }); }
+      try { const r = await Net.api('book?keys=' + encodeURIComponent(part.join(','))); this.regOk = true; part.forEach(k => { this.regAt.set(k, now()); const v = r.markets && r.markets[k]; if (v) { this.reg.set(k, v); this.regIds.add(v.marketId); Panta.rememberTitle(v.marketId, v.question); } }); }
       catch (e) { this.regOk = e.code !== 'NO_STORE'; part.forEach(k => this.regAt.set(k, now())); }
     }
     const ids = [...new Set(keys.map(k => this.reg.get(k)).filter(Boolean).map(v => v.marketId))];

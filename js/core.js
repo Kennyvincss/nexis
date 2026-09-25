@@ -16,7 +16,7 @@ const kfmt = (n) => { const a = Math.abs(n); if (a >= 1e6) return (n/1e6).toFixe
 const kusd = (n) => '$' + kfmt(n);
 const cents = (p) => Math.round(p * 100) + '¢';
 const pct = (n, d = 1) => (n >= 0 ? '+' : '−') + Math.abs(n).toFixed(d) + '%';
-const chgHtml = (n) => `<span class="chg ${n >= 0 ? 'up' : 'down'}">${n >= 0 ? '▲' : '▼'} ${Math.abs(n).toFixed(1)}%</span>`;
+const chgHtml = (n) => Math.abs(n) < 0.05 ? '<span class="chg flat">0.0%</span>' : `<span class="chg ${n >= 0 ? 'up' : 'down'}">${n >= 0 ? '▲' : '▼'} ${Math.abs(n).toFixed(1)}%</span>`;
 const fmtDate = (t, o = { month: 'short', day: 'numeric' }) => new Date(t).toLocaleDateString('en-US', o);
 const fmtDateLong = (t) => new Date(t).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 const ago = (t) => { const d = (now() - t) / 1000; if (d < 45) return 'now'; if (d < 3600) return Math.round(d/60) + 'm'; if (d < 86400) return Math.round(d/3600) + 'h'; if (d < 86400*7) return Math.round(d/86400) + 'd'; return fmtDate(t); };

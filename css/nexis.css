@@ -142,8 +142,8 @@ p{ margin:0; }
 /* ---------- Market card ---------- */
 .mcard{ position:relative; background:var(--card); border:1px solid var(--line); border-radius:var(--r-lg); padding:16px; display:flex; flex-direction:column; gap:12px; transition:border-color .15s, background .15s; }
 .mcard:hover{ border-color:var(--line-3); background:#0E121A; }
-.mcard-top{ display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); }
-.mcard-top .time{ margin-left:auto; display:flex; align-items:center; gap:5px; font-family:var(--mono); }
+.mcard-top{ display:flex; align-items:center; flex-wrap:wrap; gap:6px 8px; font-size:12px; color:var(--muted); }
+.mcard-top .time{ margin-left:auto; display:flex; align-items:center; gap:5px; font-family:var(--mono); white-space:nowrap; }
 .mcard h3{ font-size:15px; font-weight:550; line-height:1.35; min-height:2.7em; letter-spacing:-.01em; }
 .mcard h3 a::after{ content:""; position:absolute; inset:0; border-radius:inherit; }
 .mcard-mid{ display:flex; align-items:flex-end; justify-content:space-between; gap:12px; }
@@ -683,7 +683,7 @@ mark.pred{ background:rgba(61,123,255,.2); color:#fff; border-radius:3px; paddin
   .shell{ grid-template-columns:1fr; }
   .sidebar{ display:none; }
   .main{ padding:18px 16px calc(96px + env(safe-area-inset-bottom,0px)); }
-  .search-trigger{ display:none; }
+  button.search-trigger{ display:none; }
   .top-actions .hide-m{ display:none; }
   .wallet-pill .lbl{ display:none; }
   .bottomnav{ display:grid; grid-template-columns:repeat(5,1fr); position:fixed; left:0; right:0; bottom:0; z-index:60; background:rgba(8,10,16,.94); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); border-top:1px solid var(--line); padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px)); }
@@ -896,3 +896,10 @@ mark.pred{ background:rgba(61,123,255,.2); color:#fff; border-radius:3px; paddin
   .bk-final{ width:auto; margin-right:0; }
   .bk-score{ font-size:24px; }
 }
+
+/* markets: trade tape time cell, resolved trade panel */
+.tape td.when{ white-space:nowrap; }
+.tape td.when a{ display:inline-flex; vertical-align:middle; margin-left:4px; }
+.chg.flat{ color:var(--muted); }
+.trade-closed{ display:flex; flex-direction:column; gap:10px; }
+.trade-closed .big-out{ font-size:28px; font-weight:700; }
