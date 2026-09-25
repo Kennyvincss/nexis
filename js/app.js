@@ -5,7 +5,7 @@
    ===================================================================== */
 
 /* ---------------- shell ---------------- */
-const NAV = [['home', 'Home', 'home'], ['markets', 'Markets', 'chart'], ['crypto', 'Crypto', 'coin'], ['sports', 'Sports', 'soccer'], ['tracker', 'Trader Tracker', 'target'], ['activity', 'Activity', 'zap'], ['polymarket', 'Polymarket', 'layers'], ['create', 'Create Market', 'plus'], ['portfolio', 'Portfolio', 'brief']];
+const NAV = [['home', 'Home', 'home'], ['markets', 'Markets', 'chart'], ['crypto', 'Crypto', 'coin'], ['sports', 'Sports', 'soccer'], ['tracker', 'Trader Tracker', 'target'], ['activity', 'Activity', 'zap'], ['create', 'Create Market', 'plus'], ['portfolio', 'Portfolio', 'brief']];
 const CORE_FEEDS = ['panta', 'polymarket', 'sports', 'crypto', 'chain'];
 function feedPill() {
   const n = CORE_FEEDS.filter(k => Feeds.live(k)).length;
@@ -106,6 +106,7 @@ async function router({ silent = false } = {}) {
     const html = await Views[route](params, arg); if (html) { app.innerHTML = html; hydrate(app); const f = app.querySelector('[autofocus]'); f && f.focus(); } if (!silent) window.scrollTo(0, 0); return;
   }
   if (!$('#view')) { document.body.classList.remove('is-landing'); app.innerHTML = shellHtml(); }
+  if (route === 'polymarket') { location.replace(arg ? '#/market/' + arg : '#/markets'); return; } // the Polymarket section was removed
   const view = Views[route]; const main = $('#view');
   current = { route, arg, params }; renderChrome(route);
   if (!view) { main.innerHTML = `<div class="page">${emptyState({ icon: 'compass', title: 'Page not found', body: 'That link doesn’t match anything in Nexis.', cta: '<a class="btn btn-primary sm" href="#/home">Go home</a>' })}</div>`; return; }
@@ -154,13 +155,6 @@ function bindView(route, arg, params) {
   }
   if (route === 'crypto' && !arg) { debounceInput('#cr-q', 200, (v) => { UI.crypto.q = v; refreshKeepFocus('#cr-q'); }); const s = $('#cr-sort'); s && s.addEventListener('change', () => { UI.crypto.sort = s.value; refresh(); }); }
   if (route === 'crypto' && arg) paintCryptoAbout(arg);
-  if (route === 'polymarket') {
-    debounceInput('#pm-q', 220, (v) => { UI.pm.q = v; refreshKeepFocus('#pm-q'); });
-    $$('[data-pm]').forEach(i => i.addEventListener('input', () => { const tr = UI.pm.trade[i.dataset.id]; if (tr) tr[i.dataset.pm] = i.value; }));
-    if (PMTrade.address && !PMTrade._acctAt) { PMTrade._acctAt = now(); PMTrade.loadAccount(); }
-    viewStops.push(Poller(() => PMTrade.address ? Promise.all([PMTrade.loadAccount(), PMTrade.refresh()]) : null, 20000, { immediate: false }));
-    if (arg) { pmPaintBook(); viewStops.push(Poller(() => pmPaintBook(), 8000, { immediate: false })); const pm = Poly.markets.get(arg); if (pm) Poly.history(pm).then(() => { const c = $(`.chart-box[data-chart="poly"][data-id="${arg}"]`); if (c) mountChartEl(c); }).catch(() => {}); }
-  }
   if (route === 'sports' || route === 'book') bindBook();
   if (['sports', 'event', 'book', 'home', ''].includes(route)) Sports.kick(); // don't wait for the slow (60s) refresh
   if (route === 'sports') { const ss = $('#sp-sport'); if (ss) ss.addEventListener('change', () => { Object.assign(UI.sports, { sport: ss.value, league: '', limit: 60 }); refresh(); }); }
@@ -169,7 +163,6 @@ function bindView(route, arg, params) {
   if (route === 'book' && arg) { const upd = () => { const g = Book.get(arg); if (g && g.espn && g.state !== 'pre') return Sports.summary(g.espn).then(() => paintBookStats(arg)).catch(() => {}); }; viewStops.push(Poller(upd, () => { const g = Book.get(arg); return g && g.state === 'in' ? 15000 : 60000; })); }
   if (route === 'event' && arg) { paintEventSummary(arg); viewStops.push(Poller(() => paintEventSummary(arg), () => { const g = Sports.games.get(arg); return g && g.state === 'in' ? 12000 : 60000; }, { immediate: false })); }
   if (route === 'tracker' && !arg) {
-    paintLeaderboard();
     debounceInput('#tr-q', 350, async (v) => {
       UI.tracker.q = v; UI.tracker.results = null; const box = $('#tr-results'); if (!box) return;
       if (v.trim().length < 2) { box.innerHTML = ''; return; }
@@ -198,21 +191,6 @@ const A_APP = {
   confirmOrder: (el) => { el.disabled = true; confirmOrder(); },
   claim: (el) => requireAuth(() => claimWinnings(el.dataset.id), 'Log in to claim'),
   aiAnalyze: async (el) => { const id = el.dataset.id; const m = Panta.markets.get(id); if (!m) return; setBusy(el, true, 'Analyzing…'); try { UI.ai = UI.ai || {}; UI.ai[id] = await AI.analyze(m); refresh(); } catch (e) { setBusy(el, false); toast({ title: 'Analysis unavailable', body: esc(e.message), kind: 'warn' }); } },
-  pmConnect: async (el) => { setBusy(el, true, 'Connecting…'); try { await PMTrade.connect(el.dataset.id); toast({ title: 'Wallet connected', body: esc(shortW(PMTrade.address)) + ' on Polygon' }); PMTrade.loadAccount(); } catch (e) { toast({ title: 'Couldn’t connect', body: esc(e.message), kind: 'err' }); } setBusy(el, false); refresh(); },
-  pmDisconnect: () => { PMTrade.disconnect(); refresh(); },
-  pmSwitch: async (el) => { setBusy(el, true); try { await PMTrade.ensureChain(); await PMTrade.init(); } catch (e) { toast({ title: 'Couldn’t switch network', body: esc(e.message), kind: 'err' }); } setBusy(el, false); refresh(); },
-  pmEnable: async (el) => { setBusy(el, true, 'Check your wallet…'); try { await PMTrade.enableTrading(); toast({ title: 'Trading enabled' }); PMTrade.loadAccount(); } catch (e) { toast({ title: 'Couldn’t enable trading', body: esc(e.message), kind: 'err' }); } setBusy(el, false); refresh(); },
-  pmResetCreds: () => { PMTrade.resetCreds(); refresh(); },
-  pmApprove: () => pmApproveFlow(),
-  pmRefresh: async (el) => { setBusy(el, true); await PMTrade.refresh(); setBusy(el, false); refresh(); },
-  pmTab: (el) => { UI.pm.tab = el.dataset.t; history.replaceState(null, '', '#/polymarket'); if (PMTrade.address) PMTrade.loadAccount(); refresh(); },
-  pmSide: (el) => { UI.pm.trade[el.dataset.id].side = el.dataset.v; pmRepaintPanel(el.dataset.id); },
-  pmOut: (el) => { UI.pm.trade[el.dataset.id].out = +el.dataset.v; pmRepaintPanel(el.dataset.id); const m = Poly.markets.get(el.dataset.id); const b = $('#pm-book'); if (m && b) { b.dataset.token = m.tokens[+el.dataset.v]; b.previousElementSibling.querySelector('h3').textContent = 'Order book · ' + (+el.dataset.v === 0 ? m.yesLabel : m.noLabel); pmPaintBook(); } },
-  pmKind: (el) => { UI.pm.trade[el.dataset.id].kind = el.dataset.v; pmRepaintPanel(el.dataset.id); },
-  pmReview: (el) => { const m = Poly.markets.get(el.dataset.id); pmReview(pmOrderSpec(m, UI.pm.trade[el.dataset.id])); },
-  pmConfirm: (el) => { el.disabled = true; pmConfirm(); },
-  pmCancel: async (el) => { setBusy(el, true); try { await PMTrade.cancel(el.dataset.id); toast({ title: 'Order cancelled', kind: 'info' }); refresh(); } catch (e) { setBusy(el, false); toast({ title: 'Couldn’t cancel', body: esc(e.message), kind: 'err' }); } },
-  pmSellPos: (el) => { const tok = el.dataset.token; const hit = Poly.byToken.get(tok); const p = PMTrade.position(tok); if (hit) { UI.pm.trade[hit.m.id] = { out: hit.idx, side: 'SELL', kind: 'market', amt: p ? String(Math.floor(p.shares * 100) / 100) : '', price: '' }; location.hash = '#/polymarket/' + hit.m.id; return; } if (p) pmReview({ tokenId: tok, title: p.title, outcome: p.outcome, side: 'SELL', kind: 'market', amount: Math.floor(p.shares * 100) / 100 }); },
   mStatus: (el) => { UI.markets.limit = 60; UI.markets.status = el.dataset.s; history.replaceState(null, '', '#/markets'); refresh(); },
   mCat: (el) => { UI.markets.limit = 60; UI.markets.cat = el.dataset.cat; history.replaceState(null, '', '#/markets'); refresh(); },
   pfTab: (el) => { UI.portfolio.tab = el.dataset.t; history.replaceState(null, '', '#/portfolio'); refresh(); },
@@ -299,11 +277,6 @@ Bus.on('poly:price', ({ m }) => {
 });
 Bus.on('poly', () => softRefresh(['markets', 'home']));
 Bus.on('listings', () => softRefresh(['markets', 'home']));
-Bus.on('poly:trades', () => {
-  const h = $('#home-ltape'); if (h) h.innerHTML = polyTape(Poly.trades, true, 10);
-  const a = $('#act-ltape'); if (a) a.innerHTML = polyTape(Poly.trades, true, 80);
-  const pm = $('#pm-trades'); if (pm) pm.innerHTML = polyTape(Poly.mtrades[pm.dataset.cid] || [], false);
-});
 const paintPantaTapes = () => { const h = $('#home-ptape'); if (h) h.innerHTML = pantaTapeRows(PantaTape.all(), 10); const a = $('#act-ptape'); if (a) a.innerHTML = pantaTapeRows(PantaTape.all(), 80); };
 Bus.on('panta:trades', paintPantaTapes); Bus.on('panta:tape', paintPantaTapes);
 Bus.on('crypto:tick', ({ c, prev }) => {
@@ -327,7 +300,6 @@ Bus.on('notifs', () => { renderChrome(current.route); if (current.route === 'not
 Bus.on('trader', (id) => { if (current.route === 'tracker' && (!current.arg || current.arg === id)) softRefresh(['tracker']); });
 Bus.on('tracker', () => { renderChrome(current.route); softRefresh(['tracker', 'home', 'activity']); });
 Bus.on('portfolio', () => { pfPatch(); softRefresh(['portfolio', 'home']); });
-Bus.on('pm', () => { if (current.route === 'polymarket') { const p = $('#pm-mypos'); const m = current.arg && Poly.markets.get(current.arg); if (p && m) p.innerHTML = pmMyPosition(m); softRefresh(['polymarket']); } });
 Bus.on('feeds', () => { const fp = $('#feed-pill'); if (fp) fp.innerHTML = feedPill(); const pb = $('#panta-badge'); if (pb) pb.innerHTML = pantaBadge(); });
 Bus.on('store', () => { if ($('#view')) renderChrome(current.route); });
 Bus.on('auth:expired', () => { Store.init(null); Balances.v = null; toast({ title: 'You’ve been signed out', body: 'Your session ended or was signed out from another device. Log in again.', kind: 'info' }); if (PROTECTED.includes(current.route)) { UI.auth.next = location.hash.slice(1); location.hash = '#/login'; } else refresh(); });

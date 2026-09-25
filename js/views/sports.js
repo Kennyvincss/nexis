@@ -40,7 +40,7 @@ function gameOdds(g, rel) {
   if (!picks.length && ms[0] && ms[0].yesLabel !== 'Yes') picks = [{ m: ms[0], l: ms[0].yesLabel, p: ms[0].yes }, { m: ms[0], l: ms[0].noLabel, p: 1 - ms[0].yes }];
   if (!picks.length) return '';
   const order = (x) => x.l === g.home.short ? 0 : x.l === 'Draw' ? 1 : 2; picks.sort((a, b) => order(a) - order(b));
-  return `<div class="row" style="gap:6px;position:relative;z-index:2">${picks.slice(0, 3).map(x => `<a class="btn btn-ghost sm" style="flex:1;justify-content:space-between;min-width:0" href="#/polymarket/${x.m.id}" title="Trade on Polymarket in Nexis"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.l)}</span><b class="num">${Math.round(x.p * 100)}¢</b></a>`).join('')}</div>`;
+  return `<div class="row" style="gap:6px;position:relative;z-index:2">${picks.slice(0, 3).map(x => `<a class="btn btn-ghost sm" style="flex:1;justify-content:space-between;min-width:0" href="#/book/${esc(rel.pmEvent.id)}" title="Bet on this game in the sportsbook"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.l)}</span><b class="num">${Math.round(x.p * 100)}¢</b></a>`).join('')}</div>`;
 }
 function sportsState() {
   if (Sports.games.size) return null;

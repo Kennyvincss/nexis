@@ -50,16 +50,14 @@ js/services/          one module per external integration
   wallet.js           blockchain/wallet service (Phantom/Backpack/Solflare, balances, sign + send, confirmation)
   crypto.js           crypto price service (CoinGecko + Coinbase WebSocket)
   sports.js           sports data service (ESPN scoreboard + match summary)
-  polymarket.js       Polymarket markets (top events + per-game sports markets) and the global trades tape
+  polymarket.js       market catalogue (top events) and per-game sports markets
   listings.js         the Markets catalogue on Panta: finds each listed market's Panta market; the first trade opens it
   traders.js          trader activity service (Trader Tracker, Panta trades tape)
-  pmtrade.js          Polymarket trading (EVM wallet, Polygon approvals, CLOB orders)
   notifications.js    notifications service (in-app + optional desktop)
   ai.js               Nexis AI
 js/auth.js            accounts, sign-in methods, settings
 js/views/*.js         pages (markets, crypto, sports, tracker, home, activity, landing)
 js/app.js             router, actions, live DOM updates, boot
-js/vendor/polymarket-trade.js  Polymarket CLOB client + viem bundle (MIT), loaded only in the Polymarket section; rebuild with `npm run vendor:polymarket`
 js/vendor/privy-core.js  Privy browser SDK bundle (Apache-2.0), loaded only for email codes; rebuild with `npm run vendor:privy`
 api/panta.js          Panta proxy: adds X-Api-Key server-side; allowlisted paths only
 api/sports.js         every league's ESPN scoreboard in one trimmed, edge-cached response (or one league's schedule with ?league=)
@@ -85,7 +83,7 @@ The services emit events on a small bus. `app.js` patches the visible page in pl
 | Portfolio | Panta positions + Solana RPC | Positions every 20s, balances every 30s |
 | Crypto | CoinGecko `/coins/markets`, `market_chart`; Coinbase `ticker` WebSocket | Tick-by-tick for assets listed on Coinbase, otherwise every 30s |
 | Sports | ESPN: ~200 built-in leagues plus leagues discovered from ESPN's catalogue (football, basketball, tennis, MLB, NHL, MMA, golf, motorsport, rugby and more), fetched per sport group by `/api/sports` and cached at the edge (10s) | All groups every 60s; while something is live and a scores page is open, the groups with live games every 10s |
-| Trader Tracker | Polymarket Data API (`pm:0x…`), Panta positions (`sol:<wallet>`) | Every 20s per tracked trader |
+| Trader Tracker | Panta positions (`sol:<wallet>`) | Every 20s per tracked trader |
 | Market catalogue (Markets page) | Polymarket Gamma + CLOB WebSocket, traded on Panta | Busiest 100 events every 30s, ~500 events every 5 min; streamed prices |
 
 
@@ -227,32 +225,11 @@ A trade is shown as successful **only after on-chain confirmation**. Transaction
   - price history (see above);
   - cost basis. Entry price and P&L are shown only for trades you place in Nexis.
 
-## Polymarket trading
-
-The **Polymarket** section (`#/polymarket`) trades Polymarket markets from inside Nexis. It is separate from Panta: it uses a different wallet (an EVM wallet on Polygon), a different network and a different balance.
-
-- **Setup, once per wallet:**
-  1. Connect an EVM wallet (MetaMask, Rabby, Coinbase Wallet, or any wallet announced via EIP-6963).
-  2. Switch to Polygon.
-  3. Sign a free message to create Polymarket trading credentials.
-  4. Approve Polymarket's exchange contracts: one transaction per approval, each confirmed on Polygon.
-  5. Fund the wallet with USDC.e and a little POL for gas.
-- **Trading:** market orders (fill-or-kill: a BUY amount is in USDC, a SELL amount in shares) and limit orders (good-till-cancelled), plus the live order book, open orders with cancel, positions and trade history.
-- **Safety:**
-  - Orders are signed in the wallet and sent from the browser straight to `clob.polymarket.com`; Nexis runs no trading server and never holds keys or funds.
-  - A fill counts as successful only after its settlement transaction is confirmed on Polygon. A resting limit order is shown as waiting, not as a trade.
-- **Regions:** Nexis checks Polymarket's geoblock endpoint and disables trading where Polymarket isn't available, and Polymarket enforces its own restrictions too.
-- **Library:** `@polymarket/clob-client` and `viem` are bundled as `js/vendor/polymarket-trade.js` and loaded only in this section. Rebuild with `npm run vendor:polymarket`.
-- **Limitation:** funds held in a polymarket.com account (a proxy wallet) don't appear automatically. The connected wallet trades with its own USDC.
-
 ## Trader Tracker
 
-- **Track any trader:**
-  - Polymarket accounts: search by username or 0x address, or pick from the leaderboard.
-  - Solana wallets trading on Panta: use a wallet address, or a trader from a market's trades tape.
+- **Track any Panta trader:** paste a Solana wallet address, or pick a wallet from "Active on Panta" or a market's trades tape. Polymarket accounts aren't tracked; any tracked before are dropped automatically.
 - **Tracking only watches.** Nexis detects new, resized and closed positions and notifies you, for example "@trader opened a YES position on …".
 - **Copy trades** is a separate switch, for Panta traders only. It never executes on its own: each new position becomes a Panta quote that you review and sign.
-- Polymarket traders can be tracked but not copied, because their positions are on Polygon.
 
 ## Notifications
 

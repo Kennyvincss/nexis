@@ -24,9 +24,8 @@ Views.home = async () => {
     ${live.length || soon.length ? `<section class="section"><div class="section-head"><h2>${live.length ? `<span class="live-dot red"></span> Live now` : 'Up next'}</h2><a class="link" href="#/sports">All sports ${ic('chevRight', 'sm')}</a></div><div class="grid gauto">${[...live.slice(0, 4), ...soon].map(gameCard).join('')}</div></section>` : ''}
     <section class="section"><div class="section-head"><h2>Top markets</h2><a class="link" href="#/markets">All markets ${ic('chevRight', 'sm')}</a></div>
       ${blocked && !markets.length ? blocked : markets.length ? `<div class="grid gauto">${markets.map(x => x.kind === 'panta' ? pantaCard(x.m) : listingCard(x.m)).join('')}</div>` : Panta.state === 'idle' || !Panta.loadedAt || Poly.state === 'idle' ? skeletonCards(3) : `<div class="card">${emptyState({ icon: 'chart', title: 'No open markets', body: 'Panta has no open markets right now.', cta: '<a class="btn btn-primary sm" href="#/create">Create one</a>' })}</div>`}</section>
-    <section class="grid g2" style="gap:18px;margin-top:26px">
+    <section style="margin-top:26px">
       <div class="card"><div class="card-head"><h3>Live trades · Panta</h3>${srcBadge('panta', true)}</div><div id="home-ptape" class="table-wrap">${pantaTapeRows(PantaTape.all(), 10)}</div></div>
-      <div class="card"><div class="card-head"><h3>Live trades · Polymarket</h3>${srcBadge('poly', true)}</div><div id="home-ltape" class="table-wrap">${polyTape(Poly.trades, true, 10)}</div></div>
     </section>
     <section class="card" style="margin-top:18px"><div class="card-head"><h3>Tracked trader activity</h3><a class="link" href="#/tracker">Trader Tracker</a></div>${log.length ? log.map(trLogRow).join('') : `<p class="mut" style="padding:14px 18px;font-size:13px">${Traders.list().length ? 'No position changes detected yet.' : 'Track traders to see their new positions here the moment they happen.'}</p>`}</section>
   </div>`;
