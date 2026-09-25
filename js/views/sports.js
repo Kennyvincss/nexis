@@ -10,7 +10,7 @@ function crest(t, size = '') {
 const scoreText = (g) => g.kind === 'field' ? (g.leaders && g.leaders[0] ? g.leaders[0].name : '') : g.state === 'pre' || g.home.score == null ? 'vs' : `${g.home.score}–${g.away.score}`;
 function gameBadge(g) {
   if (g.state === 'in') return `<span class="live-badge sm"><span class="live-dot red"></span>${esc(g.detail || g.clock || 'LIVE')}</span>`;
-  if (g.state === 'post') return `<span class="tag">${esc(g.detail || 'Final')}</span>`;
+  if (g.state === 'post') { const x = /AET|extra|pen|OT|SO/i.test(g.detail || '') ? ` · ${g.detail.replace(/^FT\s*-?\s*/i, '')}` : ''; return `<span class="tag ft">Full time${esc(x)}</span>`; }
   return `<span class="tag">${esc(Sports.label(g))}</span>`;
 }
 function scoreboardHtml(g, big = false) {

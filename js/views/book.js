@@ -56,7 +56,7 @@ function bkRow(g, slots) {
     ? `<div class="bk-final"><span class="mut">FT</span><b class="num">${esc(bkScore(g) || '—')}</b></div>`
     : `<div class="bk-odds" style="--n:${cols.length}">${cols.map(c => bkOdd(g, c)).join('')}</div>`;
   return `<div class="bk-row ${g.state === 'in' ? 'live' : ''}">
-    <div class="bk-when">${g.state === 'in' ? bkLiveClock(g) : `<b class="num">${bkTime(g)}</b>`}<span class="mut">ID: ${esc(Book.shortId(g))}</span></div>
+    <div class="bk-when">${g.state === 'in' ? bkLiveClock(g) : g.state === 'post' ? `<b class="bk-ft">Full time</b><span class="mut">${new Date(g.start).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })}</span>` : `<b class="num">${bkTime(g)}</b>`}<span class="mut">ID: ${esc(Book.shortId(g))}</span></div>
     <a class="bk-teams" href="#/book/${esc(g.id)}"><span>${esc(g.home.short)}</span><span>${esc(g.away.short)}</span></a>
     ${g.state === 'in' && bkScore(g) ? `<b class="bk-sc num">${g.home.score}<br>${g.away.score}</b>` : ''}
     <a class="bk-stat" href="${statsHref}" aria-label="Stats for ${esc(g.home.short)} vs ${esc(g.away.short)}" title="Stats">${ic('trend', 'sm')}</a>
@@ -67,7 +67,7 @@ function bkRow(g, slots) {
 function bkFilter(list, st) {
   const t = dayStart(now()); const q = st.q.trim().toLowerCase(); const terms = q.split(/\s+/).filter(Boolean);
   return list.filter(g => (st.sport === 'all' || g.sport === st.sport) && (!st.league || g.leagueKey === st.league)
-    && (st.tab === 'results' ? g.state === 'post' : g.state !== 'post') && (st.tab !== 'live' || g.state === 'in') && (st.tab !== 'upcoming' || g.state === 'pre')
+    && (st.tab === 'results' ? g.state === 'post' : g.state !== 'post' || (st.tab === 'all' && now() - g.start < 5 * HOUR)) && (st.tab !== 'live' || g.state === 'in') && (st.tab !== 'upcoming' || g.state === 'pre')
     && (st.when === 'all' || st.tab === 'results' || (st.when === 'today' ? dayStart(g.start) <= t : dayStart(g.start) === t + DAY))
     && (!terms.length || terms.every(w => [g.home.name, g.away.name, g.home.short, g.away.short, g.league, g.region, g.sport, g.pm.title, Book.shortId(g)].join(' ').toLowerCase().includes(w))));
 }
@@ -112,11 +112,11 @@ Views.sports = async (params, arg) => {
   if (st.league && FOOTBALL_PINNED.some(p => p.key === st.league)) st.sport = 'Football';
   const liveN = bkFilter(all, { ...st, tab: 'live', when: 'all' }).length;
   let list = bkFilter(all, st);
-  list = st.tab === 'results' ? list.sort((a, b) => b.start - a.start) : list.sort((a, b) => (a.state === 'in' ? 0 : 1) - (b.state === 'in' ? 0 : 1) || a.start - b.start);
+  list = st.tab === 'results' ? list.sort((a, b) => b.start - a.start) : list.sort((a, b) => ({ in: 0, pre: 1, post: 2 }[a.state] - { in: 0, pre: 1, post: 2 }[b.state]) || a.start - b.start);
   const shown = list.slice(0, st.limit);
   Book.loadReg(shown.filter(g => g.state === 'pre')).catch(() => {});
   // Days → leagues → games (a live section first).
-  const days = new Map(); shown.forEach(g => { const k = g.state === 'in' ? 'Live now' : bkDay(g.start); if (!days.has(k)) days.set(k, new Map()); const L = days.get(k); if (!L.has(g.leagueKey)) L.set(g.leagueKey, []); L.get(g.leagueKey).push(g); });
+  const days = new Map(); shown.forEach(g => { const k = g.state === 'in' ? 'Live now' : g.state === 'post' && st.tab !== 'results' ? 'Finished' : bkDay(g.start); if (!days.has(k)) days.set(k, new Map()); const L = days.get(k); if (!L.has(g.leagueKey)) L.set(g.leagueKey, []); L.get(g.leagueKey).push(g); });
   const anyFootball = shown.some(g => g.football); const tabs = anyFootball ? BOOK_FOOTBALL_TABS : ((shown.find(g => !g.football) || {}).tabs || BOOK_FOOTBALL_TABS);
   if (!tabs.some(t => t.id === st.bt)) st.bt = tabs[0].id;
   const sportsHere = [...new Set(['Football', ...all.filter(g => g.state !== 'post').map(g => g.sport)])].sort((a, b) => (BOOK_SPORTS.indexOf(a) + 1 || 99) - (BOOK_SPORTS.indexOf(b) + 1 || 99));

@@ -101,7 +101,10 @@ const Book = {
       let home = { name: p.a, short: trim(p.a), logo: null, score: null, pm: p.a }, away = { name: p.b, short: trim(p.b), logo: null, score: null, pm: p.b };
       if (e) { const flip = (teamMatch(e.home, p.b, p.abbrs) && !teamMatch(e.home, p.a, p.abbrs)) || (!teamMatch(e.home, p.a, p.abbrs) && teamLoose(e.home, p.b) && !teamLoose(e.home, p.a)); const H = e.home, A = e.away; home = { name: H.name, short: H.short, logo: H.logo, score: H.score, pm: flip ? p.b : p.a }; away = { name: A.name, short: A.short, logo: A.logo, score: A.score, pm: flip ? p.a : p.b }; }
       if (home.score == null) { const sc = /^(\d+)\s*-\s*(\d+)/.exec(p.score || ''); if (sc) { home.score = +sc[1]; away.score = +sc[2]; } }
-      const state = e ? e.state : p.ended ? 'post' : p.live ? 'in' : p.start < now() - 4 * HOUR ? 'post' : 'pre';
+      // ESPN's status when matched; otherwise Polymarket's: ended/FT → finished, live → in play, and a game that kicked
+      // off more than ~2.5h ago (3.5h for other sports) is treated as finished so it never looks upcoming.
+      const pmDone = p.ended || /\b(FT|final|ended|full.?time|AET|pen)/i.test(String(p.period || ''));
+      const state = e ? e.state : pmDone ? 'post' : p.live ? 'in' : p.start < now() - (L.sport === 'Football' || markets.some(m => /\bdraw\b/i.test(m.q || '')) ? 2.5 : 3.5) * HOUR ? 'post' : p.start < now() ? 'in' : 'pre';
       // Three-way (with a draw) whenever it's football by league, by ESPN, or because Polymarket lists a draw for it.
       const hasDraw = markets.some(m => /\bdraw\b/i.test(m.q || ''));
       const football = L.sport === 'Football' || (e && e.sp === 'soccer') || hasDraw;

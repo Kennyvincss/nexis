@@ -831,6 +831,9 @@ mark.pred{ background:rgba(61,123,255,.2); color:#fff; border-radius:3px; paddin
 .bk-mode{ display:flex; width:100%; } .bk-mode button{ flex:1; }
 .bk-when .bk-live{ font-size:11px; white-space:nowrap; }
 .bk-clock{ font-size:11.5px; font-family:var(--mono); color:var(--text); }
+.bk-ft{ font-size:11.5px; font-weight:700; color:var(--text-2); letter-spacing:.02em; text-transform:uppercase; }
+.bk-row:has(.bk-ft){ opacity:.8; }
+.tag.ft{ font-weight:600; }
 .bk-live.inline{ font-size:12.5px; }
 .bk-stats .card-head{ padding:12px 16px; }
 .bk-evs{ display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid var(--line); }
