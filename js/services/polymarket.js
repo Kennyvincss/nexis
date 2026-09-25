@@ -26,6 +26,8 @@ const Poly = {
       this.state = 'live'; Feeds.set('polymarket', 'live'); this.subscribe(); Bus.emit('poly');
     } catch (e) { this.state = this.markets.size ? 'stale' : 'offline'; Feeds.set('polymarket', this.state, e); Bus.emit('poly'); }
   },
+  /** One shared load for pages that need the catalogue now (a direct link to a market). */
+  loadOnce() { if (!this._lo) this._lo = this.load().finally(() => { this._lo = null; }); return this._lo; },
   /** Per-game sports markets (every league Polymarket covers) from /api/pmgames, for matching to ESPN games. */
   games: [], gamesAt: 0, gamesState: 'idle',
   loadGames() { if (!this._gl) this._gl = this._loadGames().finally(() => { this._gl = null; }); return this._gl; },
