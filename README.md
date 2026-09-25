@@ -95,7 +95,7 @@ The services emit events on a small bus. `app.js` patches the visible page in pl
   - every Panta market, except bets opened from the sportsbook (those live in Sports);
   - every open yes/no market from the busiest ~500 Polymarket events.
 - **What's left out:** per-game sports markets (the sportsbook has them), markets whose outcomes aren't Yes/No (e.g. Up/Down) and markets ending within 30 minutes.
-- **Listed markets not yet on Panta** show a **New** tag and estimated prices. Each page shows an estimated price history, the resolution rules and a trade panel.
+- **Listed markets not yet on Panta** look and trade like any Panta market: price, chance, price history, rules and a trade panel. Their prices come from the catalogue until the market opens, and the order review shows Panta's opening fee. YES and NO always add up to 100¢.
 - **The first trade opens the market on Panta.** The trader:
   1. signs Panta's market creation and pays its fee, which funds the market's starting liquidity;
   2. sees Panta's opening price and confirms it;

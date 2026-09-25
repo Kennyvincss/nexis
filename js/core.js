@@ -15,6 +15,8 @@ const sUsd = (n, d = 2) => (n >= 0 ? '+' : '') + usd(n, d);
 const kfmt = (n) => { const a = Math.abs(n); if (a >= 1e6) return (n/1e6).toFixed(a >= 1e7 ? 0 : 2).replace(/\.?0+$/,'') + 'M'; if (a >= 1e3) return (n/1e3).toFixed(a >= 1e5 ? 0 : 1).replace(/\.0$/,'') + 'K'; return String(Math.round(n)); };
 const kusd = (n) => '$' + kfmt(n);
 const cents = (p) => Math.round(p * 100) + '¢';
+/** The NO price shown next to a YES price, so the two always add up to 100¢. */
+const noCents = (yes) => (100 - Math.round(yes * 100)) + '¢';
 const pct = (n, d = 1) => (n >= 0 ? '+' : '−') + Math.abs(n).toFixed(d) + '%';
 const chgHtml = (n) => Math.abs(n) < 0.05 ? '<span class="chg flat">0.0%</span>' : `<span class="chg ${n >= 0 ? 'up' : 'down'}">${n >= 0 ? '▲' : '▼'} ${Math.abs(n).toFixed(1)}%</span>`;
 const fmtDate = (t, o = { month: 'short', day: 'numeric' }) => new Date(t).toLocaleDateString('en-US', o);

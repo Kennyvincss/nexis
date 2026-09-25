@@ -30,12 +30,12 @@ function pantaCard(m) {
 }
 function listingCard(m) {
   return `<article class="mcard">
-    <div class="mcard-top"><span class="tag">${esc(catLabel(m.cat))}</span><span class="tag amber" title="Not traded on Panta yet — the first trade opens it">New</span><span class="time">${ic('clock', 'sm')}${esc(timeLeft(m.end))} left</span></div>
+    <div class="mcard-top"><span class="tag">${esc(catLabel(m.cat))}</span><span class="time">${ic('clock', 'sm')}${esc(timeLeft(m.end))} left</span></div>
     ${m.group && m.evTitle ? `<div class="mut" style="font-size:12px;margin-top:-4px">${esc(m.evTitle)}</div>` : ''}
     <h3><a href="#/market/${m.id}">${esc(m.q)}</a></h3>
-    <div class="mcard-mid"><div><div class="prob-big" data-lpct="${m.id}">${Math.round(m.yes * 100)}%</div><div class="prob-lbl">est. chance</div></div></div>
-    <div class="yn"><button class="btn btn-yes" data-action="quickTrade" data-id="${m.id}" data-side="YES"><span>Yes</span><span data-ly="${m.id}">${cents(m.yes)}</span></button><button class="btn btn-no" data-action="quickTrade" data-id="${m.id}" data-side="NO"><span>No</span><span data-ln="${m.id}">${cents(1 - m.yes)}</span></button></div>
-    <div class="mcard-foot"><span class="mut">First trade opens it on Panta</span></div>
+    <div class="mcard-mid"><div><div class="prob-big" data-lpct="${m.id}">${Math.round(m.yes * 100)}%</div><div class="prob-lbl">chance</div></div></div>
+    <div class="yn"><button class="btn btn-yes" data-action="quickTrade" data-id="${m.id}" data-side="YES"><span>Yes</span><span data-ly="${m.id}">${cents(m.yes)}</span></button><button class="btn btn-no" data-action="quickTrade" data-id="${m.id}" data-side="NO"><span>No</span><span data-ln="${m.id}">${noCents(m.yes)}</span></button></div>
+    <div class="mcard-foot"><span class="mut">Trade on Panta</span></div>
   </article>`;
 }
 function pantaList({ cat = 'all', q = '', sort = 'volume', status = 'all' } = {}) {
@@ -185,19 +185,18 @@ async function listingMarketView(id, params) {
   return `<div class="page">${pantaModeBanner()}<a class="link" href="#/markets">${ic('chevLeft', 'sm')}Markets</a>
     <div class="mkt-layout" style="margin-top:12px"><div style="min-width:0">
       <div class="mkt-head">${m.image ? `<img class="mkt-img" src="${esc(m.image)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : `<span class="mkt-icon">${esc(catLabel(m.cat).slice(0, 3).toUpperCase())}</span>`}<div style="min-width:0">${m.group && m.evTitle ? `<div class="mut" style="font-size:13px">${esc(m.evTitle)}</div>` : ''}<h1>${esc(m.q)}</h1>
-        <div class="mkt-meta"><span class="tag">${esc(catLabel(m.cat))}</span><span class="tag amber">New</span><span>${ic('clock', 'sm')}${esc(timeLeft(m.end))} left</span></div></div></div>
+        <div class="mkt-meta"><span class="tag">${esc(catLabel(m.cat))}</span><span>${ic('clock', 'sm')}${esc(timeLeft(m.end))} left</span></div></div></div>
       <div class="price-row">
-        <div><div class="lbl">YES · est.</div><div class="big up" data-ly="${id}">${cents(m.yes)}</div></div>
-        <div><div class="lbl">NO · est.</div><div class="big down" data-ln="${id}">${cents(1 - m.yes)}</div></div>
-        <div><div class="lbl">Estimated chance</div><div class="num" style="font-size:20px" data-lpct="${id}">${Math.round(m.yes * 100)}%</div></div>
+        <div><div class="lbl">YES</div><div class="big up" data-ly="${id}">${cents(m.yes)}</div></div>
+        <div><div class="lbl">NO</div><div class="big down" data-ln="${id}">${noCents(m.yes)}</div></div>
+        <div><div class="lbl">Implied probability</div><div class="num" style="font-size:20px" data-lpct="${id}">${Math.round(m.yes * 100)}%</div></div>
       </div>
-      <div class="sim-note" style="margin-top:4px">${ic('info', 'sm')}<span>This market isn’t open on Panta yet, so these prices are estimates. The first trade opens it on Panta; you see Panta’s opening price and confirm it before your order is placed. After that, everyone trades the same Panta market.</span></div>
-      <div class="chart-box" data-chart="poly" data-id="${id}"></div><p class="mut" style="font-size:11.5px;margin-top:4px">Estimated price history.</p>
+      <div class="chart-box" data-chart="poly" data-id="${id}"></div>
       <div class="card" style="margin-top:20px"><div class="info-grid">
         <div><div class="k">Trading ends</div><div class="v">${fmtDate(m.end, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</div></div>
         <div><div class="k">Category</div><div class="v">${esc(catLabel(m.cat))}</div></div>
         <div><div class="k">Settlement</div><div class="v">USDC on Solana</div></div>
-        <div><div class="k">Status</div><div class="v">Not opened yet</div></div>
+        <div><div class="k">Resolved by</div><div class="v">Panta Resolution Agent</div></div>
       </div>
       <div class="rules"><div style="grid-column:1/-1"><h4>Resolution</h4><p style="white-space:pre-line">${esc(m.desc || 'Resolved by Panta’s Resolution Agent after the end date.')}</p>${src.length ? `<p class="mut" style="margin-top:6px">Sources: ${src.map(esc).join(', ')}</p>` : ''}</div></div></div>
     </div>
@@ -206,12 +205,12 @@ async function listingMarketView(id, params) {
 function listingPanel(m, tr) {
   const px = tr.side === 'YES' ? m.yes : 1 - m.yes; const amt = nz(tr.amt, 0);
   return `<div class="row"><h3 style="font-size:15px">Trade</h3><span class="mut" style="margin-left:auto;font-size:12px">USDC · signed by your wallet</span></div>
-    <div class="side-toggle"><button class="btn btn-yes ${tr.side === 'YES' ? 'on' : ''}" data-action="side" data-id="${m.id}" data-side="YES"><span>Buy YES</span><b data-ly="${m.id}">${cents(m.yes)}</b></button><button class="btn btn-no ${tr.side === 'NO' ? 'on' : ''}" data-action="side" data-id="${m.id}" data-side="NO"><span>Buy NO</span><b data-ln="${m.id}">${cents(1 - m.yes)}</b></button></div>
+    <div class="side-toggle"><button class="btn btn-yes ${tr.side === 'YES' ? 'on' : ''}" data-action="side" data-id="${m.id}" data-side="YES"><span>Buy YES</span><b data-ly="${m.id}">${cents(m.yes)}</b></button><button class="btn btn-no ${tr.side === 'NO' ? 'on' : ''}" data-action="side" data-id="${m.id}" data-side="NO"><span>Buy NO</span><b data-ln="${m.id}">${noCents(m.yes)}</b></button></div>
     <label class="field"><span>Amount (USDC)</span><div class="input-affix"><input class="input" data-amt="${m.id}" inputmode="decimal" value="${esc(tr.amt)}" aria-label="Amount in USDC"></div></label>
     <div class="presets">${[5, 10, 25, 50, 100].map(v => `<button data-action="preset" data-id="${m.id}" data-v="${v}">$${v}</button>`).join('')}${Balances.v ? `<button data-action="preset" data-id="${m.id}" data-v="max">Max</button>` : ''}</div>
-    <div class="est"><div><span>Estimated ${tr.side} price</span><span>${cents(px)}</span></div><div><span>Indicative shares</span><span>${px > 0 ? (amt / px).toFixed(2) : '—'}</span></div><div><span>Opening fee</span><span>Quoted by Panta</span></div><div><span>USDC balance</span><span data-usdc>${Balances.v ? fmtNum(Balances.v.usdc, 2) : primaryWallet() ? '…' : 'No wallet'}</span></div></div>
+    <div class="est"><div><span>Current ${tr.side} price</span><span>${cents(px)}</span></div><div><span>Indicative shares</span><span>${px > 0 ? (amt / px).toFixed(2) : '—'}</span></div><div><span>Opening fee</span><span>Quoted by Panta</span></div><div><span>USDC balance</span><span data-usdc>${Balances.v ? fmtNum(Balances.v.usdc, 2) : primaryWallet() ? '…' : 'No wallet'}</span></div></div>
     <button class="btn ${tr.side === 'YES' ? 'btn-yes on' : 'btn-no on'} lg block" data-action="listingReview" data-id="${m.id}">Review ${tr.side} order</button>
-    <p class="mut" style="font-size:11.5px;line-height:1.45">You’ll be the first to trade this market. One signature opens it on Panta (Panta’s creation fee, quoted before you sign, which funds the market’s starting liquidity); then you confirm Panta’s price and sign your order. Each share pays $1 if the outcome is ${tr.side}.</p>`;
+    <p class="mut" style="font-size:11.5px;line-height:1.45">Your order goes to Panta. As this market’s first trader you also pay Panta’s one-time opening fee (quoted before you sign; it becomes the market’s starting liquidity), then confirm Panta’s price. Each share pays $1 if the outcome is ${tr.side}.</p>`;
 }
 /** First order on a listing: quote Panta's creation, then create + register the market, confirm the price, buy. */
 async function listingOrder(id) {
