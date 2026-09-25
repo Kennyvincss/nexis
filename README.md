@@ -125,6 +125,7 @@ The services emit events on a small bus. `app.js` patches the visible page in pl
   - Before recording a market, the server checks on Solana (`SOLANA_RPC_URL`) that the creation transaction succeeded, touches the market account and contains the question.
   - It also checks against Polymarket that the question names both teams, or is the exact Polymarket question for `pm:` props.
   - The first registration wins.
+- **Only leagues with ESPN data:** the sportsbook lists only leagues ESPN covers, so games get live scores, clocks and match stats. A league qualifies if it has an ESPN league key, a Polymarket code mapped to one (`BOOK_ESPN` in `js/services/book.js`), exactly the same name as an ESPN league, or a game matched to an ESPN game. Leagues without ESPN data aren't listed, e.g. esports, cricket, boxing, KBO/NPB, KHL, NRL, EuroLeague and competitions ESPN doesn't carry.
 - **Live clock:** football shows the phase (First half, Half-time, Second half, Extra time, Penalties) and a running match clock in HH:MM:SS that ticks every second. The clock comes from ESPN, or from Polymarket's period and elapsed minutes when ESPN doesn't have the game. Other sports show the provider's status (e.g. Q2 5:32).
 - **Match stats on the game page (ESPN):**
   - goalscorers with the minute (penalties and own goals marked) and cards;
