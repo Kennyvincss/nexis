@@ -138,14 +138,15 @@ function softRefresh(routes) {
 function debounceInput(sel, ms, fn) { const i = $(sel); if (!i) return; let t; i.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => fn(i.value, i), ms); }); }
 async function refreshKeepFocus(sel) { const el = $(sel); const pos = el ? el.selectionStart : null; await refresh(); const n = $(sel); if (n) { n.focus(); if (pos != null) n.setSelectionRange(pos, pos); } }
 function repaintTrade(id) {
-  const box = $('#trade-panel'); const m = Panta.markets.get(id); if (!box || !m) return;
+  const pm = String(id).startsWith('pm-'); const box = $('#trade-panel'); const m = pm ? Poly.markets.get(id) : Panta.markets.get(id); if (!box || !m) return;
   const a = document.activeElement; const focused = a && a.matches && a.matches(`[data-amt="${id}"]`); const pos = focused ? a.selectionStart : null;
-  box.innerHTML = tradePanel(m, UI.trade[id]); bindTradeInput(id);
+  box.innerHTML = pm ? listingPanel(m, UI.trade[id]) : tradePanel(m, UI.trade[id]); bindTradeInput(id);
   if (focused) { const n = box.querySelector(`[data-amt="${id}"]`); n.focus(); n.setSelectionRange(pos, pos); }
 }
 function bindTradeInput(id) { const inp = $(`#trade-panel [data-amt="${id}"]`); if (!inp) return; let t; inp.addEventListener('input', () => { UI.trade[id].amt = inp.value.replace(/[^0-9.]/g, ''); clearTimeout(t); t = setTimeout(() => repaintTrade(id), 250); }); }
 function bindView(route, arg, params) {
-  if (route === 'markets') { debounceInput('#mk-q', 220, (v) => { UI.markets.q = v; refreshKeepFocus('#mk-q'); }); const s = $('#mk-sort'); s && s.addEventListener('change', () => { UI.markets.sort = s.value; refresh(); }); }
+  if (route === 'markets') { debounceInput('#mk-q', 220, (v) => { UI.markets.q = v; UI.markets.limit = 60; refreshKeepFocus('#mk-q'); }); const s = $('#mk-sort'); s && s.addEventListener('change', () => { UI.markets.sort = s.value; refresh(); }); }
+  if (route === 'market' && arg && arg.startsWith('pm-')) bindTradeInput(arg);
   if (route === 'market' && arg && !arg.startsWith('pm-')) {
     bindTradeInput(arg); paintPantaTrades(arg); paintMyPosition(arg);
     viewStops.push(Poller(() => paintPantaTrades(arg), 15000, { immediate: false }));
@@ -191,10 +192,12 @@ const A_APP = {
   side: (el) => { const id = el.dataset.id; UI.trade[id].side = el.dataset.side; repaintTrade(id); },
   preset: (el) => { const id = el.dataset.id; UI.trade[id].amt = el.dataset.v === 'max' ? String(Math.floor((Balances.v ? Balances.v.usdc : 0) * 100) / 100) : el.dataset.v; repaintTrade(id); },
   reviewOrder: (el) => openOrder(el.dataset.id),
+  listingReview: (el) => listingOrder(el.dataset.id),
+  listingConfirm: () => listingConfirm(),
+  mMore: () => { UI.markets.limit = (UI.markets.limit || 60) + 60; refresh(); },
   confirmOrder: (el) => { el.disabled = true; confirmOrder(); },
   claim: (el) => requireAuth(() => claimWinnings(el.dataset.id), 'Log in to claim'),
   aiAnalyze: async (el) => { const id = el.dataset.id; const m = Panta.markets.get(id); if (!m) return; setBusy(el, true, 'Analyzing…'); try { UI.ai = UI.ai || {}; UI.ai[id] = await AI.analyze(m); refresh(); } catch (e) { setBusy(el, false); toast({ title: 'Analysis unavailable', body: esc(e.message), kind: 'warn' }); } },
-  mSrc: (el) => { UI.markets.src = el.dataset.src; UI.markets.cat = 'all'; history.replaceState(null, '', '#/markets'); refresh(); },
   pmConnect: async (el) => { setBusy(el, true, 'Connecting…'); try { await PMTrade.connect(el.dataset.id); toast({ title: 'Wallet connected', body: esc(shortW(PMTrade.address)) + ' on Polygon' }); PMTrade.loadAccount(); } catch (e) { toast({ title: 'Couldn’t connect', body: esc(e.message), kind: 'err' }); } setBusy(el, false); refresh(); },
   pmDisconnect: () => { PMTrade.disconnect(); refresh(); },
   pmSwitch: async (el) => { setBusy(el, true); try { await PMTrade.ensureChain(); await PMTrade.init(); } catch (e) { toast({ title: 'Couldn’t switch network', body: esc(e.message), kind: 'err' }); } setBusy(el, false); refresh(); },
@@ -210,8 +213,8 @@ const A_APP = {
   pmConfirm: (el) => { el.disabled = true; pmConfirm(); },
   pmCancel: async (el) => { setBusy(el, true); try { await PMTrade.cancel(el.dataset.id); toast({ title: 'Order cancelled', kind: 'info' }); refresh(); } catch (e) { setBusy(el, false); toast({ title: 'Couldn’t cancel', body: esc(e.message), kind: 'err' }); } },
   pmSellPos: (el) => { const tok = el.dataset.token; const hit = Poly.byToken.get(tok); const p = PMTrade.position(tok); if (hit) { UI.pm.trade[hit.m.id] = { out: hit.idx, side: 'SELL', kind: 'market', amt: p ? String(Math.floor(p.shares * 100) / 100) : '', price: '' }; location.hash = '#/polymarket/' + hit.m.id; return; } if (p) pmReview({ tokenId: tok, title: p.title, outcome: p.outcome, side: 'SELL', kind: 'market', amount: Math.floor(p.shares * 100) / 100 }); },
-  mStatus: (el) => { UI.markets.status = el.dataset.s; history.replaceState(null, '', '#/markets'); refresh(); },
-  mCat: (el) => { UI.markets.cat = el.dataset.cat; history.replaceState(null, '', '#/markets'); refresh(); },
+  mStatus: (el) => { UI.markets.limit = 60; UI.markets.status = el.dataset.s; history.replaceState(null, '', '#/markets'); refresh(); },
+  mCat: (el) => { UI.markets.limit = 60; UI.markets.cat = el.dataset.cat; history.replaceState(null, '', '#/markets'); refresh(); },
   pfTab: (el) => { UI.portfolio.tab = el.dataset.t; history.replaceState(null, '', '#/portfolio'); refresh(); },
   trTab: (el) => { UI.tracker.tab = el.dataset.t; refresh(); },
   actTab: (el) => { UI.activity.tab = el.dataset.t; history.replaceState(null, '', '#/activity'); refresh(); },
@@ -294,7 +297,8 @@ Bus.on('poly:price', ({ m }) => {
   $$(`[data-lbook="${m.id}"]`).forEach(el => { const h = polyBook(m); if (el.innerHTML !== h) el.innerHTML = h; });
   if (current.route === 'market' && current.arg === m.id) throttled('pchart', 4000, () => { const c = $(`.chart-box[data-chart="poly"][data-id="${m.id}"]`); if (c) mountChartEl(c); });
 });
-Bus.on('poly', () => { if (current.route === 'markets' && UI.markets.src === 'poly') softRefresh(['markets']); });
+Bus.on('poly', () => softRefresh(['markets', 'home']));
+Bus.on('listings', () => softRefresh(['markets', 'home']));
 Bus.on('poly:trades', () => {
   const h = $('#home-ltape'); if (h) h.innerHTML = polyTape(Poly.trades, true, 10);
   const a = $('#act-ltape'); if (a) a.innerHTML = polyTape(Poly.trades, true, 80);

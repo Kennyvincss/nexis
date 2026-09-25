@@ -268,6 +268,6 @@ const Store = {
 };
 
 /* ---------- shared view state ---------- */
-const UI = { trade: {}, markets: { cat: 'all', sort: 'volume', q: '', src: 'panta' }, crypto: { sort: 'mcap', q: '' }, sports: { filter: 'All', mode: 'book' }, tracker: { tab: 'Positions', q: '', results: null }, portfolio: { tab: 'Positions' }, activity: { tab: 'Panta' }, chartRange: {} };
+const UI = { trade: {}, markets: { cat: 'all', sort: 'popular', q: '', limit: 60 }, crypto: { sort: 'mcap', q: '' }, sports: { filter: 'All', mode: 'book' }, tracker: { tab: 'Positions', q: '', results: null }, portfolio: { tab: 'Positions' }, activity: { tab: 'Panta' }, chartRange: {} };
 const Views = {};
 let current = { route: null, arg: null, params: new URLSearchParams() };

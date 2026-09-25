@@ -18,11 +18,22 @@ function polyCat(tags, title) {
 }
 const Poly = {
   markets: new Map(), byToken: new Map(), trades: [], mtrades: {}, keys: new Set(), state: 'idle', ws: null,
+  /** The market catalogue Nexis lists (every open yes/no market of the busiest ~500 events; per-game sports markets
+      belong to the sportsbook). The full catalogue refreshes every 5 minutes, the busiest page every 30 seconds. */
+  catAt: 0, CAT_PAGES: 5, CAT_PAGE: 100,
+  isGameEvent(e) { return (e.markets || []).some(x => x.sportsMarketType || x.gameStartTime) || !!e.gameId; },
   async load() {
     try {
-      const evs = await Net.data(`${GAMMA}/events?active=true&closed=false&archived=false&order=volume24hr&ascending=false&limit=40`);
-      if (!Array.isArray(evs)) throw new Error('Unexpected response');
-      evs.filter(e => !sportExcluded({ tags: (e.tags || []).map(t => t.label || '') })).forEach(e => { const cat = polyCat((e.tags || []).map(t => t.label || ''), e.title); (e.markets || []).filter(x => !x.closed && jparse(x.clobTokenIds).length === 2 && jparse(x.outcomePrices).length === 2).sort((a, b) => nz(b.volume24hr) - nz(a.volume24hr)).slice(0, 2).forEach(x => this.upsert(x, e, cat)); });
+      const full = now() - this.catAt > 5 * 60e3; const evs = []; const seen = new Set();
+      for (let i = 0; i < (full ? this.CAT_PAGES : 1); i++) {
+        let pg; try { pg = await Net.data(`${GAMMA}/events?active=true&closed=false&archived=false&order=volume24hr&ascending=false&limit=${this.CAT_PAGE}&offset=${i * this.CAT_PAGE}`); } catch (e) { if (i === 0) throw e; break; }
+        if (!Array.isArray(pg)) { if (i === 0) throw new Error('Unexpected response'); break; }
+        const fresh = pg.filter(e => !seen.has(e.id || e.slug)); fresh.forEach(e => seen.add(e.id || e.slug)); evs.push(...fresh);
+        if (pg.length < this.CAT_PAGE || !fresh.length) break;
+      }
+      const t = now();
+      evs.filter(e => !sportExcluded({ tags: (e.tags || []).map(t => t.label || '') }) && !this.isGameEvent(e)).forEach(e => { const cat = polyCat((e.tags || []).map(t => t.label || ''), e.title); (e.markets || []).filter(x => !x.closed && x.active !== false && jparse(x.clobTokenIds).length === 2 && jparse(x.outcomePrices).length === 2).forEach(x => { const m = this.upsert(x, e, cat); m.listed = true; m.seenAt = t; }); });
+      if (full) this.catAt = t;
       this.state = 'live'; Feeds.set('polymarket', 'live'); this.subscribe(); Bus.emit('poly');
     } catch (e) { this.state = this.markets.size ? 'stale' : 'offline'; Feeds.set('polymarket', this.state, e); Bus.emit('poly'); }
   },
@@ -70,7 +81,7 @@ const Poly = {
   },
   upsert(x, e, cat) {
     const id = 'pm-' + x.id; const outs = jparse(x.outcomes); const px = jparse(x.outcomePrices).map(Number); const tok = jparse(x.clobTokenIds).map(String);
-    const f = { id, src: 'polymarket', q: x.question || (e && e.title), yesLabel: outs[0] || 'Yes', noLabel: outs[1] || 'No', yes: clamp(nz(px[0], .5), 0, 1), vol: nz(x.volumeNum ?? x.volume), vol24: nz(x.volume24hr), liq: nz(x.liquidityNum ?? x.liquidity), chg: nz(x.oneDayPriceChange), bid: x.bestBid != null ? nz(x.bestBid, null) : null, ask: x.bestAsk != null ? nz(x.bestAsk, null) : null, end: toMs(x.endDate), conditionId: x.conditionId, tokens: tok, slug: x.slug, eventSlug: (e && e.slug) || x.eventSlug, cat: cat || 'other', image: x.icon || x.image || (e && e.icon), rule: (x.description || '').slice(0, 800) };
+    const f = { id, src: 'polymarket', q: x.question || (e && e.title), yesLabel: outs[0] || 'Yes', noLabel: outs[1] || 'No', yes: clamp(nz(px[0], .5), 0, 1), vol: nz(x.volumeNum ?? x.volume), vol24: nz(x.volume24hr), liq: nz(x.liquidityNum ?? x.liquidity), chg: nz(x.oneDayPriceChange), bid: x.bestBid != null ? nz(x.bestBid, null) : null, ask: x.bestAsk != null ? nz(x.bestAsk, null) : null, end: toMs(x.endDate), conditionId: x.conditionId, tokens: tok, slug: x.slug, eventSlug: (e && e.slug) || x.eventSlug, cat: cat || 'other', image: x.icon || x.image || (e && e.icon), rule: (x.description || '').slice(0, 800), desc: String(x.description || (e && e.description) || '').slice(0, 4000), resSrc: x.resolutionSource || (e && e.resolutionSource) || '', ev: e && e.id != null ? String(e.id) : '', evTitle: (e && e.title) || '', evImage: (e && (e.image || e.icon)) || '', group: x.groupItemTitle || '' };
     const m = this.markets.get(id); if (m) { const streamed = m.bid != null && this.ws && this.ws.open; Object.assign(m, f, streamed ? { yes: m.yes, bid: m.bid, ask: m.ask } : {}); } else this.markets.set(id, { ...f, hist: [] });
     tok.forEach((t, i) => this.byToken.set(t, { m: this.markets.get(id), idx: i })); return this.markets.get(id);
   },

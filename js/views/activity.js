@@ -30,18 +30,18 @@ Views.profile = async () => {
 function searchLocal(q) {
   const s = q.trim().toLowerCase(); if (!s) return { panta: [], poly: [], coins: [], games: [] };
   return {
-    panta: [...Panta.markets.values()].filter(m => !m.cancelled && (m.title + ' ' + m.category).toLowerCase().includes(s)).slice(0, 8),
-    poly: [...Poly.markets.values()].filter(m => m.q.toLowerCase().includes(s)).slice(0, 6),
+    panta: [...Panta.markets.values()].filter(m => !m.cancelled && !Panta.isBook(m) && (m.title + ' ' + m.category).toLowerCase().includes(s)).slice(0, 8),
+    poly: Listings.all().filter(m => m.q.toLowerCase().includes(s) && !Listings.pantaFor(m)).sort((a, b) => b.vol24 - a.vol24).slice(0, 6),
     coins: Crypto.coins.filter(c => c.name.toLowerCase().includes(s) || c.sym.toLowerCase() === s).slice(0, 5),
     games: Sports.list().filter(g => gameText(g).includes(s)).slice(0, 8),
   };
 }
 function searchRowsHtml(r, close = false) {
   const ca = close ? ' data-action="closeModal"' : '';
-  return (r.panta.length ? `<h5>Panta markets</h5>${r.panta.map(m => `<a href="#/market/${m.id}"${ca}><span style="flex:1;font-size:13.5px">${esc(m.title)}</span><span class="num up">${m.yes != null ? cents(m.yes) : '—'}</span></a>`).join('')}` : '')
+  return (r.panta.length ? `<h5>Markets</h5>${r.panta.map(m => `<a href="#/market/${m.id}"${ca}><span style="flex:1;font-size:13.5px">${esc(m.title)}</span><span class="num up">${m.yes != null ? cents(m.yes) : '—'}</span></a>`).join('')}` : '')
     + (r.coins.length ? `<h5>Crypto</h5>${r.coins.map(c => `<a href="#/crypto/${esc(c.id)}"${ca}>${coinImg(c, 20)}<span style="flex:1">${esc(c.name)} <span class="mut">${esc(c.sym)}</span></span><span class="num">${fmtPx(c.price)}</span></a>`).join('')}` : '')
     + (r.games.length ? `<h5>Sports</h5>${r.games.map(g => `<a href="#/event/${g.id}"${ca}>${ic(SPORT_IC[g.sport] || 'ball', 'sm')}<span style="flex:1">${g.kind === 'field' ? esc(g.name) : `${esc(g.home.short)} ${scoreText(g)} ${esc(g.away.short)}`} <span class="mut" style="font-size:11.5px">${esc(g.league)}</span></span><span class="mut" style="font-size:12px">${esc(g.state === 'in' ? 'LIVE' : Sports.label(g))}</span></a>`).join('')}` : '')
-    + (r.poly.length ? `<h5>Polymarket</h5>${r.poly.map(m => `<a href="#/polymarket/${m.id}"${ca}><span style="flex:1;font-size:13.5px">${esc(m.q)}</span><span class="num">${cents(m.yes)}</span></a>`).join('')}` : '');
+    + (r.poly.length ? `<h5>More markets</h5>${r.poly.map(m => `<a href="#/market/${m.id}"${ca}><span style="flex:1;font-size:13.5px">${esc(m.q)}</span><span class="num mut">${cents(m.yes)}</span></a>`).join('')}` : '');
 }
 function openSearch() {
   closeModal(true);
