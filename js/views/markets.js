@@ -1,7 +1,7 @@
 /* =====================================================================
    MARKET VIEWS — Markets, market detail, trading, create market, portfolio
-   Panta markets are tradable (your wallet signs). Polymarket markets are
-   shown as read-only reference data with a link out.
+   Everything trades on Panta (your wallet signs). Listed markets that
+   aren't on Panta yet open there with their first trade (listings.js).
    ===================================================================== */
 const catLabel = (c) => PANTA_CAT_LABEL[c] || (c ? c[0].toUpperCase() + c.slice(1) : 'Other');
 const phaseTag = (m) => m.cancelled ? '<span class="tag red">Cancelled</span>' : m.resolved ? `<span class="tag ${m.outcome === 'YES' ? 'green' : m.outcome === 'NO' ? 'red' : ''}">Resolved${m.outcome ? ' ' + m.outcome : ''}</span>` : m.phase === 'secondary' ? '<span class="tag purple">Secondary</span>' : m.phase === 'primary' ? '<span class="tag blue">Primary</span>' : m.status ? `<span class="tag">${esc(m.status)}</span>` : '';
@@ -20,7 +20,7 @@ function pantaState(what = 'Panta markets') {
 function pantaCard(m) {
   const ended = !m.tradable;
   return `<article class="mcard">
-    <div class="mcard-top"><span class="tag">${esc(catLabel(m.category))}</span>${phaseTag(m)}${m.type === 'breaking' ? '<span class="tag amber">Breaking</span>' : ''}<span class="time">${ic('clock', 'sm')}${esc(endsLabel(m))}</span></div>
+    <div class="mcard-top"><span class="tag">${esc(catLabel(m.category))}</span>${phaseTag(m)}${m.type === 'breaking' && !Listings.isMirror(m) ? '<span class="tag amber">Breaking</span>' : ''}<span class="time">${ic('clock', 'sm')}${esc(endsLabel(m))}</span></div>
     ${m.untitled && m.image ? `<a href="#/market/${m.id}" class="mcard-img" aria-label="Open market"><img src="${esc(m.image)}" alt="Market image from Panta" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.remove()"></a>` : ''}
     <h3><a href="#/market/${m.id}" ${m.untitled ? 'class="mut" title="Panta hasn’t published this market’s question yet"' : ''}>${esc(m.title)}</a></h3>
     <div class="mcard-mid"><div><div class="prob-big" data-ppct="${m.id}">${m.yes != null ? Math.round(m.yes * 100) + '%' : '—'}</div><div class="prob-lbl">${m.yes != null ? 'chance' : 'Loading price…'}</div></div>${Panta.hist(m.id).length > 2 ? sparkSvg(Panta.hist(m.id).map(x => x[1]).slice(-48)) : ''}</div>
@@ -28,11 +28,15 @@ function pantaCard(m) {
     <div class="mcard-foot"><span><b data-pvol="${m.id}">${m.volume != null ? kusd(m.volume) : '—'}</b> vol</span>${srcBadge('panta', true)}</div>
   </article>`;
 }
-function polyCard(m) {
-  return `<article class="mcard"><div class="mcard-top"><span class="tag">${esc(catLabel(m.cat))}</span>${srcBadge('poly', true)}<span class="time">${m.end ? ic('clock', 'sm') + timeLeft(m.end) : ''}</span></div>
+function listingCard(m) {
+  return `<article class="mcard">
+    <div class="mcard-top"><span class="tag">${esc(catLabel(m.cat))}</span><span class="tag amber" title="Not traded on Panta yet — the first trade opens it">New</span><span class="time">${ic('clock', 'sm')}${esc(timeLeft(m.end))} left</span></div>
+    ${m.group && m.evTitle ? `<div class="mut" style="font-size:12px;margin-top:-4px">${esc(m.evTitle)}</div>` : ''}
     <h3><a href="#/market/${m.id}">${esc(m.q)}</a></h3>
-    <div class="mcard-mid"><div><div class="prob-big" data-lpct="${m.id}">${Math.round(m.yes * 100)}%</div><div class="prob-lbl">${esc(m.yesLabel)} · ${chgHtml(m.chg * 100)}</div></div></div>
-    <div class="mcard-foot"><span><b>${kusd(m.vol)}</b> vol</span><span><b>${kusd(m.liq)}</b> liq</span><a class="link" style="margin-left:auto;position:relative;z-index:2" href="${Poly.url(m)}" target="_blank" rel="noopener">Polymarket ${ic('ext', 'sm')}</a></div></article>`;
+    <div class="mcard-mid"><div><div class="prob-big" data-lpct="${m.id}">${Math.round(m.yes * 100)}%</div><div class="prob-lbl">est. chance</div></div></div>
+    <div class="yn"><button class="btn btn-yes" data-action="quickTrade" data-id="${m.id}" data-side="YES"><span>Yes</span><span data-ly="${m.id}">${cents(m.yes)}</span></button><button class="btn btn-no" data-action="quickTrade" data-id="${m.id}" data-side="NO"><span>No</span><span data-ln="${m.id}">${cents(1 - m.yes)}</span></button></div>
+    <div class="mcard-foot"><span class="mut">First trade opens it on Panta</span></div>
+  </article>`;
 }
 function pantaList({ cat = 'all', q = '', sort = 'volume', status = 'all' } = {}) {
   let l = Panta.order.map(id => Panta.markets.get(id)).filter(Boolean).filter(m => !m.cancelled && !Panta.isBook(m));
@@ -42,33 +46,56 @@ function pantaList({ cat = 'all', q = '', sort = 'volume', status = 'all' } = {}
   const k = { volume: (m) => -(m.volume || 0), ending: (m) => m.tradable ? (m.end || 9e15) : 9e15 + 1, newest: (m) => -(m.start || 0), prob: (m) => -(m.yes ?? -1) }[sort] || (() => 0);
   return l.sort((a, b) => (a.tradable === b.tradable ? 0 : a.tradable ? -1 : 1) || (!!a.untitled - !!b.untitled) || k(a) - k(b));
 }
+/** Every market Nexis lists: Panta markets (except sportsbook bets) and listed markets not yet opened on Panta.
+    A listing whose Panta market exists is shown as that Panta market. */
+function marketItems(st) {
+  const out = []; const used = new Set();
+  for (const m of Listings.all()) {
+    const p = Listings.pantaFor(m);
+    if (p && !p.pending) { if (used.has(p.id) || p.cancelled) continue; used.add(p.id); out.push({ kind: 'panta', m: p, pop: Math.max(m.vol24 || 0, p.volume || 0), cat: p.category, open: p.tradable, text: p.title + ' ' + (p.description || '') }); }
+    else out.push({ kind: 'listing', m, pop: m.vol24 || 0, cat: m.cat, open: true, text: m.q + ' ' + (m.evTitle || '') });
+  }
+  Panta.order.forEach(id => { const p = Panta.markets.get(id); if (!p || used.has(p.id) || p.cancelled || Panta.isBook(p)) return; used.add(p.id); out.push({ kind: 'panta', m: p, pop: p.volume || 0, cat: p.category, open: p.tradable, text: p.title + ' ' + (p.description || '') + ' ' + p.category }); });
+  const q = (st.q || '').toLowerCase().trim();
+  const f = out.filter(x => (st.cat === 'all' || x.cat === st.cat) && (!q || x.text.toLowerCase().includes(q)));
+  const nOpen = f.filter(x => x.open).length;
+  const list = f.filter(x => st.status === 'closed' ? !x.open : x.open);
+  const vol = (x) => x.kind === 'panta' ? x.m.volume || 0 : 0;
+  const K = { popular: x => -x.pop, volume: x => -vol(x), ending: x => x.m.end || 9e15, newest: x => -(x.kind === 'panta' ? x.m.start || 0 : 0), prob: x => -(x.m.yes ?? -1) }[st.sort] || (x => -x.pop);
+  list.sort((a, b) => ((a.kind === 'panta' && !!a.m.untitled) - (b.kind === 'panta' && !!b.m.untitled)) || K(a) - K(b));
+  return { total: out.length, list, nOpen, nClosed: f.length - nOpen };
+}
 
 /* ---------------- MARKETS ---------------- */
 Views.markets = async (params) => {
-  const st = UI.markets; if (params.get('cat')) st.cat = params.get('cat'); if (params.get('src')) st.src = params.get('src');
-  if (st.src === 'poly') {
-    let list = [...Poly.markets.values()].filter(m => !m.game && !(m.end && m.end < now())); if (st.cat !== 'all') list = list.filter(m => m.cat === st.cat); if (st.q) list = list.filter(m => m.q.toLowerCase().includes(st.q.toLowerCase()));
-    list.sort((a, b) => b.vol24 - a.vol24);
-    return marketsFrame(st, list.length ? `<div class="grid gauto">${list.map(polyCard).join('')}</div>` : Poly.state === 'offline' ? unavailable('Polymarket data unavailable', 'Nexis couldn’t reach Polymarket. It retries automatically.') : skeletonCards(6), list.length, 'Reference markets from Polymarket. Prices stream live; trade them on Polymarket.');
+  const st = UI.markets; if (params.get('cat')) st.cat = params.get('cat');
+  st.status = st.status || 'open'; st.limit = st.limit || 60;
+  const blocked = pantaState(); const it = marketItems(st);
+  const note = 'Prediction markets traded on Panta with your Solana wallet; settlement in USDC.';
+  if (!it.total) {
+    if (blocked) return marketsFrame(st, blocked, 0, note);
+    if (Poly.state === 'offline' && Panta.loadedAt) return marketsFrame(st, emptyState({ title: 'No markets yet', body: 'Nexis couldn’t load the market list. It retries automatically.', cta: '<a class="btn btn-primary sm" href="#/create">Create a market</a>' }), 0, note);
+    return marketsFrame(st, skeletonCards(6), 0, note);
   }
-  const blocked = pantaState(); if (blocked && !Panta.markets.size) return marketsFrame(st, blocked, 0);
-  if (Panta.state === 'idle' || (!Panta.loadedAt && !Panta.markets.size)) return marketsFrame(st, skeletonCards(6), 0);
-  st.status = st.status || 'open'; const list = pantaList(st); Panta.watch(list.slice(0, 24).map(m => m.id));
-  const nOpen = pantaList({ ...st, status: 'open' }).length, nClosed = pantaList({ ...st, status: 'closed' }).length;
-  const statusSeg = `<div class="seg text" style="margin-bottom:14px">${[['open', `Open · ${nOpen}`], ['closed', `Closed · ${nClosed}`]].map(([k, l]) => `<button class="${st.status === k ? 'on' : ''}" data-action="mStatus" data-s="${k}">${l}</button>`).join('')}</div>`;
-  return marketsFrame(st, statusSeg + (list.length ? `<div class="grid gauto">${list.map(pantaCard).join('')}</div>` : emptyState({ title: st.status === 'open' ? 'No open markets match' : 'No closed markets match', body: st.q ? `Nothing on Panta matches “${esc(st.q)}”.` : st.status === 'open' ? 'No Panta markets are open for trading in this category right now.' : 'No closed or resolved markets in this category.', cta: st.status === 'open' ? '<a class="btn btn-primary sm" href="#/create">Create a market</a>' : '' })), list.length, 'Live Panta markets. Trade with your Solana wallet; settlement in USDC.');
+  const shown = it.list.slice(0, st.limit);
+  Panta.watch(shown.filter(x => x.kind === 'panta').slice(0, 24).map(x => x.m.id));
+  Listings.lookup(shown.filter(x => x.kind === 'listing').map(x => x.m)).catch(() => {});
+  const statusSeg = `<div class="seg text" style="margin-bottom:14px">${[['open', `Open · ${it.nOpen}`], ['closed', `Closed · ${it.nClosed}`]].map(([k, l]) => `<button class="${st.status === k ? 'on' : ''}" data-action="mStatus" data-s="${k}">${l}</button>`).join('')}</div>`;
+  const grid = shown.length ? `<div class="grid gauto">${shown.map(x => x.kind === 'panta' ? pantaCard(x.m) : listingCard(x.m)).join('')}</div>${it.list.length > shown.length ? `<div style="text-align:center;margin-top:18px"><button class="btn btn-ghost" data-action="mMore">Show more markets <span class="mut num">${it.list.length - shown.length}</span></button></div>` : ''}`
+    : emptyState({ title: st.status === 'open' ? 'No open markets match' : 'No closed markets match', body: st.q ? `No market matches “${esc(st.q)}”.` : st.status === 'open' ? 'No markets are open in this category right now.' : 'No closed or resolved markets in this category.', cta: st.status === 'open' ? '<a class="btn btn-primary sm" href="#/create">Create a market</a>' : '' });
+  return marketsFrame(st, (blocked || '') + statusSeg + grid, it.list.length, note);
 };
 function marketsFrame(st, inner, n, note = '') {
-  const cats = ['all', ...(st.src === 'poly' ? ['crypto', 'sports', 'politics', 'finance', 'entertainment', 'world', 'science', 'other'] : Panta.categories)];
+  const cats = ['all', ...Panta.categories];
   return `<div class="page">${pantaModeBanner()}
-    <div class="page-head"><div><h1>Markets</h1><p>${note}</p></div><div class="row"><div class="seg text">${[['panta', 'Panta'], ['poly', 'Polymarket']].map(([k, l]) => `<button class="${st.src === k ? 'on' : ''}" data-action="mSrc" data-src="${k}">${l}</button>`).join('')}</div><a class="btn btn-ghost" href="#/create">${ic('plus', 'sm')}Create market</a></div></div>
-    <div class="row wrap" style="gap:10px;margin-bottom:14px"><label class="search-trigger" style="max-width:none;flex:1;min-width:220px;cursor:text">${ic('search', 'sm')}<input id="mk-q" value="${esc(st.q)}" placeholder="Search markets" style="background:none;border:0;outline:none;flex:1;height:100%;color:var(--text)" aria-label="Search markets"></label>${st.src === 'panta' ? `<label class="row" style="gap:8px"><span class="mut" style="font-size:13px">Sort</span><select class="select" id="mk-sort" style="width:auto;height:38px;padding:0 10px">${[['volume', 'Volume'], ['ending', 'Ending soon'], ['newest', 'Newest'], ['prob', 'Highest YES']].map(([k, l]) => `<option value="${k}" ${k === st.sort ? 'selected' : ''}>${l}</option>`).join('')}</select></label>` : ''}</div>
+    <div class="page-head"><div><h1>Markets</h1><p>${note}</p></div><div class="row"><a class="btn btn-ghost" href="#/create">${ic('plus', 'sm')}Create market</a></div></div>
+    <div class="row wrap" style="gap:10px;margin-bottom:14px"><label class="search-trigger" style="max-width:none;flex:1;min-width:220px;cursor:text">${ic('search', 'sm')}<input id="mk-q" value="${esc(st.q)}" placeholder="Search markets" style="background:none;border:0;outline:none;flex:1;height:100%;color:var(--text)" aria-label="Search markets"></label><label class="row" style="gap:8px"><span class="mut" style="font-size:13px">Sort</span><select class="select" id="mk-sort" style="width:auto;height:38px;padding:0 10px">${[['popular', 'Popular'], ['volume', 'Panta volume'], ['ending', 'Ending soon'], ['newest', 'Newest'], ['prob', 'Highest YES']].map(([k, l]) => `<option value="${k}" ${k === st.sort ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>
     <div class="row wrap" style="gap:8px;margin-bottom:18px">${cats.map(c => `<button class="chip ${c === st.cat ? 'on' : ''}" data-action="mCat" data-cat="${c}">${c === 'all' ? 'All' : esc(catLabel(c))}</button>`).join('')}</div>
-    ${n ? `<div class="mut" style="font-size:12.5px;margin-bottom:12px">${n} market${n === 1 ? '' : 's'}</div>` : ''}${inner}</div>`;
+    ${n ? `<div class="mut" style="font-size:12.5px;margin-bottom:12px">${n.toLocaleString()} market${n === 1 ? '' : 's'}</div>` : ''}${inner}</div>`;
 }
 
 /* ---------------- MARKET DETAIL ---------------- */
-Views.market = async (params, id) => (id || '').startsWith('pm-') ? polyMarketView(id) : pantaMarketView(id, params);
+Views.market = async (params, id) => (id || '').startsWith('pm-') ? listingMarketView(id, params) : pantaMarketView(id, params);
 async function pantaMarketView(id, params) {
   const blocked = pantaState('this market'); if (blocked && !Panta.markets.has(id)) return `<div class="page">${blocked}</div>`;
   let m = Panta.markets.get(id);
@@ -140,26 +167,88 @@ async function paintMyPosition(id) {
   try { const pos = (await Portfolio.load()).filter(p => p.marketId === id); box.innerHTML = `<div class="card-head"><h3>Your position</h3><a class="link" href="#/portfolio">Portfolio</a></div>` + (pos.length ? pos.map(p => positionRowCompact(p)).join('') : '<p class="mut" style="padding:14px 18px;font-size:13px">No position in this market.</p>'); }
   catch (e) { box.innerHTML = `<div class="card-pad"><p class="mut" style="font-size:13px">Positions unavailable: ${esc(e.message)}</p></div>`; }
 }
-async function polyMarketView(id) {
+/* A listed market not yet opened on Panta: estimated prices, and a trade panel whose first order opens it. */
+async function listingMarketView(id, params) {
   if (!Poly.markets.has(id) && Poly.state !== 'offline') await Promise.allSettled([Poly.state === 'idle' || !Poly.markets.size ? Poly.loadOnce() : null, Poly.gamesState !== 'live' ? Poly.loadGames() : null]);
-  const m = Poly.markets.get(id); if (!m) { if (Poly.state === 'offline') throw new Error('Polymarket data is unavailable right now.'); throw new Error('This market isn’t loaded — open it from Markets → Polymarket.'); }
-  Promise.allSettled([Poly.history(m), Poly.oi(m), Poly.marketTrades(m), Poly.holders(m)]).then(([h, oi, tr, ho]) => {
-    if (current.arg !== id) return; if (h.status === 'rejected') m.histErr = true; const c = $(`.chart-box[data-chart="poly"][data-id="${id}"]`); if (c) mountChartEl(c);
-    setText(`[data-moi="${id}"]`, m.oi != null ? usd(m.oi, 0) : '—');
-    const tb = $('#pm-trades'); if (tb) tb.innerHTML = polyTape(Poly.mtrades[m.conditionId] || [], false);
-    const hb = $('#pm-holders'); if (hb) hb.innerHTML = ho.status === 'fulfilled' && ho.value.length ? ho.value.map(h => `<a class="row" href="#/tracker/pm:${esc(h.wallet)}" style="padding:10px 16px;border-bottom:1px solid var(--line)">${avatarFor(h.name, h.img, 'sm')}<span style="font-size:13px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@${esc(h.name)}</span><span class="tag ${h.idx === 0 ? 'green' : 'red'}">${esc(h.idx === 0 ? m.yesLabel : m.noLabel)}</span><span class="num mut" style="margin-left:auto;font-size:12px">${kfmt(h.amount)} sh</span></a>`).join('') : '<p class="mut" style="padding:14px 18px;font-size:13px">Holder data unavailable.</p>';
-  });
-  return `<div class="page"><a class="link" href="#/markets?src=poly">${ic('chevLeft', 'sm')}Polymarket markets</a>
-    <div class="sim-note" style="margin-top:12px;background:var(--blue-soft);border-color:var(--blue-line);color:#BFD2FF">${ic('info', 'sm')}<span>Reference market from Polymarket. Nexis trades on Panta — to trade this market, use <a href="${Poly.url(m)}" target="_blank" rel="noopener" style="text-decoration:underline">Polymarket</a>.</span></div>
+  const m = Poly.markets.get(id);
+  const gone = (body) => `<div class="page"><a class="link" href="#/markets">${ic('chevLeft', 'sm')}Markets</a>${emptyState({ icon: 'compass', title: 'Market not available', body, cta: '<a class="btn btn-primary sm" href="#/markets">Browse markets</a>' })}</div>`;
+  if (!m) return gone(Poly.state === 'offline' ? 'The market list couldn’t be loaded. Nexis retries automatically.' : 'This market isn’t listed on Nexis. It may have closed.');
+  if (m.game) { location.replace('#/sports'); return '<div class="page"></div>'; }
+  await Listings.lookup([m]).catch(() => {});
+  const p = Listings.pantaFor(m);
+  if (p) { const qs = params.toString(); location.replace(`#/market/${p.id}${qs ? '?' + qs : ''}`); return `<div class="page">${skeletonCards(1)}</div>`; }
+  if (!Listings.all().includes(m)) return gone('Trading on this market has ended or it’s no longer listed.');
+  const tr = UI.trade[id] = UI.trade[id] || { side: params.get('side') || 'YES', amt: params.get('amt') || '10' };
+  if (params.get('side')) { tr.side = params.get('side'); tr.amt = params.get('amt') || tr.amt; }
+  Poly.history(m).catch(() => { m.histErr = true; }).finally(() => { if (current.arg !== id) return; const c = $(`.chart-box[data-chart="poly"][data-id="${id}"]`); if (c) mountChartEl(c); });
+  const body = Listings.createBody(m); const src = body ? body.sourcesOfTruth.filter(u => !/polymarket\.com/i.test(u)) : [];
+  return `<div class="page">${pantaModeBanner()}<a class="link" href="#/markets">${ic('chevLeft', 'sm')}Markets</a>
     <div class="mkt-layout" style="margin-top:12px"><div style="min-width:0">
-      <div class="mkt-head">${m.image ? `<img class="mkt-img" src="${esc(m.image)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}<div><h1>${esc(m.q)}</h1><div class="mkt-meta"><span class="tag">${esc(catLabel(m.cat))}</span>${srcBadge('poly')}${m.end ? `<span>${ic('clock', 'sm')}${timeLeft(m.end)} left</span>` : ''}</div></div></div>
-      <div class="price-row"><div><div class="lbl">${esc(m.yesLabel)}</div><div class="big up" data-ly="${id}">${cents(m.yes)}</div></div><div><div class="lbl">${esc(m.noLabel)}</div><div class="big down" data-ln="${id}">${cents(1 - m.yes)}</div></div><div><div class="lbl">Order book</div><div class="book" data-lbook="${id}">${polyBook(m)}</div></div></div>
-      <div class="chart-box" data-chart="poly" data-id="${id}"></div>
-      <div class="card" style="margin-top:20px"><div class="info-grid"><div><div class="k">Volume</div><div class="v">${usd(m.vol, 0)}</div></div><div><div class="k">24h volume</div><div class="v">${usd(m.vol24, 0)}</div></div><div><div class="k">Liquidity</div><div class="v">${usd(m.liq, 0)}</div></div><div><div class="k">Open interest</div><div class="v" data-moi="${id}">…</div></div></div><div class="rules"><div style="grid-column:1/-1"><h4>Rules</h4><p>${esc(m.rule || 'See Polymarket for full rules.')}</p></div></div></div>
-    </div><aside>
-      <div class="card"><div class="card-head"><h3>Top holders</h3>${srcBadge('poly', true)}</div><div id="pm-holders"><p class="mut" style="padding:14px 18px;font-size:13px">Loading…</p></div></div>
-      <div class="card" style="margin-top:14px"><div class="card-head"><h3>Recent trades</h3></div><div class="table-wrap" id="pm-trades" data-cid="${esc(m.conditionId)}">${polyTape(Poly.mtrades[m.conditionId] || [], false)}</div></div>
-    </aside></div></div>`;
+      <div class="mkt-head">${m.image ? `<img class="mkt-img" src="${esc(m.image)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : `<span class="mkt-icon">${esc(catLabel(m.cat).slice(0, 3).toUpperCase())}</span>`}<div style="min-width:0">${m.group && m.evTitle ? `<div class="mut" style="font-size:13px">${esc(m.evTitle)}</div>` : ''}<h1>${esc(m.q)}</h1>
+        <div class="mkt-meta"><span class="tag">${esc(catLabel(m.cat))}</span><span class="tag amber">New</span><span>${ic('clock', 'sm')}${esc(timeLeft(m.end))} left</span></div></div></div>
+      <div class="price-row">
+        <div><div class="lbl">YES · est.</div><div class="big up" data-ly="${id}">${cents(m.yes)}</div></div>
+        <div><div class="lbl">NO · est.</div><div class="big down" data-ln="${id}">${cents(1 - m.yes)}</div></div>
+        <div><div class="lbl">Estimated chance</div><div class="num" style="font-size:20px" data-lpct="${id}">${Math.round(m.yes * 100)}%</div></div>
+      </div>
+      <div class="sim-note" style="margin-top:4px">${ic('info', 'sm')}<span>This market isn’t open on Panta yet, so these prices are estimates. The first trade opens it on Panta; you see Panta’s opening price and confirm it before your order is placed. After that, everyone trades the same Panta market.</span></div>
+      <div class="chart-box" data-chart="poly" data-id="${id}"></div><p class="mut" style="font-size:11.5px;margin-top:4px">Estimated price history.</p>
+      <div class="card" style="margin-top:20px"><div class="info-grid">
+        <div><div class="k">Trading ends</div><div class="v">${fmtDate(m.end, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</div></div>
+        <div><div class="k">Category</div><div class="v">${esc(catLabel(m.cat))}</div></div>
+        <div><div class="k">Settlement</div><div class="v">USDC on Solana</div></div>
+        <div><div class="k">Status</div><div class="v">Not opened yet</div></div>
+      </div>
+      <div class="rules"><div style="grid-column:1/-1"><h4>Resolution</h4><p style="white-space:pre-line">${esc(m.desc || 'Resolved by Panta’s Resolution Agent after the end date.')}</p>${src.length ? `<p class="mut" style="margin-top:6px">Sources: ${src.map(esc).join(', ')}</p>` : ''}</div></div></div>
+    </div>
+    <aside><div class="card card-pad trade-panel stack" style="gap:14px" id="trade-panel">${listingPanel(m, tr)}</div></aside></div></div>`;
+}
+function listingPanel(m, tr) {
+  const px = tr.side === 'YES' ? m.yes : 1 - m.yes; const amt = nz(tr.amt, 0);
+  return `<div class="row"><h3 style="font-size:15px">Trade</h3><span class="mut" style="margin-left:auto;font-size:12px">USDC · signed by your wallet</span></div>
+    <div class="side-toggle"><button class="btn btn-yes ${tr.side === 'YES' ? 'on' : ''}" data-action="side" data-id="${m.id}" data-side="YES"><span>Buy YES</span><b data-ly="${m.id}">${cents(m.yes)}</b></button><button class="btn btn-no ${tr.side === 'NO' ? 'on' : ''}" data-action="side" data-id="${m.id}" data-side="NO"><span>Buy NO</span><b data-ln="${m.id}">${cents(1 - m.yes)}</b></button></div>
+    <label class="field"><span>Amount (USDC)</span><div class="input-affix"><input class="input" data-amt="${m.id}" inputmode="decimal" value="${esc(tr.amt)}" aria-label="Amount in USDC"></div></label>
+    <div class="presets">${[5, 10, 25, 50, 100].map(v => `<button data-action="preset" data-id="${m.id}" data-v="${v}">$${v}</button>`).join('')}${Balances.v ? `<button data-action="preset" data-id="${m.id}" data-v="max">Max</button>` : ''}</div>
+    <div class="est"><div><span>Estimated ${tr.side} price</span><span>${cents(px)}</span></div><div><span>Indicative shares</span><span>${px > 0 ? (amt / px).toFixed(2) : '—'}</span></div><div><span>Opening fee</span><span>Quoted by Panta</span></div><div><span>USDC balance</span><span data-usdc>${Balances.v ? fmtNum(Balances.v.usdc, 2) : primaryWallet() ? '…' : 'No wallet'}</span></div></div>
+    <button class="btn ${tr.side === 'YES' ? 'btn-yes on' : 'btn-no on'} lg block" data-action="listingReview" data-id="${m.id}">Review ${tr.side} order</button>
+    <p class="mut" style="font-size:11.5px;line-height:1.45">You’ll be the first to trade this market. One signature opens it on Panta (Panta’s creation fee, quoted before you sign, which funds the market’s starting liquidity); then you confirm Panta’s price and sign your order. Each share pays $1 if the outcome is ${tr.side}.</p>`;
+}
+/** First order on a listing: quote Panta's creation, then create + register the market, confirm the price, buy. */
+async function listingOrder(id) {
+  const m = Poly.markets.get(id); const tr = UI.trade[id]; if (!m || !tr) return;
+  const w = bkPreflight(); if (!w) return;
+  const amt = nz(tr.amt, 0); if (!(amt >= 1)) return toast({ title: 'Enter an amount of at least $1', kind: 'warn' });
+  openModal(`${modalHead('Review order', esc(m.q))}<div class="modal-body"><div class="pipe">${pipeStep('Checking the market on Panta', 'run')}</div></div>`, { label: 'Review order' });
+  await Listings.lookup([m], true).catch(() => {});
+  const p = Listings.pantaFor(m);
+  if (p) { closeModal(); location.hash = `#/market/${p.id}?side=${tr.side}&amt=${encodeURIComponent(tr.amt)}`; return toast({ title: 'This market is already open on Panta', body: 'Review your order at Panta’s price.', kind: 'info' }); }
+  const body = Listings.createBody(m);
+  const fail = (t, b) => setModal(`${modalHead(t)}<div class="modal-body">${emptyState({ icon: 'alert', title: t, body: esc(b) })}</div><div class="modal-foot"><button class="btn btn-ghost" data-action="closeModal">Close</button></div>`);
+  if (!body) return fail('Can’t open this market', 'This market is too close to its end date (or has no image Panta can use) to open on Panta.');
+  let q; try { q = await Panta.quoteCreate({ ...body, wallet: w.address }); } catch (e) { return fail('Panta couldn’t quote this market', e.message + (e.body && e.body.field ? ` (${e.body.field})` : '')); }
+  const fee = nz(q.paymentUsdc) / 1e6;
+  if (Balances.v && Balances.v.usdc != null && Balances.v.usdc + 1e-9 < amt + fee) return fail('Not enough USDC', `Opening this market and your order need ${usd(amt + fee)}; your wallet holds ${fmtNum(Balances.v.usdc, 2)} USDC.`);
+  UI.pendingListing = { m, body, quote: { at: now(), q }, side: tr.side, stake: amt, wallet: w, est: tr.side === 'YES' ? m.yes : 1 - m.yes };
+  setModal(`${modalHead('Open this market on Panta', esc(m.q))}<div class="modal-body">
+    <div class="order-sum"><div><span>Your order</span><span class="${tr.side === 'YES' ? 'up' : 'down'}" style="font-weight:600">${tr.side} · ${usd(amt)}</span></div><div><span>Estimated price</span><span>${cents(tr.side === 'YES' ? m.yes : 1 - m.yes)}</span></div><div><span>Panta creation fee</span><span>${fmtNum(fee, 2)} USDC</span></div>${q.liquidityInjectionUsdc != null ? `<div><span>Of which starting liquidity</span><span>${fmtNum(nz(q.liquidityInjectionUsdc) / 1e6, 2)} USDC</span></div>` : ''}<div><span>Trading ends</span><span>${fmtDate(m.end, { month: 'short', day: 'numeric', year: 'numeric' })}</span></div><div><span>Wallet</span><span>${esc(w.label)} · ${shortAddr(w.address)}</span></div></div>
+    ${infoNote('Two signatures: the first opens the market on Panta, the second places your order. Before the second, you see Panta’s opening price and can stop without buying. Panta’s Resolution Agent settles the market from its rules.')}
+    </div><div class="modal-foot"><button class="btn btn-ghost" data-action="closeModal">Cancel</button><button class="btn btn-primary" data-action="listingConfirm" autofocus>Open market &amp; continue</button></div>`);
+}
+async function listingConfirm() {
+  const P = UI.pendingListing; if (!P) return; UI.pendingListing = null; const { m, body, quote, side, stake, wallet } = P;
+  const step = (t) => setModal(`${modalHead('Opening the market', esc(m.q))}<div class="modal-body"><div class="pipe">${pipeStep(esc(t), 'run')}</div></div>`);
+  const fail = (t, b) => setModal(`${modalHead(t)}<div class="modal-body">${emptyState({ icon: 'alert', title: t, body: esc(b) })}</div><div class="modal-foot"><button class="btn btn-ghost" data-action="closeModal">Close</button></div>`);
+  let pm; try { pm = await bkCreateMarket(body, wallet, step, { quote, register: { g: { id: m.ev }, prop: 'pm:' + String(m.id).replace(/^pm-/, ''), reg: Listings } }); }
+  catch (e) { return fail('Market not opened', e.message); }
+  let q; try { q = await Panta.quoteBuy({ wallet: wallet.address, marketId: pm.id, side, amountUsdc: stake.toFixed(2) }); } catch (e) { return fail('Market opened, but Panta couldn’t quote your order', e.message + ' Open the market to try again.'); }
+  const go = await bkAsk('Market open — confirm your price', `<p style="font-size:14px"><b>${esc(m.q)}</b></p>
+    <div class="order-sum"><div><span>Side</span><span class="${side === 'YES' ? 'up' : 'down'}" style="font-weight:600">${side}</span></div><div><span>Panta price</span><span class="num">${q.avgPrice != null ? cents(nz(q.avgPrice)) : '—'}</span></div><div><span>Estimate shown before</span><span class="num">${cents(P.est)}</span></div><div><span>You pay</span><span class="num">${usd(stake)}</span></div><div><span>Pays if ${side} wins</span><span class="num up">~${usd(nz(q.shares))}</span></div>${q.feeUsdc ? `<div><span>Panta fee</span><span class="num">${fmtNum(nz(q.feeUsdc), 2)} USDC</span></div>` : ''}</div>
+    <p class="mut" style="font-size:12.5px">The market now exists on Panta for everyone. If you stop here, nothing else is charged.</p>`, `Buy ${side} at ${q.avgPrice != null ? cents(nz(q.avgPrice)) : 'Panta’s price'}`);
+  if (!go) { closeModal(); location.hash = '#/market/' + pm.id; return; }
+  let r; try { r = await bkBuy({ label: m.q, desc: m.q, side, stake }, pm.id, wallet, step); } catch (e) { return fail('Order not placed', e.message + ' The market is open; you can try again from its page.'); }
+  Portfolio.load(true).catch(() => {}); Balances.refresh();
+  Notify.push({ kind: 'tx', icon: 'check', text: `Bought ${side} · <b>${esc(m.q)}</b> · ${usd(stake)}`, href: '#/portfolio' });
+  setModal(`${modalHead('Order confirmed')}<div class="modal-body"><div class="receipt"><div class="okc">${ic('check', 'lg')}</div><h3 style="font-size:18px">Bought ~${fmtNum(r.shares, 2)} ${side} shares</h3><p class="dim" style="margin-top:4px">${usd(stake)} · confirmed on Solana</p></div><div class="order-sum"><div><span>Signature</span><span><a class="link" style="display:inline" href="${explorerTx(r.sig)}" target="_blank" rel="noopener">${shortW(r.sig)} ${ic('ext', 'sm')}</a></span></div></div></div><div class="modal-foot"><a class="btn btn-ghost" href="#/portfolio" data-action="closeModal">Portfolio</a><a class="btn btn-primary" href="#/market/${esc(pm.id)}" data-action="closeModal">Open market</a></div>`);
 }
 const polyBook = (m) => m.bid != null && m.ask != null ? `<span>Bid <b class="num up">${cents(m.bid)}</b></span> <span>Ask <b class="num down">${cents(m.ask)}</b></span>` : '<span class="mut">Waiting for the book…</span>';
 function polyTape(list, showMarket = true, n = 20) {

@@ -322,7 +322,7 @@ async function bkCreateMarket(body, wallet, onStep, { quote, register } = {}) {
   onStep('Registering the market');
   await Panta.registerCreate({ createId: q.createId, signature: rec.sig });
   let use = { marketId, question: body.question };
-  if (register) { try { const r = await Net.api('book', { method: 'POST', body: { action: 'register', game: register.g.id, prop: register.prop, marketId, signature: rec.sig, question: body.question } }); if (r.market) use = r.market; } catch (e) { /* the bet still works on this market */ } Book.reg.set(register.g.id + ':' + register.prop, use); Book.regIds.add(use.marketId); }
+  if (register) { try { const r = await Net.api('book', { method: 'POST', body: { action: 'register', game: register.g.id, prop: register.prop, marketId, signature: rec.sig, question: body.question } }); if (r.market) use = r.market; } catch (e) { /* the bet still works on this market */ } const R = register.reg || Book; R.reg.set(register.g.id + ':' + register.prop, use); R.regIds.add(use.marketId); }
   Panta.rememberTitle(use.marketId, body.title && body.title !== body.question ? body.title : use.question);
   onStep('Waiting for Panta to open the market');
   const m = await bkAwaitMarket(use.marketId); if (!m) throw new Error('The market was created but Panta hasn’t listed it yet. Try again in a minute; it won’t be created twice.');

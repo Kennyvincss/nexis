@@ -51,6 +51,7 @@ js/services/          one module per external integration
   crypto.js           crypto price service (CoinGecko + Coinbase WebSocket)
   sports.js           sports data service (ESPN scoreboard + match summary)
   polymarket.js       Polymarket markets (top events + per-game sports markets) and the global trades tape
+  listings.js         the Markets catalogue on Panta: finds each listed market's Panta market; the first trade opens it
   traders.js          trader activity service (Trader Tracker, Panta trades tape)
   pmtrade.js          Polymarket trading (EVM wallet, Polygon approvals, CLOB orders)
   notifications.js    notifications service (in-app + optional desktop)
@@ -85,7 +86,29 @@ The services emit events on a small bus. `app.js` patches the visible page in pl
 | Crypto | CoinGecko `/coins/markets`, `market_chart`; Coinbase `ticker` WebSocket | Tick-by-tick for assets listed on Coinbase, otherwise every 30s |
 | Sports | ESPN: ~200 built-in leagues plus leagues discovered from ESPN's catalogue (football, basketball, tennis, MLB, NHL, MMA, golf, motorsport, rugby and more), fetched per sport group by `/api/sports` and cached at the edge (10s) | All groups every 60s; while something is live and a scores page is open, the groups with live games every 10s |
 | Trader Tracker | Polymarket Data API (`pm:0x…`), Panta positions (`sol:<wallet>`) | Every 20s per tracked trader |
-| Reference markets | Polymarket Gamma + CLOB WebSocket | Streamed prices, trades every 8s |
+| Market catalogue (Markets page) | Polymarket Gamma + CLOB WebSocket, traded on Panta | Busiest 100 events every 30s, ~500 events every 5 min; streamed prices |
+
+
+## Markets
+
+`#/markets` is one list of markets, all traded on **Panta**. There is no Polymarket tab and no Polymarket branding on these pages.
+
+- **What's listed:**
+  - every Panta market, except bets opened from the sportsbook (those live in Sports);
+  - every open yes/no market from the busiest ~500 Polymarket events.
+- **What's left out:** per-game sports markets (the sportsbook has them), markets whose outcomes aren't Yes/No (e.g. Up/Down) and markets ending within 30 minutes.
+- **Listed markets not yet on Panta** show a **New** tag and estimated prices. Each page shows an estimated price history, the resolution rules and a trade panel.
+- **The first trade opens the market on Panta.** The trader:
+  1. signs Panta's market creation and pays its fee, which funds the market's starting liquidity;
+  2. sees Panta's opening price and confirms it;
+  3. signs the order.
+- **Opening a market:**
+  - It is a `breaking` Panta market that trades until the Polymarket end date and resolves 6 hours later.
+  - It uses the same question, and the market description as its resolution rule.
+  - Its sources are the resolution source and any links in the rules, falling back to the event page.
+- **One market for everyone:** the new market is recorded in `/api/book` under `<event id>:pm:<market id>`. The server verifies it on Solana and against Gamma, and everyone after trades the same Panta market. A Panta market with the exact same question is also treated as the listing's market.
+- **After it opens:** the listing shows as a normal Panta card, and old `#/market/pm-…` links redirect to the Panta market.
+- **Creating markets in bulk:** not possible. Each Panta market needs a creation fee and a wallet signature, so markets open one at a time as people trade them.
 
 ## Sportsbook
 
