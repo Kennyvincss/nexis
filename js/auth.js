@@ -229,10 +229,12 @@ function siwsMessage(address, nonce) { return `${location.host} wants you to sig
 function openWalletFlow({ mode = 'login', onDone } = {}) {
   const title = mode === 'login' ? 'Continue with Wallet' : 'Link a wallet';
   const pick = () => `${modalHead(title, mode === 'login' ? 'Your wallet becomes your Nexis identity. No transaction, no fees.' : 'Linked wallets sign your Panta trades and fund them with USDC.')}<div class="modal-body" style="gap:8px">
-    ${WALLETS.map(w => { const d = !!w.get(); return d ? `<button class="wrow" data-action="walletPick" data-w="${w.id}">${walletIcon(w)}<span style="flex:1;text-align:left"><b>${w.name}</b><span class="mut" style="display:block;font-size:12px">Detected in this browser</span></span><span class="tag green">Detected</span>${ic('chevRight', 'sm')}</button>` : `<a class="wrow" href="${w.url}" target="_blank" rel="noopener">${walletIcon(w)}<span style="flex:1;text-align:left"><b>${w.name}</b><span class="mut" style="display:block;font-size:12px">Not installed</span></span><span class="tag">Install ${ic('ext', 'sm')}</span></a>`; }).join('')}
+    ${WALLETS.map(w => { const d = !!w.get(); const app = !d && Wallets.isMobile() && w.browse; return d ? `<button class="wrow" data-action="walletPick" data-w="${w.id}">${walletIcon(w)}<span style="flex:1;text-align:left"><b>${w.name}</b><span class="mut" style="display:block;font-size:12px">Detected in this browser</span></span><span class="tag green">Detected</span>${ic('chevRight', 'sm')}</button>` : app ? `<a class="wrow" href="${esc(w.browse(location.href))}">${walletIcon(w)}<span style="flex:1;text-align:left"><b>${w.name}</b><span class="mut" style="display:block;font-size:12px">Opens Nexis inside the ${w.name} app</span></span><span class="tag blue">Open app ${ic('ext', 'sm')}</span></a>` : `<a class="wrow" href="${w.url}" target="_blank" rel="noopener">${walletIcon(w)}<span style="flex:1;text-align:left"><b>${w.name}</b><span class="mut" style="display:block;font-size:12px">Not installed</span></span><span class="tag">Install ${ic('ext', 'sm')}</span></a>`; }).join('')}
     <p class="mut" style="font-size:12px;margin-top:6px">Nexis asks your wallet to sign a message to prove you own it (Sign-In With Solana). Signing never moves funds.</p>
-    ${!WALLETS.some(w => w.get()) ? infoNote('No Solana wallet extension was found in this browser. Install Phantom, Backpack or Solflare, then reload this page.') : ''}</div>`;
+    ${!WALLETS.some(w => w.get()) ? infoNote(Wallets.isMobile() ? 'Phone browsers can’t reach wallet apps directly. Tap Phantom or Solflare above to open Nexis inside the wallet app’s browser, then connect there.' : 'No Solana wallet extension was found in this browser. Install Phantom, Backpack or Solflare, then reload this page.') : ''}</div>`;
   openModal(pick(), { label: title }); UI.walletFlow = { mode, onDone, pick };
+  // Extensions can inject after the page loads: re-check once so a wallet that just appeared can be picked.
+  if (!WALLETS.some(w => w.get())) setTimeout(() => { if (UI.walletFlow && UI.walletFlow.pick === pick && !UI.walletFlow.pending && WALLETS.some(w => w.get()) && $('.overlay .modal')) setModal(pick()); }, 800);
 }
 async function walletConnect(id) {
   const F = UI.walletFlow; const W = WALLETS.find(x => x.id === id);
@@ -243,7 +245,7 @@ async function walletConnect(id) {
 }
 async function walletSign(btn) {
   const F = UI.walletFlow; const p = F.pending; setBusy(btn, true, 'Waiting for signature…');
-  let sig; try { sig = await Wallets.signMessage(p.prov, p.msg); } catch (e) { setBusy(btn, false); return toast({ title: 'Signature declined', body: 'Nothing was signed.', kind: 'warn' }); }
+  let sig; try { sig = await Wallets.signMessage(p.prov, p.msg); } catch (e) { setBusy(btn, false); const declined = e.code === 4001 || /reject|declin|cancel|denied/i.test(e.message || ''); return toast({ title: declined ? 'Signature declined' : 'Your wallet couldn’t sign', body: declined ? 'Nothing was signed.' : esc(e.message || 'Try again, or use another wallet.'), kind: 'warn' }); }
   try {
     const proof = { address: p.address, label: p.W.name, message: p.msg, signature: sig };
     if (F.mode === 'login') return onAuthed(await Auth.adapter.wallet(proof));
@@ -453,7 +455,7 @@ const A_AUTH = {
   resendCode: async (el) => { setBusy(el, true, 'Sending…'); try { await EmailCodes.send(UI.auth.email, 'signin'); toast({ title: 'New code sent', kind: 'info' }); } catch (e) { toast({ title: 'Couldn’t send code', body: esc(e.message), kind: 'err' }); } setBusy(el, false); },
   forgotBack: () => { UI.forgot = { step: 1, email: UI.forgot.email }; refresh(); },
   pwToggle: (el) => { const i = el.parentNode.querySelector('input'); const show = i.type === 'password'; i.type = show ? 'text' : 'password'; el.setAttribute('aria-pressed', show); el.setAttribute('aria-label', show ? 'Hide password' : 'Show password'); el.innerHTML = ic(show ? 'eyeOff' : 'eye', 'sm'); i.focus(); },
-  walletPick: (el) => walletConnect(el.dataset.w), walletBack: () => setModal(UI.walletFlow.pick()), walletSign: (el) => walletSign(el),
+  walletPick: (el) => walletConnect(el.dataset.w), walletReconnect: async (el) => { setBusy(el, true, 'Connecting…'); try { await Wallets.reconnect(el.dataset.a); } catch (e) { toast({ title: 'Wallet not connected', body: esc(e.message), kind: 'warn' }); } setBusy(el, false); }, walletBack: () => setModal(UI.walletFlow.pick()), walletSign: (el) => walletSign(el),
   walletDone: () => { closeModal(); const f = UI.walletFlow && UI.walletFlow.onDone; UI.walletFlow = null; refresh(); if (f) setTimeout(f, 150); },
   onbHue: (el) => { UI.onb.hue = +el.dataset.h; $$('[data-action=onbHue]').forEach(b => b.classList.toggle('on', b === el)); $('#onb-av').style.background = `linear-gradient(135deg,hsl(${UI.onb.hue} 55% 42%),hsl(${(UI.onb.hue + 40) % 360} 50% 30%))`; },
   onbSkip: async (el) => { const f = $('[data-form=onboard]'); try { setBusy(el, true); await Auth.adapter.updateProfile({ handle: f.elements.handle.value, hue: UI.onb.hue, onboarded: true }); } catch (e) { setBusy(el, false); return showErr(f, e.message); } UI.onb = null; location.hash = '#/home'; },

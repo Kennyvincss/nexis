@@ -9,9 +9,10 @@
    ===================================================================== */
 const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const WALLETS = [
-  { id: 'phantom', name: 'Phantom', c: '#AB9FF2', url: 'https://phantom.com/download', get: () => (window.phantom && window.phantom.solana && window.phantom.solana.isPhantom) ? window.phantom.solana : (window.solana && window.solana.isPhantom ? window.solana : null) },
+  // silent: supports connect({ onlyIfTrusted: true }) (reconnects without a popup). browse: opens a page in the wallet's mobile app.
+  { id: 'phantom', name: 'Phantom', c: '#AB9FF2', url: 'https://phantom.com/download', silent: true, browse: (u) => `https://phantom.app/ul/browse/${encodeURIComponent(u)}?ref=${encodeURIComponent(location.origin)}`, get: () => (window.phantom && window.phantom.solana && window.phantom.solana.isPhantom) ? window.phantom.solana : (window.solana && window.solana.isPhantom ? window.solana : null) },
   { id: 'backpack', name: 'Backpack', c: '#E33E3F', url: 'https://backpack.app/download', get: () => (window.backpack && window.backpack.isBackpack) ? window.backpack : null },
-  { id: 'solflare', name: 'Solflare', c: '#FC7227', url: 'https://solflare.com/download', get: () => (window.solflare && window.solflare.isSolflare) ? window.solflare : null },
+  { id: 'solflare', name: 'Solflare', c: '#FC7227', url: 'https://solflare.com/download', browse: (u) => `https://solflare.com/ul/v1/browse/${encodeURIComponent(u)}?ref=${encodeURIComponent(location.origin)}`, get: () => (window.solflare && window.solflare.isSolflare) ? window.solflare : null },
 ];
 const walletIcon = (w, size = 34) => `<span class="wicon" style="width:${size}px;height:${size}px;background:${w.c}">${w.name[0]}</span>`;
 const explorerTx = (sig) => `https://solscan.io/tx/${sig}`;
@@ -105,18 +106,28 @@ const Wallets = {
     let bin = ''; raw.forEach(b => bin += String.fromCharCode(b));
     return Chain.rpc('sendTransaction', [btoa(bin), { encoding: 'base64', skipPreflight: false, preflightCommitment: 'confirmed' }]);
   },
+  /** Status of each linked wallet in this browser, without opening wallet popups: only wallets that support a silent
+      reconnect (Phantom) are asked; the others show "connects when you sign" until they're used. */
   watch() {
     const u = Auth.user; if (!u) return;
+    const upd = (a, s) => { if (this.status[a] === s) return; this.status[a] = s; Bus.emit('wallet:status', a); };
+    const check = (W, prov) => { const pk = prov.isConnected && prov.publicKey ? prov.publicKey.toString() : null; (Auth.user ? Auth.user.wallets : []).filter(w => this.byName(w.label) === W).forEach(w => upd(w.address, !pk ? 'idle' : pk === w.address ? 'connected' : 'other-account')); };
+    const seen = new Set();
     u.wallets.forEach(w => {
       const W = this.byName(w.label); const prov = W && W.get();
-      if (!prov) { this.status[w.address] = 'missing'; return; }
-      const upd = (s) => { this.status[w.address] = s; Bus.emit('wallet:status', w.address); };
-      try { prov.connect({ onlyIfTrusted: true }).then(r => { const k = (r && r.publicKey) || prov.publicKey; upd(k && k.toString() === w.address ? 'connected' : 'other-account'); }).catch(() => upd('locked')); } catch (e) { upd('locked'); }
-      if (!prov._nexisWatch && prov.on) { prov._nexisWatch = true; prov.on('disconnect', () => upd('disconnected')); prov.on('accountChanged', (pk) => upd(pk && pk.toString() === w.address ? 'connected' : 'other-account')); }
+      if (!prov) { upd(w.address, 'missing'); return; }
+      if (seen.has(W)) return; seen.add(W);
+      if (!prov._nexisWatch && prov.on) { prov._nexisWatch = true; ['connect', 'disconnect', 'accountChanged'].forEach(ev => { try { prov.on(ev, () => setTimeout(() => check(W, prov), 0)); } catch (e) { /* event not supported */ } }); }
+      if (prov.isConnected && prov.publicKey) return check(W, prov);
+      if (!W.silent) return check(W, prov);
+      prov.connect({ onlyIfTrusted: true }).then(() => check(W, prov)).catch(() => check(W, prov));
     });
   },
+  /** Connects a linked wallet on request (the Settings "Connect" button). */
+  async reconnect(address) { const w = Auth.user && Auth.user.wallets.find(x => x.address === address); if (!w) return; try { await this.provider(w); } finally { this.watch(); } },
+  isMobile: () => /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || ''),
 };
-function walletStatusTag(a) { return { connected: '<span class="tag green"><span class="live-dot"></span>Connected</span>', disconnected: '<span class="tag red">Disconnected</span>', locked: '<span class="tag amber">Locked — open your wallet</span>', 'other-account': '<span class="tag amber">Different account active</span>', missing: '<span class="tag">Extension not detected</span>' }[Wallets.status[a]] || '<span class="tag">Checking…</span>'; }
+function walletStatusTag(a) { return { connected: '<span class="tag green"><span class="live-dot"></span>Connected</span>', idle: `<span class="tag">Not connected in this browser</span> <button class="link" style="display:inline;font-size:12px;margin-left:6px" data-action="walletReconnect" data-a="${esc(a)}">Connect</button>`, 'other-account': '<span class="tag amber">Another account is active in the wallet</span>', missing: '<span class="tag">Wallet not detected in this browser</span>' }[Wallets.status[a]] || '<span class="tag">Checking…</span>'; }
 
 /* Balances for the signed-in user's primary wallet, refreshed every 30s. */
 const Balances = {

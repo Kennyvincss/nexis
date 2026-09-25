@@ -252,7 +252,14 @@ Accounts are stored on the server, so an account created on one device works fro
 `/api/auth` checks every sign-in method:
 
 - **Email + password:** passwords are hashed with scrypt on the server, and repeated failures lock the account for a minute.
-- **Wallet:** Sign-In With Solana. The server checks the wallet's Ed25519 signature and rejects replayed messages.
+- **Wallet:** Sign-In With Solana (Phantom, Backpack, Solflare).
+  - **Server checks:**
+    - the wallet's Ed25519 signature;
+    - that the message names this site's domain, so a signature collected by another site can't sign in here;
+    - that it was issued in the last 10 minutes;
+    - that it hasn't been used before.
+  - **No surprise popups:** on page load Nexis only reconnects wallets that support a silent reconnect (Phantom). Other wallets show "Not connected in this browser" with a Connect button, and connect when you sign.
+  - **Phones:** phone browsers have no wallet extensions, so the wallet picker offers "Open app" links that reopen Nexis inside Phantom's or Solflare's in-app browser.
 - **Google:** the ID token is checked with Google and must be issued for your `GOOGLE_CLIENT_ID`.
 - **Email code and password reset:** Privy sends and checks the code in the browser; the server verifies Privy's signed token (with `PRIVY_APP_SECRET`) and reads the verified email before signing in. Resend is an alternative.
 - **Two-factor authentication:** TOTP codes are verified on the server.
