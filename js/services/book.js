@@ -248,6 +248,26 @@ const Book = {
   /* ---------- estimated odds ---------- */
   /** Goals model for a football game, fitted like a bookmaker's: home and away scoring rates (Poisson) that
       reproduce Polymarket's 1X2 prices and, when listed, its over/under 2.5 price. Half-time uses 45% of each rate. */
+  /** Live clock for display: the phase ("First half", "Half-time", "Second half", "Extra time", "Penalties") and the
+      match time in seconds, as of `at` (when the data was fetched), and whether it's running. Football only; other
+      sports use the provider's own status text (e.g. "Q2 5:32"). */
+  clockInfo(g) {
+    if (g.state !== 'in') return null;
+    if (!g.football) return { phase: g.clock || 'Live', sec: null };
+    const e = g.espn; const det = String(e ? (e.detail || '') : (g.pm.period || ''));
+    let phase, sec, running = true;
+    if (e) {
+      const p = nz(e.period, 0); const disp = String(e.clock || ''); const m = /(\d+)'?(?:\s*\+\s*(\d+))?/.exec(disp);
+      sec = e.clockSec != null ? e.clockSec : m ? (+m[1] + nz(m[2], 0)) * 60 : null;
+      phase = /\bHT\b|half.?time/i.test(det) ? 'Half-time' : /\bFT\b|full.?time|final/i.test(det) ? 'Full time' : /pen/i.test(det) || p >= 5 ? 'Penalties' : p >= 3 || /\bET\b|extra/i.test(det) ? 'Extra time' : p === 2 ? 'Second half' : p === 1 ? 'First half' : (sec != null && sec > 45 * 60 ? 'Second half' : 'First half');
+    } else {
+      const P = det.toUpperCase(); sec = g.pm.elapsed !== '' && g.pm.elapsed != null && Number.isFinite(+g.pm.elapsed) ? +g.pm.elapsed * 60 : null;
+      phase = /HT|HALF/.test(P) ? 'Half-time' : /FT|FULL/.test(P) ? 'Full time' : /PEN/.test(P) ? 'Penalties' : /ET|EXTRA/.test(P) ? 'Extra time' : /2H|2ND|SECOND/.test(P) ? 'Second half' : 'First half';
+    }
+    if (phase === 'Half-time') { sec = 45 * 60; running = false; }
+    if (phase === 'Full time' || phase === 'Penalties') running = false;
+    return { phase, sec, running, at: e ? (Sports.updatedAt || now()) : (Poly.gamesAt || now()) };
+  },
   /** Live corner and card counts from ESPN (null when ESPN has no live stats for the game). Corners: each team's
       "wonCorners" statistic; cards: the yellow and red cards in ESPN's match events. */
   liveCounts(g) {
