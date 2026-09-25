@@ -49,13 +49,16 @@ function totpOk(secretB32, code) { code = String(code || '').replace(/\s/g, '');
 /* ---------- Solana message signatures ---------- */
 const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 function b58dec(s) { let n = 0n; for (const c of String(s)) { const i = B58.indexOf(c); if (i < 0) throw fail(400, 'bad_address', 'Invalid wallet address.'); n = n * 58n + BigInt(i); } let hex = n.toString(16); if (hex.length % 2) hex = '0' + hex; const lead = String(s).match(/^1*/)[0].length; return Buffer.concat([Buffer.alloc(lead), n ? Buffer.from(hex, 'hex') : Buffer.alloc(0)]); }
-async function verifyWallet(db, { address, message, signature }) {
+async function verifyWallet(db, { address, message, signature, _host: host }) {
   const msg = String(message || ''); const pub = b58dec(address);
   if (pub.length !== 32) throw fail(400, 'bad_address', 'Invalid wallet address.');
   if (!msg.includes('\n' + address + '\n')) throw fail(400, 'bad_message', 'The signed message is for a different wallet.');
+  // The message must name this site (Sign-In With Solana), so a signature collected by another site can't sign in here.
+  const domain = (msg.match(/^(\S+) wants you to sign in with your Solana account:/) || [])[1];
+  if (!domain || (host && domain.toLowerCase() !== host)) throw fail(400, 'bad_domain', 'This signature was made for a different website. Try again from this page.');
   const issued = Date.parse((msg.match(/Issued At: (.+)$/m) || [])[1]); if (!(Math.abs(Date.now() - issued) < 10 * 60e3)) throw fail(400, 'stale_message', 'That signature has expired. Try again.');
   const nonce = (msg.match(/Nonce: (\S+)/) || [])[1]; if (!nonce) throw fail(400, 'bad_message', 'Invalid sign-in message.');
-  const sig = Buffer.from(String(signature || ''), 'hex'); if (sig.length !== 64) throw fail(400, 'bad_signature', 'Invalid signature.');
+  const sig = /^[0-9a-f]{128}$/i.test(String(signature || '')) ? Buffer.from(String(signature), 'hex') : null; if (!sig) throw fail(400, 'bad_signature', 'Invalid signature.');
   const key = crypto.createPublicKey({ key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), pub]), format: 'der', type: 'spki' });
   if (!crypto.verify(null, Buffer.from(msg, 'utf8'), key, sig)) throw fail(401, 'bad_signature', 'The wallet signature didn’t verify.');
   if (await db.get('nonce:' + nonce)) throw fail(400, 'replayed', 'That signature was already used. Try again.');
@@ -240,6 +243,7 @@ const handler = async (req, res) => {
   res.setHeader('cache-control', 'no-store');
   if (!available()) return send(res, 503, { code: 'ACCOUNTS_UNAVAILABLE', message: 'Server accounts aren’t available on this host.' });
   const b = (await readJson(req)) || {}; const action = String(b.action || '');
+  const hdr = (req.headers && (req.headers['x-forwarded-host'] || req.headers.host)) || ''; b._host = String(hdr).split(',')[0].trim().toLowerCase();
   try {
     const db = store(); const key = await secret(db);
     if (PUBLIC[action]) return send(res, 200, await PUBLIC[action](db, key, b));

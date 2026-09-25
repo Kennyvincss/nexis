@@ -295,7 +295,8 @@ Bus.on('sports', () => {
 });
 Bus.on('sports:score', ({ g }) => $$(`[data-gscore="${g.id}"]`).forEach(el => { el.textContent = scoreText(g); el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }));
 Bus.on('tx', () => { const b = $('[data-txrows]'); if (b) b.innerHTML = txRows(Store.s.txs.slice(0, 60)); else if (current.route === 'portfolio' && UI.portfolio.tab === 'Transactions') softRefresh(['portfolio']); });
-Bus.on('balances', () => { const b = Balances.v; setText('[data-usdc]', b ? fmtNum(b.usdc, 2) : Balances.err ? '—' : '…'); setText('[data-sol]', b ? fmtNum(b.sol, 4) : '—'); });
+Bus.on('balances', () => { const b = Balances.v; setText('[data-usdc]', b ? fmtNum(b.usdc, 2) : Balances.err ? '—' : '…'); setText('[data-sol]', b ? fmtNum(b.sol, 4) : '—'); setText('[data-bal]', b ? `${fmtNum(b.usdc, 2)} USDC · ${fmtNum(b.sol, 4)} SOL` : Balances.err ? 'Balance unavailable' : 'Loading balance…'); });
+Bus.on('wallet:status', (a) => $$(`[data-wstatus="${a}"]`).forEach(el => { el.innerHTML = walletStatusTag(a); }));
 Bus.on('notifs', () => { renderChrome(current.route); if (current.route === 'notifications') softRefresh(['notifications']); });
 Bus.on('trader', (id) => { if (current.route === 'tracker' && (!current.arg || current.arg === id)) softRefresh(['tracker']); });
 Bus.on('tracker', () => { renderChrome(current.route); softRefresh(['tracker', 'home', 'activity']); });
