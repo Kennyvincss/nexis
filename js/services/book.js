@@ -19,6 +19,11 @@ const BOOK_CODES = {
   f1: ['Formula 1', 'Motorsport', 'World'], ipl: ['IPL', 'Cricket', 'India'], cricket: ['Cricket', 'Cricket', 'World'], nrl: ['NRL', 'Rugby', 'Australia'], afl: ['AFL', 'Australian Football', 'Australia'],
   cs2: ['Counter-Strike 2', 'Esports', 'World'], csgo: ['Counter-Strike 2', 'Esports', 'World'], lol: ['League of Legends', 'Esports', 'World'], dota2: ['Dota 2', 'Esports', 'World'], val: ['Valorant', 'Esports', 'World'],
 };
+/* Polymarket league codes → the ESPN league with the same games (so they get scores and stats). Codes not listed
+   here and not matched to ESPN another way have no ESPN data, and their games aren't listed. */
+const BOOK_ESPN = { epl: 'soccer/eng.1', lal: 'soccer/esp.1', sea: 'soccer/ita.1', bun: 'soccer/ger.1', fl1: 'soccer/fra.1', ucl: 'soccer/uefa.champions', uel: 'soccer/uefa.europa', uecl: 'soccer/uefa.europa.conf',
+  por: 'soccer/por.1', tur: 'soccer/tur.1', spl: 'soccer/ksa.1', mls: 'soccer/usa.1', efl: 'soccer/eng.2', fac: 'soccer/eng.fa', cdr: 'soccer/esp.copa_del_rey', fifwc: 'soccer/fifa.world',
+  nba: 'basketball/nba', wnba: 'basketball/wnba', cbb: 'basketball/mens-college-basketball', mlb: 'baseball/mlb', nhl: 'hockey/nhl', atp: 'tennis/atp', wta: 'tennis/wta', ufc: 'mma/ufc', f1: 'racing/f1' };
 const BOOK_REGION = { eng: 'England', esp: 'Spain', ita: 'Italy', ger: 'Germany', fra: 'France', ned: 'Netherlands', por: 'Portugal', sco: 'Scotland', tur: 'Turkey', bel: 'Belgium', aut: 'Austria', sui: 'Switzerland', den: 'Denmark', nor: 'Norway', swe: 'Sweden', gre: 'Greece', usa: 'USA', can: 'Canada', mex: 'Mexico', bra: 'Brazil', arg: 'Argentina', col: 'Colombia', chi: 'Chile', ksa: 'Saudi Arabia', jpn: 'Japan', kor: 'South Korea', chn: 'China', aus: 'Australia', uefa: 'Europe', fifa: 'International', conmebol: 'South America', concacaf: 'North America', caf: 'Africa', afc: 'Asia', club: 'International' };
 const BOOK_SPORTS = ['Football', 'Basketball', 'Tennis', 'Baseball', 'Hockey', 'MMA', 'Boxing', 'Cricket', 'Rugby', 'Motorsport', 'Golf', 'Esports', 'Other'];
 const BOOK_CATS = ['Match result', 'Handicap', 'Totals', 'Both teams to score', 'Other'];
@@ -88,6 +93,9 @@ const Book = {
       const e = espn.get(p.id) || null; let L = leagueOf(p, e);
       // The six main football leagues always carry the same key and name, whatever Polymarket or ESPN call them.
       const pin = footballPinned({ key: L.key, code: p.league, name: L.name }) || footballPinned({ name: p.series }); if (pin) L = { key: pin.key, name: pin.name, sport: 'Football', region: pin.region };
+      // Only leagues ESPN has data for are listed (scores, clocks and match stats come from ESPN).
+      const ek = this.espnKey(L, p, e); if (!ek) return;
+      if (ek !== L.key) { const M = Sports.meta.get(ek); const pin2 = footballPinned({ key: ek }); L = pin2 ? { key: pin2.key, name: pin2.name, sport: 'Football', region: pin2.region } : { key: ek, name: M ? M[2] : L.name, sport: M ? M[3] : L.sport, region: BOOK_REGION[String(ek.split('/')[1] || '').split('.')[0]] || L.region }; }
       if (sportExcluded({ sport: L.sport, key: L.key, code: p.league, name: L.name, tags: p.tags }) || sportExcluded({ name: p.series })) return; // not offered on Nexis
       // Sides: ESPN's home/away when matched (which Polymarket name is home?), else Polymarket's order.
       let home = { name: p.a, short: trim(p.a), logo: null, score: null, pm: p.a }, away = { name: p.b, short: trim(p.b), logo: null, score: null, pm: p.b };
@@ -103,6 +111,18 @@ const Book = {
       out.push(g);
     });
     return out.sort((a, b) => a.start - b.start);
+  },
+  /** The ESPN league for a game: its matched ESPN game, an ESPN key, the Polymarket code's ESPN league, or an ESPN
+      league with exactly the same name. Null when ESPN has no data for the league. */
+  espnKey(L, p, e) {
+    if (e) return e.sp + '/' + e.lg;
+    if (Sports.meta.has(L.key)) return L.key;
+    const c = BOOK_ESPN[String(p.league || '').toLowerCase()]; if (c) return c;
+    const norm = (x) => String(x || '').replace(/\b(19|20)\d\d(\s*[-/]\s*(19|20)?\d\d)?\b/g, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const names = [L.name, p.series].map(norm).filter(Boolean); if (!names.length) return null;
+    if (!this._metaByName || this._metaN !== Sports.meta.size) { this._metaByName = new Map(); Sports.meta.forEach((M, k) => { const n = norm(M[2]); if (n && !this._metaByName.has(n)) this._metaByName.set(n, k); }); this._metaN = Sports.meta.size; }
+    for (const n of names) { const k = this._metaByName.get(n); if (k) return k; }
+    return null;
   },
   sportFromTags(tags) {
     const t = (tags || []).join(' ').toLowerCase();
