@@ -30,7 +30,7 @@ function pantaRow(m) {
     ${m.tradable ? `<div class="mrow-b"><button class="btn btn-yes sm" data-action="quickTrade" data-id="${m.id}" data-side="YES">Yes <span class="num" data-py="${m.id}">${m.yes != null ? cents(m.yes) : '—'}</span></button><button class="btn btn-no sm" data-action="quickTrade" data-id="${m.id}" data-side="NO">No <span class="num" data-pn="${m.id}">${m.no != null ? cents(m.no) : '—'}</span></button></div>` : phaseTag(m) || '<span class="tag">Closed</span>'}
     <span class="mrow-v num mut">${m.volume != null ? kusd(m.volume) : '—'}</span></div>`;
 }
-function polyRow(m) { if (m.listed && !m.game) return `<div class="mrow"><a class="mrow-l" href="#/market/${m.id}"><b>${esc(m.q)}</b><span class="mut" style="font-size:11.5px">New · the first trade opens it on Panta</span></a><div class="mrow-p"><span class="num" data-lpct="${m.id}">${Math.round(m.yes * 100)}%</span></div><a class="btn btn-ghost sm" href="#/market/${m.id}">Trade</a><span class="mrow-v num mut">est.</span></div>`; return ''; }
+function polyRow(m) { if (m.listed && !m.game) return `<div class="mrow"><a class="mrow-l" href="#/market/${m.id}"><b>${esc(m.q)}</b><span class="mut" style="font-size:11.5px">Trade on Panta</span></a><div class="mrow-p"><span class="num" data-lpct="${m.id}">${Math.round(m.yes * 100)}%</span></div><a class="btn btn-ghost sm" href="#/market/${m.id}">Trade</a><span class="mrow-v num mut">est.</span></div>`; return ''; }
 function relatedMarketsCard(rel, emptyText) {
   const blocked = pantaState('related markets');
   return `<div class="card"><div class="card-head"><h3>Related prediction markets</h3>${srcBadge('panta', true)}</div>

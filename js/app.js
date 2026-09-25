@@ -271,7 +271,7 @@ Bus.on('panta:price', ({ m, prev }) => {
 });
 Bus.on('panta:catalog', () => { softRefresh(['markets', 'home', '', 'crypto', 'event', 'create']); renderChrome(current.route); });
 Bus.on('poly:price', ({ m }) => {
-  setText(`[data-ly="${m.id}"]`, cents(m.yes), true); setText(`[data-ln="${m.id}"]`, cents(1 - m.yes), true); setText(`[data-lpct="${m.id}"]`, Math.round(m.yes * 100) + '%');
+  setText(`[data-ly="${m.id}"]`, cents(m.yes), true); setText(`[data-ln="${m.id}"]`, noCents(m.yes), true); setText(`[data-lpct="${m.id}"]`, Math.round(m.yes * 100) + '%');
   $$(`[data-lbook="${m.id}"]`).forEach(el => { const h = polyBook(m); if (el.innerHTML !== h) el.innerHTML = h; });
   if (current.route === 'market' && current.arg === m.id) throttled('pchart', 4000, () => { const c = $(`.chart-box[data-chart="poly"][data-id="${m.id}"]`); if (c) mountChartEl(c); });
 });
