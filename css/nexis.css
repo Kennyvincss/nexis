@@ -808,7 +808,7 @@ mark.pred{ background:rgba(61,123,255,.2); color:#fff; border-radius:3px; paddin
 .bk-row{ display:flex; align-items:center; gap:10px; padding:9px 14px; border-bottom:1px solid var(--line); }
 .bk-row:last-child{ border-bottom:0; }
 .bk-row.live{ background:linear-gradient(90deg, var(--red-soft), transparent 40%); }
-.bk-when{ width:66px; flex:none; display:flex; flex-direction:column; gap:2px; font-size:13px; }
+.bk-when{ width:84px; flex:none; display:flex; flex-direction:column; gap:2px; font-size:13px; }
 .bk-when .mut{ font-size:10.5px; font-family:var(--mono); }
 .bk-live{ display:inline-flex; align-items:center; gap:5px; color:var(--red); font-weight:600; font-family:var(--mono); font-size:12px; }
 .bk-teams{ flex:1; min-width:0; display:flex; flex-direction:column; gap:3px; font-size:13.5px; }
@@ -829,6 +829,20 @@ mark.pred{ background:rgba(61,123,255,.2); color:#fff; border-radius:3px; paddin
 .bk-cs .bk-odds{ grid-template-columns:repeat(4,minmax(0,1fr)); }
 .bk-game .bk-bt{ margin-top:16px; }
 .bk-mode{ display:flex; width:100%; } .bk-mode button{ flex:1; }
+.bk-when .bk-live{ font-size:11px; white-space:nowrap; }
+.bk-clock{ font-size:11.5px; font-family:var(--mono); color:var(--text); }
+.bk-live.inline{ font-size:12.5px; }
+.bk-stats .card-head{ padding:12px 16px; }
+.bk-evs{ display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid var(--line); }
+.bk-evs .r .bk-ev{ flex-direction:row-reverse; text-align:right; }
+.bk-ev{ display:flex; align-items:center; gap:6px; font-size:12.5px; padding:2px 0; }
+.bk-ev span:nth-child(2){ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.bk-card{ width:9px; height:12px; border-radius:2px; flex:none; } .bk-card.yellow{ background:var(--amber); } .bk-card.red{ background:var(--red); }
+.bk-stat-head{ display:flex; justify-content:space-between; font-size:12px; color:var(--text-2); margin-bottom:6px; }
+.bk-stat-row{ display:grid; grid-template-columns:52px 1fr 52px; align-items:center; gap:10px; padding:5px 0; font-size:13px; }
+.bk-stat-row b:last-child{ text-align:right; }
+.bk-stat-mid{ display:flex; flex-direction:column; gap:4px; text-align:center; font-size:12px; color:var(--text-2); }
+.bk-bar{ display:flex; gap:3px; height:6px; } .bk-bar i{ display:block; height:100%; border-radius:3px; background:var(--blue); } .bk-bar i:last-child{ background:var(--line-3); } .bk-bar.zero i{ background:var(--line-2); }
 .odd b{ font-size:13.5px; font-weight:650; flex:none; }
 .odd sup{ font-size:9px; color:var(--amber); margin-left:1px; }
 .bk-mkt .odd{ justify-content:space-between; padding:0 10px; }
@@ -870,7 +884,7 @@ mark.pred{ background:rgba(61,123,255,.2); color:#fff; border-radius:3px; paddin
 }
 @media (max-width:640px){
   .bk-row{ flex-wrap:wrap; row-gap:8px; }
-  .bk-when{ width:52px; }
+  .bk-when{ width:74px; }
   .bk-teams{ flex:1 1 0; }
   .bk-odds{ width:auto; flex:1 1 100%; order:5; }
   .bk-row .odd{ justify-content:space-between; padding:0 8px; }

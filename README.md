@@ -125,6 +125,12 @@ The services emit events on a small bus. `app.js` patches the visible page in pl
   - Before recording a market, the server checks on Solana (`SOLANA_RPC_URL`) that the creation transaction succeeded, touches the market account and contains the question.
   - It also checks against Polymarket that the question names both teams, or is the exact Polymarket question for `pm:` props.
   - The first registration wins.
+- **Live clock:** football shows the phase (First half, Half-time, Second half, Extra time, Penalties) and a running match clock in HH:MM:SS that ticks every second. The clock comes from ESPN, or from Polymarket's period and elapsed minutes when ESPN doesn't have the game. Other sports show the provider's status (e.g. Q2 5:32).
+- **Match stats on the game page (ESPN):**
+  - goalscorers with the minute (penalties and own goals marked) and cards;
+  - head-to-head bars: possession, total shots, shots on target, corners, fouls, yellow and red cards, offsides, saves, passes, accurate passes, tackles (whichever ESPN has; other sports show ESPN's team stats);
+  - refreshed every 15 seconds while live;
+  - games ESPN doesn't cover say so.
 - **In-play betting:** bets can be placed while a game is live, until the 90th minute.
   - Estimated odds follow the game: the goals model is re-fitted to Polymarket's live 1X2 (and O/U 2.5 when listed) for the goals still to come, on top of the current score and time left.
   - Bets that are already decided close automatically: half-time bets after the break, and impossible or near-certain outcomes (under 1% or over 99%).

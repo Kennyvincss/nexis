@@ -14,6 +14,14 @@ const BK_MIN = 1;
 
 const bkTime = (g) => new Date(g.start).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 const bkDay = (t) => { const d = new Date(t); return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} ${d.toLocaleDateString('en-US', { weekday: 'long' })}`; };
+const bkHms = (sec) => { sec = Math.max(0, Math.floor(sec)); return [Math.floor(sec / 3600), Math.floor(sec / 60) % 60, sec % 60].map(n => String(n).padStart(2, '0')).join(':'); };
+/** Live phase + running clock (HH:MM:SS). The clock ticks every second from the last update, for at most 3 minutes. */
+function bkLiveClock(g, inline) {
+  const c = Book.clockInfo(g); if (!c) return '';
+  const t = c.sec != null ? `<span class="num bk-clock" ${c.running ? `data-tick="${c.sec}" data-at="${c.at}"` : ''}>${bkHms(c.sec + (c.running ? Math.min(180, Math.max(0, (now() - c.at) / 1000)) : 0))}</span>` : '';
+  return `<span class="bk-live${inline ? ' inline' : ''}"><span class="live-dot red"></span>${esc(c.phase)}</span>${t}`;
+}
+setInterval(() => { if (document.hidden) return; $$('[data-tick]').forEach(el => { const s = +el.dataset.tick + Math.min(180, Math.max(0, (now() - +el.dataset.at) / 1000)); const v = bkHms(s); if (el.textContent !== v) el.textContent = v; }); }, 1000);
 const bkScore = (g) => g.home.score != null && g.away.score != null ? `${g.home.score} – ${g.away.score}` : '';
 /** One odds button: a side of a prop. Estimated odds (no Panta market yet) are marked with an asterisk.
     col: { h: column label, prop, side, sub?: line shown in the button (e.g. "−4.5") } — or null for an empty cell. */
@@ -48,7 +56,7 @@ function bkRow(g, slots) {
     ? `<div class="bk-final"><span class="mut">FT</span><b class="num">${esc(bkScore(g) || '—')}</b></div>`
     : `<div class="bk-odds" style="--n:${cols.length}">${cols.map(c => bkOdd(g, c)).join('')}</div>`;
   return `<div class="bk-row ${g.state === 'in' ? 'live' : ''}">
-    <div class="bk-when">${g.state === 'in' ? `<b class="bk-live"><span class="live-dot red"></span>${esc(g.clock || 'Live')}</b>` : `<b class="num">${bkTime(g)}</b>`}<span class="mut">ID: ${esc(Book.shortId(g))}</span></div>
+    <div class="bk-when">${g.state === 'in' ? bkLiveClock(g) : `<b class="num">${bkTime(g)}</b>`}<span class="mut">ID: ${esc(Book.shortId(g))}</span></div>
     <a class="bk-teams" href="#/book/${esc(g.id)}"><span>${esc(g.home.short)}</span><span>${esc(g.away.short)}</span></a>
     ${g.state === 'in' && bkScore(g) ? `<b class="bk-sc num">${g.home.score}<br>${g.away.score}</b>` : ''}
     <a class="bk-stat" href="${statsHref}" aria-label="Stats for ${esc(g.home.short)} vs ${esc(g.away.short)}" title="Stats">${ic('trend', 'sm')}</a>
@@ -147,7 +155,7 @@ Views.book = async (params, id) => {
   const g = Book.get(id);
   if (!g) return `<div class="page"><a class="link" href="#/sports">${ic('chevLeft', 'sm')}Sports</a><div class="card" style="margin-top:14px">${emptyState({ icon: 'soccer', title: 'Game not found', body: 'It may be older than 3 days, or no longer listed.' })}</div></div>`;
   Book.loadReg([g], { extra: true }).catch(() => {});
-  const status = g.state === 'in' ? `<span class="bk-live"><span class="live-dot red"></span>${esc(g.clock || 'Live')}</span>` : g.state === 'post' ? '<span class="tag">Full time</span>' : `<span class="mut">${bkDay(g.start)} · ${bkTime(g)}</span>`;
+  const status = g.state === 'in' ? `<span class="row" style="gap:8px">${bkLiveClock(g, true)}</span>` : g.state === 'post' ? '<span class="tag">Full time</span>' : `<span class="mut">${bkDay(g.start)} · ${bkTime(g)}</span>`;
   const score = g.state !== 'pre' && bkScore(g) ? `<div class="bk-score num">${esc(bkScore(g))}</div>` : `<div class="bk-score mut" style="font-size:15px">vs</div>`;
   const card = (title, cols, sub) => `<div class="card bk-mkt ${cols.length >= 3 ? 'wide' : ''}"><div class="bk-mkt-t">${esc(title)}${sub ? `<div class="mut" style="font-size:11.5px;font-weight:400">${esc(sub)}</div>` : ''}</div><div class="bk-odds" style="--n:${cols.length}">${cols.map(c => bkOdd(g, c, { showLabel: true, label: c && c.label, full: c && c.label, market: c && c.market || title })).join('')}</div></div>`;
   const C = (h, prop, side, label) => ({ h, prop, side, label: label || h });
@@ -189,6 +197,7 @@ Views.book = async (params, id) => {
       <div class="bk-vs"><div class="bk-side">${g.home.logo ? `<img src="${esc(g.home.logo)}" alt="" width="44" height="44" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}<b>${esc(g.home.name)}</b></div>${score}<div class="bk-side">${g.away.logo ? `<img src="${esc(g.away.logo)}" alt="" width="44" height="44" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}<b>${esc(g.away.name)}</b></div></div>
       <div class="row" style="gap:10px;justify-content:center;font-size:12.5px">${statsLink}</div>
     </div>
+    ${g.espn ? `<div class="card bk-stats" id="bk-stats" style="margin-top:12px">${bkStatsHtml(g)}</div>` : g.state !== 'pre' ? `<p class="mut" style="font-size:12.5px;margin-top:10px">Detailed match stats aren’t available for this match.</p>` : ''}
     <div class="bk-game">
       <div style="min-width:0">
         ${g.state === 'post' ? `<div class="card" style="margin-top:16px">${emptyState({ icon: 'check', title: 'Full time', body: 'Betting has closed. Panta’s Resolution Agent settles each market from the result; winning bets can be claimed in Portfolio.' })}</div>`
@@ -202,6 +211,28 @@ Views.book = async (params, id) => {
     ${bkSlipBar()}
   </div>`;
 };
+
+/* ---------- match stats (ESPN): goalscorers, cards and team stats ---------- */
+const BK_STATS = [['possessionPct', 'Possession', '%'], ['totalShots', 'Total shots'], ['shotsOnTarget', 'Shots on target'], ['wonCorners', 'Corners'], ['foulsCommitted', 'Fouls'], ['yellowCards', 'Yellow cards'], ['redCards', 'Red cards'], ['offsides', 'Offsides'], ['saves', 'Saves'], ['totalPasses', 'Passes'], ['accuratePasses', 'Accurate passes'], ['totalTackles', 'Tackles']];
+function bkStatsHtml(g) {
+  const e = g.espn; if (!e) return '';
+  const sum = Sports.summaries && Sports.summaries[e.id];
+  const statsFor = (t) => { const out = { ...(t.stats || {}) }; const s = sum && (sum.teamStats || []).find(x => x.id === t.id); if (s) s.stats.forEach(x => { out[x.name] = x.value; out['label:' + x.name] = x.label; }); return out; };
+  const H = statsFor(e.home), A = statsFor(e.away);
+  const cards = (side, kind) => (e.details || []).filter(d => d.side === side && d.kind === kind).length;
+  if (g.football) { if (H.yellowCards == null) { H.yellowCards = cards('home', 'yellow'); A.yellowCards = cards('away', 'yellow'); } if (H.redCards == null) { H.redCards = cards('home', 'red'); A.redCards = cards('away', 'red'); } }
+  const num = (v) => nz(String(v == null ? '' : v).replace(/[^0-9.\-]/g, ''), null);
+  const keys = g.football ? BK_STATS.filter(([k]) => H[k] != null && A[k] != null)
+    : Object.keys(H).filter(k => !k.startsWith('label:') && A[k] != null && num(H[k]) != null).slice(0, 12).map(k => [k, H['label:' + k] || k.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase())]);
+  const bar = ([k, label, unit = '']) => { const a = num(H[k]), b = num(A[k]); const tot = (a || 0) + (b || 0); const pa = tot ? Math.round((a || 0) / tot * 100) : 50;
+    return `<div class="bk-stat-row"><b class="num">${esc(String(H[k]))}${unit}</b><div class="bk-stat-mid"><span>${esc(label)}</span><div class="bk-bar ${tot ? '' : 'zero'}"><i style="width:${pa}%"></i><i style="width:${100 - pa}%"></i></div></div><b class="num">${esc(String(A[k]))}${unit}</b></div>`; };
+  const ev = (e.details || []).filter(d => ['goal', 'yellow', 'red'].includes(d.kind));
+  const evCol = (side) => ev.filter(d => d.side === side).map(d => `<div class="bk-ev">${d.kind === 'goal' ? ic('soccer', 'sm') : `<span class="bk-card ${d.kind}"></span>`}<span>${esc(d.who || (d.kind === 'goal' ? 'Goal' : 'Card'))}${d.pen ? ' (pen)' : ''}${d.og ? ' (OG)' : ''}</span><span class="mut num">${esc(d.min || '')}</span></div>`).join('') || '<div class="mut" style="font-size:12px">—</div>';
+  const scorers = g.football ? `<div class="bk-evs"><div>${evCol('home')}</div><div class="r">${evCol('away')}</div></div>` : '';
+  return `<div class="card-head"><h3>Match stats</h3><a class="link" href="#/event/${esc(e.id)}">Full stats &amp; lineups ${ic('chevRight', 'sm')}</a></div>
+    <div style="padding:10px 16px 14px">${scorers}${keys.length ? `<div class="bk-stat-head"><b>${esc(g.home.short)}</b><b>${esc(g.away.short)}</b></div>${keys.map(bar).join('')}` : `<p class="mut" style="font-size:12.5px">${g.state === 'pre' ? 'Stats appear once the match starts.' : 'Loading stats…'}</p>`}</div>`;
+}
+function paintBookStats(id) { const el = $('#bk-stats'); const g = Book.get(id); if (el && g && g.espn) { const h = bkStatsHtml(g); if (el.innerHTML !== h) el.innerHTML = h; } }
 
 /* ---------- bet slip ----------
    Singles: each selection is its own bet with its own stake.
