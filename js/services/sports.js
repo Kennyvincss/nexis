@@ -21,6 +21,17 @@ const _tokCache = new Map();
 const nameTokens = (s) => { const k = String(s || ''); let v = _tokCache.get(k); if (!v) { if (_tokCache.size > 20000) _tokCache.clear(); v = tokenize(k); _tokCache.set(k, v); } return v; };
 const tokenize = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/&/g, ' ').replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(w => w && !NAME_STOP.has(w) && !/^\d{4}$/.test(w)).map(w => NAME_ALIAS[w] || w);
 const subsetOf = (a, b) => a.length > 0 && a.every(w => b.includes(w));
+/* Loose name match for the second pass: a distinctive word in common, or a shared 4+ letter prefix ("Lyon" ~
+   "Olympique Lyonnais", "Paris SG" ~ "Paris Saint-Germain"). Only used together with the other team and a close kick-off. */
+const NAME_GENERIC = new Set(['united', 'city', 'real', 'sporting', 'athletic', 'atletico', 'olympique', 'deportivo', 'club', 'union', 'borussia', 'racing', 'dynamo', 'dinamo', 'lokomotiv', 'young', 'boys', 'town', 'county', 'rovers', 'wanderers', 'albion', 'hotspur', 'football', 'calcio', 'sport', 'sports', 'association', 'women', 'reserves', 'academy', 'inter', 'saint', 'san', 'santa', 'nacional', 'national', 'central', 'independiente', 'universidad', 'rangers', 'celtic']);
+function teamLoose(t, polyName) {
+  // Conflicting distinguishing words ("Manchester United" vs "Manchester City") never match.
+  const tag = (n) => nameTokens(n).filter(w => ['united', 'city', 'real', 'athletic', 'sporting', 'inter', 'rovers', 'wanderers', 'county', 'town'].includes(w));
+  const tp = tag(polyName), tt = [...tag(t.name), ...tag(t.short)]; if (tp.length && tt.length && !tp.some(w => tt.includes(w))) return false;
+  const P = nameTokens(polyName).filter(w => w.length >= 4 && !NAME_GENERIC.has(w)); if (!P.length) return false;
+  const T = [...new Set([...nameTokens(t.name), ...nameTokens(t.short)])].filter(w => w.length >= 4 && !NAME_GENERIC.has(w));
+  return T.some(a => P.some(b => a === b || (a.length >= 4 && b.length >= 4 && (a.startsWith(b.slice(0, Math.max(4, Math.min(a.length, b.length) - 2))) || b.startsWith(a.slice(0, Math.max(4, Math.min(a.length, b.length) - 2)))))));
+}
 function teamMatch(t, polyName, abbrs) {
   const P = nameTokens(polyName); if (!P.length) return false;
   if ([t.name, t.short].some(n => { const T = nameTokens(n); return subsetOf(T, P) || subsetOf(P, T); })) return true;
@@ -183,6 +194,8 @@ const Sports = {
     while (lo < hi) { const mid = (lo + hi) >> 1; if (idx[mid].start < from) lo = mid + 1; else hi = mid; }
     let hit = null;
     for (let i = lo; i < idx.length && idx[i].start < g.start + 30 * HOUR; i++) { const p = idx[i]; if ((teamMatch(g.home, p.a, p.abbrs) && teamMatch(g.away, p.b, p.abbrs)) || (teamMatch(g.home, p.b, p.abbrs) && teamMatch(g.away, p.a, p.abbrs))) { hit = p; break; } }
+    // Second pass for differently-written names: both teams must still match loosely and kick off within 3 hours.
+    if (!hit) for (let i = lo; i < idx.length && idx[i].start < g.start + 30 * HOUR; i++) { const p = idx[i]; if (Math.abs(p.start - g.start) > 3 * HOUR) continue; if ((teamLoose(g.home, p.a) && teamLoose(g.away, p.b)) || (teamLoose(g.home, p.b) && teamLoose(g.away, p.a))) { hit = p; break; } }
     if (this._pm.size > 20000) this._pm.clear(); this._pm.set(key, hit); return hit;
   },
   /** Loads every league's schedule between two local days (inclusive). ESPN dates are US time, so we

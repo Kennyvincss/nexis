@@ -154,7 +154,7 @@ Views.book = async (params, id) => {
   await bkLoad();
   const g = Book.get(id);
   if (!g) return `<div class="page"><a class="link" href="#/sports">${ic('chevLeft', 'sm')}Sports</a><div class="card" style="margin-top:14px">${emptyState({ icon: 'soccer', title: 'Game not found', body: 'It may be older than 3 days, or no longer listed.' })}</div></div>`;
-  Book.loadReg([g], { extra: true }).catch(() => {});
+  Book.loadReg([g], { extra: true }).catch(() => {}); bkFindEspn(g);
   const status = g.state === 'in' ? `<span class="row" style="gap:8px">${bkLiveClock(g, true)}</span>` : g.state === 'post' ? '<span class="tag">Full time</span>' : `<span class="mut">${bkDay(g.start)} · ${bkTime(g)}</span>`;
   const score = g.state !== 'pre' && bkScore(g) ? `<div class="bk-score num">${esc(bkScore(g))}</div>` : `<div class="bk-score mut" style="font-size:15px">vs</div>`;
   const card = (title, cols, sub) => `<div class="card bk-mkt ${cols.length >= 3 ? 'wide' : ''}"><div class="bk-mkt-t">${esc(title)}${sub ? `<div class="mut" style="font-size:11.5px;font-weight:400">${esc(sub)}</div>` : ''}</div><div class="bk-odds" style="--n:${cols.length}">${cols.map(c => bkOdd(g, c, { showLabel: true, label: c && c.label, full: c && c.label, market: c && c.market || title })).join('')}</div></div>`;
@@ -197,7 +197,7 @@ Views.book = async (params, id) => {
       <div class="bk-vs"><div class="bk-side">${g.home.logo ? `<img src="${esc(g.home.logo)}" alt="" width="44" height="44" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}<b>${esc(g.home.name)}</b></div>${score}<div class="bk-side">${g.away.logo ? `<img src="${esc(g.away.logo)}" alt="" width="44" height="44" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}<b>${esc(g.away.name)}</b></div></div>
       <div class="row" style="gap:10px;justify-content:center;font-size:12.5px">${statsLink}</div>
     </div>
-    ${g.espn ? `<div class="card bk-stats" id="bk-stats" style="margin-top:12px">${bkStatsHtml(g)}</div>` : g.state !== 'pre' ? `<p class="mut" style="font-size:12.5px;margin-top:10px">Detailed match stats aren’t available for this match.</p>` : ''}
+    ${g.espn ? `<div class="card bk-stats" id="bk-stats" style="margin-top:12px">${bkStatsHtml(g)}</div>` : g.state !== 'pre' ? `<p class="mut" style="font-size:12.5px;margin-top:10px" id="bk-nostats">${bkEspnTried.has(g.leagueKey) || !/^[a-z-]+\/[a-z0-9._-]+$/.test(g.leagueKey) || g.leagueKey.startsWith('pm/') ? `ESPN doesn’t cover this match (${esc(g.league)}), so detailed stats aren’t available. The score and clock still update live.` : 'Looking for this match on ESPN…'}</p>` : ''}
     <div class="bk-game">
       <div style="min-width:0">
         ${g.state === 'post' ? `<div class="card" style="margin-top:16px">${emptyState({ icon: 'check', title: 'Full time', body: 'Betting has closed. Panta’s Resolution Agent settles each market from the result; winning bets can be claimed in Portfolio.' })}</div>`
@@ -212,6 +212,13 @@ Views.book = async (params, id) => {
   </div>`;
 };
 
+/* A game with no ESPN match yet: load its league's ESPN schedule once (the live poll may not include it), then re-render. */
+const bkEspnTried = new Set();
+function bkFindEspn(g) {
+  if (g.espn || g.state === 'pre' || bkEspnTried.has(g.leagueKey) || g.leagueKey.startsWith('pm/') || !/^[a-z-]+\/[a-z0-9._-]+$/.test(g.leagueKey)) return;
+  bkEspnTried.add(g.leagueKey);
+  Sports.loadLeague(g.leagueKey).catch(() => {}).finally(() => { if (current.route === 'book') refresh(); });
+}
 /* ---------- match stats (ESPN): goalscorers, cards and team stats ---------- */
 const BK_STATS = [['possessionPct', 'Possession', '%'], ['totalShots', 'Total shots'], ['shotsOnTarget', 'Shots on target'], ['wonCorners', 'Corners'], ['foulsCommitted', 'Fouls'], ['yellowCards', 'Yellow cards'], ['redCards', 'Red cards'], ['offsides', 'Offsides'], ['saves', 'Saves'], ['totalPasses', 'Passes'], ['accuratePasses', 'Accurate passes'], ['totalTackles', 'Tackles']];
 function bkStatsHtml(g) {
