@@ -125,5 +125,5 @@ const Poly = {
   async history(m) { if (m.histLoaded) return m.hist; const j = await Net.data(`${CLOB}/prices-history?market=${m.tokens[0]}&interval=1m&fidelity=60`); m.hist = (j.history || []).map(h => [toMs(h.t), nz(h.p)]).filter(x => x[1] > 0); m.hist.push([now(), m.yes]); m.histLoaded = true; return m.hist; },
   async oi(m) { const r = await Net.data(`${PDATA}/oi?market=${m.conditionId}`); const v = Array.isArray(r) ? r[0] && r[0].value : r && r.value; m.oi = v != null ? nz(v) : null; return m.oi; },
   async holders(m) { const r = await Net.data(`${PDATA}/holders?market=${m.conditionId}&limit=8`); return (Array.isArray(r) ? r : []).flatMap(g => (g.holders || []).map(h => ({ wallet: String(h.proxyWallet || '').toLowerCase(), name: h.name || h.pseudonym || shortW(h.proxyWallet), img: h.profileImage, amount: nz(h.amount), idx: +h.outcomeIndex }))).sort((a, b) => b.amount - a.amount).slice(0, 10); },
-  start() { Poller(() => this.load(), 30000); Poller(() => this.pollTrades(), 8000); Poller(() => this.loadGames(), 60000); },
+  start() { Poller(() => this.load(), 30000); Poller(() => this.loadGames(), 60000); },
 };

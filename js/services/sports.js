@@ -6,7 +6,7 @@
      polled every 12s while a match page is open.
    - Related prediction markets: Panta markets whose titles mention the
      teams, and the game's own Polymarket markets (tradable in Nexis via
-     #/polymarket), matched by team names and kick-off time.
+     the sportsbook), matched by team names and kick-off time.
    ===================================================================== */
 const ESPN = 'https://site.api.espn.com/apis/site/v2/sports';
 const LEAGUES = SPORT_LEAGUES; // js/services/leagues.js

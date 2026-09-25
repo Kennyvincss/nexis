@@ -2,10 +2,9 @@
    ACTIVITY, NOTIFICATIONS, PROFILE, SEARCH
    ===================================================================== */
 Views.activity = async (params) => {
-  if (params.get('tab')) UI.activity.tab = params.get('tab'); const tab = UI.activity.tab;
-  const tabs = [['Panta', 'Panta trades'], ['Polymarket', 'Polymarket trades'], ['Tracked', 'Tracked traders']];
+  if (params.get('tab')) UI.activity.tab = params.get('tab'); if (!['Panta', 'Tracked'].includes(UI.activity.tab)) UI.activity.tab = 'Panta'; const tab = UI.activity.tab;
+  const tabs = [['Panta', 'Panta trades'], ['Tracked', 'Tracked traders']];
   const body = tab === 'Panta' ? (pantaState('trades') && !Panta.markets.size ? pantaState('trades') : `<div class="card table-wrap" id="act-ptape">${pantaTapeRows(PantaTape.all(), 80)}</div><p class="mut" style="font-size:12px;margin-top:8px">Trades from the most active Panta markets and markets you’ve opened, refreshed every 30 seconds. Panta has no global trade stream.</p>`)
-    : tab === 'Polymarket' ? `<div class="card table-wrap" id="act-ltape">${polyTape(Poly.trades, true, 80)}</div><p class="mut" style="font-size:12px;margin-top:8px">Every Polymarket fill, polled every 8 seconds. Click a trader to open their record.</p>`
     : (Store.s.trackerLog.length ? `<div class="card">${Store.s.trackerLog.slice(0, 100).map(trLogRow).join('')}</div>` : `<div class="card">${emptyState({ icon: 'target', title: 'No tracked activity yet', body: 'Track traders and their position changes land here.', cta: '<a class="btn btn-primary sm" href="#/tracker">Find traders</a>' })}</div>`);
   return `<div class="page"><div class="page-head"><div><h1>Live activity</h1><p>Real trades as they happen. No simulated activity.</p></div></div>
     <div class="tabs">${tabs.map(([k, l]) => `<button class="tab ${k === tab ? 'on' : ''}" data-action="actTab" data-t="${k}">${l}</button>`).join('')}</div><div style="margin-top:16px">${body}</div></div>`;
