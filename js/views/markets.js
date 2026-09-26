@@ -406,7 +406,7 @@ async function confirmCreate() {
   let rec; try { rec = await Tx.run({ kind: 'Create market', desc: body.question, marketId: b.expectedEventPda || qb.expectedEventPda, amount: -nz(b.paymentUsdc || qb.paymentUsdc) / 1e6, prov, tx, lastValidBlockHeight: b.lastValidBlockHeight }); } catch (e) { return show(1, emptyState({ icon: 'alert', title: 'Not sent', body: esc(e.message) }), 1); }
   if (!Tx.ok(rec)) return show(2, emptyState({ icon: 'alert', title: TX_ST[rec.status][1], body: 'The market was not created. No registration was sent.' }) + `<a class="btn btn-ghost block" href="${explorerTx(rec.sig)}" target="_blank" rel="noopener">View on Solscan</a>`, 2);
   show(3);
-  try { await Panta.registerCreate({ createId: qb.createId, signature: rec.sig }); } catch (e) { return show(3, emptyState({ icon: 'alert', title: 'Created on-chain, registration failed', body: esc(e.message) + ' Your market exists on Solana; retry registration from Panta or contact support with the signature.' }) + `<a class="btn btn-ghost block" href="${explorerTx(rec.sig)}" target="_blank" rel="noopener">View on Solscan</a>`, 3); }
+  try { await Panta.registerCreate({ createId: qb.createId, signature: rec.sig }); Panta.createDone(qb); } catch (e) { return show(3, emptyState({ icon: 'alert', title: 'Created on-chain, registration failed', body: esc(e.message) + ' Your market exists on Solana; retry registration from Panta or contact support with the signature.' }) + `<a class="btn btn-ghost block" href="${explorerTx(rec.sig)}" target="_blank" rel="noopener">View on Solscan</a>`, 3); }
   UI.draft = null; UI.pendingCreate = null; Panta.loadCatalog(); Balances.refresh();
   const id = b.expectedEventPda || qb.expectedEventPda;
   setModal(`${modalHead('Market created')}<div class="modal-body"><div class="receipt"><div class="okc">${ic('check', 'lg')}</div><h3 style="font-size:18px">${esc(body.question)}</h3><p class="dim" style="margin-top:4px">Confirmed on Solana and registered with Panta.</p></div><a class="btn btn-ghost block" href="${explorerTx(rec.sig)}" target="_blank" rel="noopener">View on Solscan</a></div><div class="modal-foot"><a class="btn btn-primary" href="#/market/${esc(id)}" data-action="closeModal">Open market</a></div>`);
@@ -443,8 +443,10 @@ async function pantaDiag() {
   V.push(['Minimal test market, breaking, starts now', { ...simple, marketType: 'breaking', eventInProgress: true, startTime: t + 60 }]);
   if (creator && creator !== wallet) V.push(['Minimal test market, paid by a wallet that has created on Panta before', { ...simple, wallet: creator }]);
   const out = [];
-  for (const [label, body] of V) {
-    const clean = JSON.parse(JSON.stringify(body));
+  // Panta holds one open creation session per market and type for ~5 minutes, so each variant after the first uses its
+  // own question; otherwise the variants would be refused as repeats of each other.
+  for (const [i, [label, body]] of V.entries()) {
+    const clean = JSON.parse(JSON.stringify(body)); if (i > 0) { clean.question = `${clean.question.replace(/\?$/, '')} (check ${i + 1}, ${String(Date.now()).slice(-5)})?`.slice(0, 512); clean.title = clean.question; }
     try { const q = await Panta.call('markets/create/quote/', { method: 'POST', body: clean }); out.push({ label, ok: true, detail: `OK · fee ${fmtNum(nz(q.paymentUsdc) / 1e6, 2)} USDC · type ${q.marketType || clean.marketType}`, body: clean, reply: q }); }
     catch (e) { out.push({ label, ok: false, detail: `${e.status || ''} ${e.message}`, body: clean, reply: e.body || null }); }
     setModal(`${modalHead('Market creation check')}<div class="modal-body"><div class="pipe">${pipeStep(`Asking Panta… ${out.length}/${V.length}`, 'run')}</div></div>`);

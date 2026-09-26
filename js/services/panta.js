@@ -171,10 +171,12 @@ const Panta = {
   buildBuy({ quoteId, wallet, maxSlippageBps = 100 }) { return this.call('primaryorderbuild/', { method: 'POST', body: { quoteId, wallet, maxSlippageBps } }); },
   submitBuy({ orderId, signature, wallet }) { return this.call('primaryordersubmit/', { method: 'POST', body: { orderId, signature, wallet } }); },
   report({ signature, wallet, marketId }) { return this.call('trades/report/', { method: 'POST', body: { signature, wallet, marketId } }); },
-  /* Market creation. Panta's rules that its API doesn't always report clearly:
+  /* Market creation. Panta's rules, measured on the live API:
+     - one open creation session per market (question) and market type: a session lasts ~5 minutes, and any second
+       quote for the same market and type in that time is refused with the opaque INVALID_MARKET_PARAMS
+       "unexpected create quote failure". Nexis therefore reuses its open quote instead of asking again;
      - trading must start at least 1 hour after the quote, unless a breaking market sets eventInProgress;
-     - imageUrl must be an image Panta can fetch. Many hosts are refused, and a refused image fails with an opaque
-       "unexpected create quote/build failure". Nexis then retries once with an image Panta is known to accept. */
+     - imageUrl must be an https image Panta can fetch. */
   SAFE_IMAGE: 'https://www.panta.market/favicon.png',
   MIN_START_DELAY: 3600,
   prepCreate(body) {
@@ -183,30 +185,36 @@ const Panta = {
     if (!/^https:\/\//.test(b.imageUrl || '')) b.imageUrl = this.SAFE_IMAGE;
     return b;
   },
-  opaqueCreateError: (e) => /unexpected create (quote|build) failure|image/i.test((e && e.message) || ''),
+  opaqueCreateError: (e) => /unexpected create (quote|build) failure|INVALID_MARKET_PARAMS/i.test(((e && e.message) || '') + ' ' + ((e && e.code) || '')),
+  /* Open creation quotes, kept in this browser until they expire, keyed by wallet + question + type. */
+  _cq: null,
+  cqKey: (b) => [b.wallet, String(b.question || '').trim().toLowerCase(), b.marketType || 'standard'].join('|'),
+  cqAll() { if (!this._cq) { try { this._cq = JSON.parse(localStorage.getItem('nexis-panta-cq') || '{}'); } catch (e) { this._cq = {}; } } const t = Date.now(); Object.keys(this._cq).forEach(k => { if (!(this._cq[k].exp > t)) delete this._cq[k]; }); return this._cq; },
+  cqSave() { try { localStorage.setItem('nexis-panta-cq', JSON.stringify(this._cq || {})); } catch (e) { /* storage unavailable */ } },
+  cqGet(b) { const v = this.cqAll()[this.cqKey(b)]; return v && v.exp - Date.now() > 45e3 ? v.q : null; },
+  cqPut(b, q) { const exp = toMs(q.expiresAt) || Date.now() + 4.5 * 60e3; this.cqAll()[this.cqKey(b)] = { q, exp }; this.cqSave(); },
+  cqDrop(b) { if (!b) return; delete this.cqAll()[this.cqKey(b)]; this.cqSave(); },
   async quoteCreate(body) {
     const b = this.prepCreate(body);
-    try { const q = await this.call('markets/create/quote/', { method: 'POST', body: b }); q._body = b; return q; }
-    catch (e) {
-      if (b.imageUrl === this.SAFE_IMAGE || !this.opaqueCreateError(e)) throw this.createError(e);
-      const b2 = { ...b, imageUrl: this.SAFE_IMAGE };
-      try { const q = await this.call('markets/create/quote/', { method: 'POST', body: b2 }); q._body = b2; return q; } catch (e2) { throw this.createError(e2); }
-    }
+    const open = this.cqGet(b); if (open) return open;
+    try { const q = await this.call('markets/create/quote/', { method: 'POST', body: b }); q._body = b; this.cqPut(b, q); return q; }
+    catch (e) { throw this.createError(e, 'quote'); }
   },
   buildCreate({ createId, wallet }) { return this.call('markets/create/build/', { method: 'POST', body: { createId, wallet } }); },
-  /** Builds a quoted creation; if the build fails on the image, re-quotes with the safe image and builds that. Returns { q, b }. */
+  /** Builds a quoted creation. Returns { q, b }. A failed build ends that quote. */
   async buildCreateSafe(q, wallet) {
     try { return { q, b: await this.buildCreate({ createId: q.createId, wallet }) }; }
-    catch (e) {
-      const body = q._body; if (!body || body.imageUrl === this.SAFE_IMAGE || !this.opaqueCreateError(e)) throw this.createError(e);
-      const q2 = await this.quoteCreate({ ...body, imageUrl: this.SAFE_IMAGE });
-      try { return { q: q2, b: await this.buildCreate({ createId: q2.createId, wallet }) }; } catch (e2) { throw this.createError(e2); }
-    }
+    catch (e) { this.cqDrop(q._body); throw this.createError(e, 'build'); }
   },
-  /** Panta's opaque server errors, reworded; nothing is charged at the quote or build step. */
-  createError(e) {
-    if (/unexpected create (quote|build) failure/i.test((e && e.message) || '')) return Object.assign(new Error('Panta’s server hit an error while preparing this market. Nothing was charged. Please try again in a few minutes.'), { code: e.code, status: e.status, body: e.body, raw: e.message });
-    return e;
+  /** Call after the market is registered: its quote is used up. */
+  createDone(q) { this.cqDrop(q && q._body); },
+  /** Panta's opaque creation errors, reworded; nothing is charged at the quote or build step. */
+  createError(e, step) {
+    if (!this.opaqueCreateError(e)) return e;
+    const msg = step === 'quote'
+      ? 'Panta already has an open request to create this market, probably from an earlier try in another tab, browser or device. Panta holds it for about 5 minutes. Please try again in a few minutes. Nothing was charged.'
+      : 'Panta couldn’t prepare this market’s transaction. Nothing was charged. Please try again in a few minutes.';
+    return Object.assign(new Error(msg), { code: e.code, status: e.status, body: e.body, raw: e.message });
   },
   registerCreate({ createId, signature }) { return this.call('markets/create/register/', { method: 'POST', body: { createId, signature } }); },
   buildClaim({ wallet, marketId }) { return this.call('claim/build/', { method: 'POST', body: { wallet, marketId } }); },

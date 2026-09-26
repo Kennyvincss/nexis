@@ -320,7 +320,7 @@ async function bkCreateMarket(body, wallet, onStep, { quote, register } = {}) {
   const rec = await Tx.run({ kind: 'Create market', desc: body.question, marketId, amount: -nz(b.paymentUsdc || qq.paymentUsdc) / 1e6, prov, tx, lastValidBlockHeight: b.lastValidBlockHeight });
   if (!Tx.ok(rec)) throw new Error('The market creation didn’t confirm on Solana. No bet was placed.');
   onStep('Registering the market');
-  await Panta.registerCreate({ createId: qq.createId, signature: rec.sig });
+  await Panta.registerCreate({ createId: qq.createId, signature: rec.sig }); Panta.createDone(qq);
   let use = { marketId, question: body.question };
   if (register) { try { const r = await Net.api('book', { method: 'POST', body: { action: 'register', game: register.g.id, prop: register.prop, marketId, signature: rec.sig, question: body.question } }); if (r.market) use = r.market; } catch (e) { /* the bet still works on this market */ } const R = register.reg || Book; R.reg.set(register.g.id + ':' + register.prop, use); R.regIds.add(use.marketId); }
   Panta.rememberTitle(use.marketId, body.title && body.title !== body.question ? body.title : use.question);
