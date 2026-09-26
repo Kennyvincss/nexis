@@ -171,8 +171,43 @@ const Panta = {
   buildBuy({ quoteId, wallet, maxSlippageBps = 100 }) { return this.call('primaryorderbuild/', { method: 'POST', body: { quoteId, wallet, maxSlippageBps } }); },
   submitBuy({ orderId, signature, wallet }) { return this.call('primaryordersubmit/', { method: 'POST', body: { orderId, signature, wallet } }); },
   report({ signature, wallet, marketId }) { return this.call('trades/report/', { method: 'POST', body: { signature, wallet, marketId } }); },
-  quoteCreate(body) { return this.call('markets/create/quote/', { method: 'POST', body }); },
+  /* Market creation. Panta's rules that its API doesn't always report clearly:
+     - trading must start at least 1 hour after the quote, unless a breaking market sets eventInProgress;
+     - imageUrl must be an image Panta can fetch. Many hosts are refused, and a refused image fails with an opaque
+       "unexpected create quote/build failure". Nexis then retries once with an image Panta is known to accept. */
+  SAFE_IMAGE: 'https://www.panta.market/favicon.png',
+  MIN_START_DELAY: 3600,
+  prepCreate(body) {
+    const b = { ...body }; const t = Math.floor(Date.now() / 1000);
+    if (b.marketType === 'breaking' && b.startTime < t + this.MIN_START_DELAY + 60) b.eventInProgress = true;
+    if (!/^https:\/\//.test(b.imageUrl || '')) b.imageUrl = this.SAFE_IMAGE;
+    return b;
+  },
+  opaqueCreateError: (e) => /unexpected create (quote|build) failure|image/i.test((e && e.message) || ''),
+  async quoteCreate(body) {
+    const b = this.prepCreate(body);
+    try { const q = await this.call('markets/create/quote/', { method: 'POST', body: b }); q._body = b; return q; }
+    catch (e) {
+      if (b.imageUrl === this.SAFE_IMAGE || !this.opaqueCreateError(e)) throw this.createError(e);
+      const b2 = { ...b, imageUrl: this.SAFE_IMAGE };
+      try { const q = await this.call('markets/create/quote/', { method: 'POST', body: b2 }); q._body = b2; return q; } catch (e2) { throw this.createError(e2); }
+    }
+  },
   buildCreate({ createId, wallet }) { return this.call('markets/create/build/', { method: 'POST', body: { createId, wallet } }); },
+  /** Builds a quoted creation; if the build fails on the image, re-quotes with the safe image and builds that. Returns { q, b }. */
+  async buildCreateSafe(q, wallet) {
+    try { return { q, b: await this.buildCreate({ createId: q.createId, wallet }) }; }
+    catch (e) {
+      const body = q._body; if (!body || body.imageUrl === this.SAFE_IMAGE || !this.opaqueCreateError(e)) throw this.createError(e);
+      const q2 = await this.quoteCreate({ ...body, imageUrl: this.SAFE_IMAGE });
+      try { return { q: q2, b: await this.buildCreate({ createId: q2.createId, wallet }) }; } catch (e2) { throw this.createError(e2); }
+    }
+  },
+  /** Panta's opaque server errors, reworded; nothing is charged at the quote or build step. */
+  createError(e) {
+    if (/unexpected create (quote|build) failure/i.test((e && e.message) || '')) return Object.assign(new Error('Panta’s server hit an error while preparing this market. Nothing was charged. Please try again in a few minutes.'), { code: e.code, status: e.status, body: e.body, raw: e.message });
+    return e;
+  },
   registerCreate({ createId, signature }) { return this.call('markets/create/register/', { method: 'POST', body: { createId, signature } }); },
   buildClaim({ wallet, marketId }) { return this.call('claim/build/', { method: 'POST', body: { wallet, marketId } }); },
 

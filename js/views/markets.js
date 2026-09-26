@@ -224,7 +224,7 @@ async function listingOrder(id) {
   const body = Listings.createBody(m);
   const fail = (t, b) => setModal(`${modalHead(t)}<div class="modal-body">${emptyState({ icon: 'alert', title: t, body: esc(b) })}</div><div class="modal-foot"><button class="btn btn-ghost" data-action="closeModal">Close</button></div>`);
   if (!body) return fail('Can’t open this market', 'This market is too close to its end date (or has no image Panta can use) to open on Panta.');
-  let q; try { q = await Panta.quoteCreate({ ...body, wallet: w.address }); } catch (e) { return fail('Panta couldn’t quote this market', e.message + (e.body && e.body.field ? ` (${e.body.field})` : '')); }
+  let q; try { q = await Panta.quoteCreate({ ...body, wallet: w.address }); } catch (e) { return fail('Panta couldn’t open this market', e.message + (e.body && e.body.field ? ` (${e.body.field})` : '')); }
   const fee = nz(q.paymentUsdc) / 1e6;
   if (Balances.v && Balances.v.usdc != null && Balances.v.usdc + 1e-9 < amt + fee) return fail('Not enough USDC', `Opening this market and your order need ${usd(amt + fee)}; your wallet holds ${fmtNum(Balances.v.usdc, 2)} USDC.`);
   UI.pendingListing = { m, body, quote: { at: now(), q }, side: tr.side, stake: amt, wallet: w, est: tr.side === 'YES' ? m.yes : 1 - m.yes };
@@ -382,7 +382,7 @@ function readCreateForm() {
   const f = $('#create-form'); const g = (n) => f.elements[n].value.trim(); const ts = (n) => Math.floor(new Date(g(n)).getTime() / 1000);
   const d = { question: g('question'), description: g('description'), rule: g('rule'), sources: g('sources'), category: g('category'), type: g('type'), region: g('region') || 'Global', image: g('image'), start: new Date(g('start')).getTime(), end: new Date(g('end')).getTime(), resolve: new Date(g('resolve')).getTime() };
   UI.draft = d;
-  const err = !d.question ? 'Add a question.' : !d.rule ? 'Add a resolution rule.' : !d.sources ? 'Add at least one source of truth.' : !/^https?:\/\//.test(d.image) ? 'Add an https image URL (Panta requires one).' : !(d.start < d.end && d.end <= d.resolve) ? 'Times must satisfy start < end ≤ resolution.' : d.start < now() && d.type !== 'breaking' ? 'The start time must be in the future.' : null;
+  const err = !d.question ? 'Add a question.' : !d.rule ? 'Add a resolution rule.' : !d.sources ? 'Add at least one source of truth.' : !/^https?:\/\//.test(d.image) ? 'Add an https image URL (Panta requires one).' : !(d.start < d.end && d.end <= d.resolve) ? 'Times must satisfy start < end ≤ resolution.' : d.type !== 'breaking' && d.start < now() + HOUR + 60e3 ? 'Panta requires a standard market’s trading to start at least 1 hour from now. Pick a later start time, or choose Breaking for an event already under way.' : null;
   return { d, err, body: { question: d.question, resolutionRule: d.rule, sourcesOfTruth: d.sources.split(/\n+/).map(s => s.trim()).filter(Boolean).slice(0, 20), category: d.category, startTime: ts('start'), endTime: ts('end'), resolutionTime: ts('resolve'), marketType: d.type, title: d.question, description: d.description || undefined, imageUrl: d.image, region: d.region } };
 }
 async function quoteCreate(btn) {
@@ -400,15 +400,15 @@ async function confirmCreate() {
   const steps = ['Building the creation transaction', `Signing in ${wallet.label}`, 'Waiting for Solana confirmation', 'Registering the market with Panta'];
   const show = (i, extra = '', failAt) => setModal(`${modalHead('Creating market', esc(body.question))}<div class="modal-body">${pipe(steps, i, failAt)}${extra}</div>`);
   show(0);
-  let b; try { b = await Panta.buildCreate({ createId: q.createId, wallet: wallet.address }); if (!b.transaction) throw new Error(b.disclaimer || 'Panta returned no transaction to sign.'); } catch (e) { return show(0, emptyState({ icon: 'alert', title: 'Build failed', body: esc(e.message) }), 0); }
+  let b, qb = q; try { const built = await Panta.buildCreateSafe(q, wallet.address); b = built.b; qb = built.q; if (!b.transaction) throw new Error(b.disclaimer || 'Panta returned no transaction to sign.'); } catch (e) { return show(0, emptyState({ icon: 'alert', title: 'Build failed', body: esc(e.message) }), 0); }
   let prov, tx; try { prov = await Wallets.provider(wallet); tx = await Chain.txFromBase64(b.transaction); } catch (e) { return show(1, emptyState({ icon: 'alert', title: 'Wallet unavailable', body: esc(e.message) }), 1); }
   show(1);
-  let rec; try { rec = await Tx.run({ kind: 'Create market', desc: body.question, marketId: b.expectedEventPda || q.expectedEventPda, amount: -nz(b.paymentUsdc || q.paymentUsdc) / 1e6, prov, tx, lastValidBlockHeight: b.lastValidBlockHeight }); } catch (e) { return show(1, emptyState({ icon: 'alert', title: 'Not sent', body: esc(e.message) }), 1); }
+  let rec; try { rec = await Tx.run({ kind: 'Create market', desc: body.question, marketId: b.expectedEventPda || qb.expectedEventPda, amount: -nz(b.paymentUsdc || qb.paymentUsdc) / 1e6, prov, tx, lastValidBlockHeight: b.lastValidBlockHeight }); } catch (e) { return show(1, emptyState({ icon: 'alert', title: 'Not sent', body: esc(e.message) }), 1); }
   if (!Tx.ok(rec)) return show(2, emptyState({ icon: 'alert', title: TX_ST[rec.status][1], body: 'The market was not created. No registration was sent.' }) + `<a class="btn btn-ghost block" href="${explorerTx(rec.sig)}" target="_blank" rel="noopener">View on Solscan</a>`, 2);
   show(3);
-  try { await Panta.registerCreate({ createId: q.createId, signature: rec.sig }); } catch (e) { return show(3, emptyState({ icon: 'alert', title: 'Created on-chain, registration failed', body: esc(e.message) + ' Your market exists on Solana; retry registration from Panta or contact support with the signature.' }) + `<a class="btn btn-ghost block" href="${explorerTx(rec.sig)}" target="_blank" rel="noopener">View on Solscan</a>`, 3); }
+  try { await Panta.registerCreate({ createId: qb.createId, signature: rec.sig }); } catch (e) { return show(3, emptyState({ icon: 'alert', title: 'Created on-chain, registration failed', body: esc(e.message) + ' Your market exists on Solana; retry registration from Panta or contact support with the signature.' }) + `<a class="btn btn-ghost block" href="${explorerTx(rec.sig)}" target="_blank" rel="noopener">View on Solscan</a>`, 3); }
   UI.draft = null; UI.pendingCreate = null; Panta.loadCatalog(); Balances.refresh();
-  const id = b.expectedEventPda || q.expectedEventPda;
+  const id = b.expectedEventPda || qb.expectedEventPda;
   setModal(`${modalHead('Market created')}<div class="modal-body"><div class="receipt"><div class="okc">${ic('check', 'lg')}</div><h3 style="font-size:18px">${esc(body.question)}</h3><p class="dim" style="margin-top:4px">Confirmed on Solana and registered with Panta.</p></div><a class="btn btn-ghost block" href="${explorerTx(rec.sig)}" target="_blank" rel="noopener">View on Solscan</a></div><div class="modal-foot"><a class="btn btn-primary" href="#/market/${esc(id)}" data-action="closeModal">Open market</a></div>`);
 }
 async function draftAi(btn) {

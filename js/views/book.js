@@ -313,14 +313,14 @@ async function bkCreateMarket(body, wallet, onStep, { quote, register } = {}) {
   onStep('Getting Panta’s creation quote');
   const q = quote && now() - quote.at < 4 * 60e3 ? quote.q : await Panta.quoteCreate({ ...body, wallet: wallet.address });
   onStep('Building the market');
-  const b = await Panta.buildCreate({ createId: q.createId, wallet: wallet.address }); if (!b.transaction) throw new Error(b.disclaimer || 'Panta returned no transaction to sign.');
+  const built = await Panta.buildCreateSafe(q, wallet.address); const b = built.b; const qq = built.q; if (!b.transaction) throw new Error(b.disclaimer || 'Panta returned no transaction to sign.');
   const prov = await Wallets.provider(wallet); const tx = await Chain.txFromBase64(b.transaction);
   onStep('Sign the new market in your wallet');
-  const marketId = b.expectedEventPda || q.expectedEventPda;
-  const rec = await Tx.run({ kind: 'Create market', desc: body.question, marketId, amount: -nz(b.paymentUsdc || q.paymentUsdc) / 1e6, prov, tx, lastValidBlockHeight: b.lastValidBlockHeight });
+  const marketId = b.expectedEventPda || qq.expectedEventPda;
+  const rec = await Tx.run({ kind: 'Create market', desc: body.question, marketId, amount: -nz(b.paymentUsdc || qq.paymentUsdc) / 1e6, prov, tx, lastValidBlockHeight: b.lastValidBlockHeight });
   if (!Tx.ok(rec)) throw new Error('The market creation didn’t confirm on Solana. No bet was placed.');
   onStep('Registering the market');
-  await Panta.registerCreate({ createId: q.createId, signature: rec.sig });
+  await Panta.registerCreate({ createId: qq.createId, signature: rec.sig });
   let use = { marketId, question: body.question };
   if (register) { try { const r = await Net.api('book', { method: 'POST', body: { action: 'register', game: register.g.id, prop: register.prop, marketId, signature: rec.sig, question: body.question } }); if (r.market) use = r.market; } catch (e) { /* the bet still works on this market */ } const R = register.reg || Book; R.reg.set(register.g.id + ':' + register.prop, use); R.regIds.add(use.marketId); }
   Panta.rememberTitle(use.marketId, body.title && body.title !== body.question ? body.title : use.question);
