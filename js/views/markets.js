@@ -222,7 +222,7 @@ async function listingOrder(id) {
   const p = Listings.pantaFor(m);
   if (p) { closeModal(); location.hash = `#/market/${p.id}?side=${tr.side}&amt=${encodeURIComponent(tr.amt)}`; return toast({ title: 'This market is already open on Panta', body: 'Review your order at Panta’s price.', kind: 'info' }); }
   const body = Listings.createBody(m);
-  const fail = (t, b) => setModal(`${modalHead(t)}<div class="modal-body">${emptyState({ icon: 'alert', title: t, body: esc(b) })}</div><div class="modal-foot"><button class="btn btn-ghost" data-action="closeModal">Close</button></div>`);
+  const fail = (t, b) => setModal(`${modalHead(t)}<div class="modal-body">${emptyState({ icon: 'alert', title: t, body: esc(b) })}</div><div class="modal-foot"><button class="btn btn-ghost" data-action="pantaDiag">Run a check</button><button class="btn btn-ghost" data-action="closeModal">Close</button></div>`);
   if (!body) return fail('Can’t open this market', 'This market is too close to its end date (or has no image Panta can use) to open on Panta.');
   let q; try { q = await Panta.quoteCreate({ ...body, wallet: w.address }); } catch (e) { return fail('Panta couldn’t open this market', e.message + (e.body && e.body.field ? ` (${e.body.field})` : '')); }
   const fee = nz(q.paymentUsdc) / 1e6;
@@ -417,4 +417,42 @@ async function draftAi(btn) {
   if (!r.isPrediction) { note.textContent = 'No clear, checkable prediction found. Fill in the details manually.'; return; }
   readCreateForm(); Object.assign(UI.draft, { question: r.question, rule: r.rule || UI.draft.rule, sources: r.source && /^https?:/.test(r.source) ? r.source : UI.draft.sources, description: [r.source ? 'Source: ' + r.source : '', r.assumption].filter(Boolean).join(' · ') || UI.draft.description, category: r.category, end: r.end, resolve: r.end + 6 * HOUR });
   await refresh(); const n = $('#ai-note'); if (n) n.textContent = `Drafted by ${r.engine === 'ai' ? AI.label() : 'the on-device parser'} · ${r.confidence}% confidence${r.aiError ? ' (AI unavailable: ' + r.aiError + ')' : ''}. Review every field before requesting a quote.`;
+}
+
+/* ---------------- Panta market-creation check ----------------
+   Runs free create-quote requests (no signing, nothing charged) in several variants on the live server and shows
+   Panta's exact reply to each, to pinpoint why Panta refuses to open a market. */
+async function pantaDiag() {
+  openModal(`${modalHead('Market creation check', 'Free quote requests to Panta · nothing is signed or charged')}<div class="modal-body"><div class="pipe">${pipeStep('Asking Panta…', 'run')}</div></div>`, { label: 'Market creation check' });
+  const t = Math.floor(now() / 1000); const mine = primaryWallet() && primaryWallet().address;
+  let creator = null; // a wallet that has created a Panta market before (so it holds or held USDC)
+  for (const m of [...Panta.markets.values()].filter(m => !m.resolved).slice(0, 8)) { if (m.creator) { creator = m.creator; break; } try { const d = await Panta.detail(m.id); if (d.creator) { creator = d.creator; break; } } catch (e) { /* try the next */ } }
+  const wallet = mine || creator;
+  if (!wallet) return setModal(`${modalHead('Market creation check')}<div class="modal-body">${emptyState({ icon: 'wallet', title: 'Link a wallet first', body: 'The check needs a Solana wallet address to ask Panta for quotes. Nothing is signed.' })}</div>`);
+  const listing = Listings.all().filter(m => Listings.createBody(m)).sort((a, b) => b.vol24 - a.vol24)[0];
+  const lb = listing && { ...Listings.createBody(listing), wallet };
+  const simple = { wallet, question: `Nexis connection check: will this quote succeed on ${new Date().toISOString().slice(0, 10)}?`, title: 'Nexis connection check', resolutionRule: 'Resolves YES if this market is created. Otherwise NO.', sourcesOfTruth: ['https://www.panta.market'], category: 'other', marketType: 'standard', startTime: t + 7200, endTime: t + 3 * 86400, resolutionTime: t + 3 * 86400 + 3600, imageUrl: Panta.SAFE_IMAGE, region: 'Global' };
+  const V = [];
+  if (lb) {
+    V.push(['Listed market, as Nexis sends it (breaking, starts now)', Panta.prepCreate(lb)]);
+    V.push(['Same, with Panta’s own image', { ...Panta.prepCreate(lb), imageUrl: Panta.SAFE_IMAGE }]);
+    V.push(['Same, as a standard market starting in 2 hours', { ...Panta.prepCreate(lb), imageUrl: Panta.SAFE_IMAGE, marketType: 'standard', eventInProgress: undefined, startTime: t + 7200 }]);
+    V.push(['Same, breaking, but ending within 7 days', { ...Panta.prepCreate(lb), imageUrl: Panta.SAFE_IMAGE, endTime: Math.min(lb.endTime, t + 6 * 86400), resolutionTime: Math.min(lb.endTime, t + 6 * 86400) + 3600 }]);
+  }
+  V.push(['Minimal test market (standard, starts in 2h)', simple]);
+  V.push(['Minimal test market, breaking, starts now', { ...simple, marketType: 'breaking', eventInProgress: true, startTime: t + 60 }]);
+  if (creator && creator !== wallet) V.push(['Minimal test market, paid by a wallet that has created on Panta before', { ...simple, wallet: creator }]);
+  const out = [];
+  for (const [label, body] of V) {
+    const clean = JSON.parse(JSON.stringify(body));
+    try { const q = await Panta.call('markets/create/quote/', { method: 'POST', body: clean }); out.push({ label, ok: true, detail: `OK · fee ${fmtNum(nz(q.paymentUsdc) / 1e6, 2)} USDC · type ${q.marketType || clean.marketType}`, body: clean, reply: q }); }
+    catch (e) { out.push({ label, ok: false, detail: `${e.status || ''} ${e.message}`, body: clean, reply: e.body || null }); }
+    setModal(`${modalHead('Market creation check')}<div class="modal-body"><div class="pipe">${pipeStep(`Asking Panta… ${out.length}/${V.length}`, 'run')}</div></div>`);
+    await delay(300);
+  }
+  UI.pantaDiag = { at: new Date().toISOString(), wallet, usedYourWallet: !!mine, mode: Panta.mode, results: out };
+  setModal(`${modalHead('Market creation check', `Wallet ${shortW(wallet)}${mine ? ' (yours)' : ''} · ${Panta.mode} mode`)}<div class="modal-body">
+    ${out.map(r => `<div class="bk-rev"><div style="flex:1;min-width:0"><b style="font-size:13px">${esc(r.label)}</b><div class="${r.ok ? 'up' : 'down'}" style="font-size:12px;margin-top:2px;word-break:break-word">${esc(r.detail)}</div></div><span class="tag ${r.ok ? 'green' : 'red'}">${r.ok ? 'Works' : 'Refused'}</span></div>`).join('')}
+    <p class="mut" style="font-size:12px">These are free quotes; nothing was signed or charged. Copy the report and send it to your developer to pinpoint the fix.</p></div>
+    <div class="modal-foot"><button class="btn btn-ghost" data-action="closeModal">Close</button><button class="btn btn-primary" data-action="pantaDiagCopy">Copy report</button></div>`);
 }

@@ -393,6 +393,7 @@ function integrationsHtml() {
     ${row(c.privy && c.privy.server, 'Email codes (Privy)', c.privy && c.privy.server ? 'Privy sends and checks email sign-in and password-reset codes.' : c.privy && c.privy.appId ? 'PRIVY_APP_ID is set but PRIVY_APP_SECRET is missing.' : 'Email sign-in and password-reset codes, sent by Privy. No email domain needed.', 'PRIVY_APP_ID, PRIVY_APP_SECRET')}
     ${c.privy && c.privy.server ? '' : row(c.email && c.email.configured, 'Email (Resend)', 'Alternative to Privy for sign-in codes and password resets', 'RESEND_API_KEY, EMAIL_FROM, AUTH_SECRET')}
     ${row(c.google && c.google.clientId, 'Google sign-in', 'Google Identity Services', 'GOOGLE_CLIENT_ID')}
+    <div class="mrow2"><span class="mi">${ic('zap', 'sm')}</span><div style="flex:1;min-width:0"><b>Panta market creation check</b><div class="mut" style="font-size:12.5px">Asks Panta for free creation quotes in several variants and shows its exact reply to each. Nothing is signed or charged.</div></div><button class="btn btn-ghost sm" data-action="pantaDiag">Run check</button></div>
     ${row(true, 'Public data feeds', 'Polymarket, ESPN, CoinGecko and Coinbase need no keys. ' + (c.coingecko && c.coingecko.key ? 'CoinGecko key set.' : 'Optional COINGECKO_API_KEY raises CoinGecko rate limits.'), '')}</div>`;
 }
 async function paintChainHistory() {
