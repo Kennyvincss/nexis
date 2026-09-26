@@ -104,6 +104,9 @@ The services emit events on a small bus. `app.js` patches the visible page in pl
   - It is a `breaking` Panta market that trades until the Polymarket end date and resolves 6 hours later.
   - It uses the same question, and the market description as its resolution rule.
   - Its sources are the resolution source and any links in the rules, falling back to the event page.
+- **Panta's creation rules** (applied in `Panta.quoteCreate`, for Markets and the sportsbook):
+  - A market that starts trading now is sent as `breaking` with `eventInProgress: true`. Otherwise Panta requires trading to start at least 1 hour after the quote.
+  - Panta refuses images from many hosts, and a refused image makes it fail with an opaque "unexpected create quote/build failure". Nexis then retries once with `https://www.panta.market/favicon.png`, an image known to pass both the quote and the build.
 - **One market for everyone:** the new market is recorded in `/api/book` under `<event id>:pm:<market id>`. The server verifies it on Solana and against Gamma, and everyone after trades the same Panta market. A Panta market with the exact same question is also treated as the listing's market.
 - **After it opens:** the listing shows as a normal Panta card, and old `#/market/pm-…` links redirect to the Panta market.
 - **Creating markets in bulk:** not possible. Each Panta market needs a creation fee and a wallet signature, so markets open one at a time as people trade them.
