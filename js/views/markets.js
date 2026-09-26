@@ -178,8 +178,9 @@ async function listingMarketView(id, params) {
   const p = Listings.pantaFor(m);
   if (p) { const qs = params.toString(); location.replace(`#/market/${p.id}${qs ? '?' + qs : ''}`); return `<div class="page">${skeletonCards(1)}</div>`; }
   if (!Listings.all().includes(m)) return gone('Trading on this market has ended or it’s no longer listed.');
-  const tr = UI.trade[id] = UI.trade[id] || { side: params.get('side') || 'YES', amt: params.get('amt') || '10' };
+  const tr = UI.trade[id] = UI.trade[id] || { side: params.get('side') || 'YES', amt: params.get('amt') || String(Panta.FIRST_BET_MIN) };
   if (params.get('side')) { tr.side = params.get('side'); tr.amt = params.get('amt') || tr.amt; }
+  if (!(nz(tr.amt, 0) >= Panta.FIRST_BET_MIN)) tr.amt = String(Panta.FIRST_BET_MIN);
   Poly.history(m).catch(() => { m.histErr = true; }).finally(() => { if (current.arg !== id) return; const c = $(`.chart-box[data-chart="poly"][data-id="${id}"]`); if (c) mountChartEl(c); });
   const body = Listings.createBody(m); const src = body ? body.sourcesOfTruth.filter(u => !/polymarket\.com/i.test(u)) : [];
   return `<div class="page">${pantaModeBanner()}<a class="link" href="#/markets">${ic('chevLeft', 'sm')}Markets</a>
@@ -207,8 +208,9 @@ function listingPanel(m, tr) {
   return `<div class="row"><h3 style="font-size:15px">Trade</h3><span class="mut" style="margin-left:auto;font-size:12px">USDC · signed by your wallet</span></div>
     <div class="side-toggle"><button class="btn btn-yes ${tr.side === 'YES' ? 'on' : ''}" data-action="side" data-id="${m.id}" data-side="YES"><span>Buy YES</span><b data-ly="${m.id}">${cents(m.yes)}</b></button><button class="btn btn-no ${tr.side === 'NO' ? 'on' : ''}" data-action="side" data-id="${m.id}" data-side="NO"><span>Buy NO</span><b data-ln="${m.id}">${noCents(m.yes)}</b></button></div>
     <label class="field"><span>Amount (USDC)</span><div class="input-affix"><input class="input" data-amt="${m.id}" inputmode="decimal" value="${esc(tr.amt)}" aria-label="Amount in USDC"></div></label>
-    <div class="presets">${[5, 10, 25, 50, 100].map(v => `<button data-action="preset" data-id="${m.id}" data-v="${v}">$${v}</button>`).join('')}${Balances.v ? `<button data-action="preset" data-id="${m.id}" data-v="max">Max</button>` : ''}</div>
-    <div class="est"><div><span>Current ${tr.side} price</span><span>${cents(px)}</span></div><div><span>Indicative shares</span><span>${px > 0 ? (amt / px).toFixed(2) : '—'}</span></div><div><span>Opening fee</span><span>Quoted by Panta</span></div><div><span>USDC balance</span><span data-usdc>${Balances.v ? fmtNum(Balances.v.usdc, 2) : primaryWallet() ? '…' : 'No wallet'}</span></div></div>
+    <div class="presets">${[Panta.FIRST_BET_MIN, 25, 50, 100, 250].filter((v, i, a) => a.indexOf(v) === i).map(v => `<button data-action="preset" data-id="${m.id}" data-v="${v}">$${v}</button>`).join('')}${Balances.v ? `<button data-action="preset" data-id="${m.id}" data-v="max">Max</button>` : ''}</div>
+    ${amt < Panta.FIRST_BET_MIN ? `<div class="sim-note">${ic('info', 'sm')}<span>The first bet on a market opens it on Panta, so it needs at least <b>$${Panta.FIRST_BET_MIN}</b>.</span></div>` : ''}
+    <div class="est"><div><span>Minimum first bet</span><span>$${Panta.FIRST_BET_MIN}</span></div><div><span>Current ${tr.side} price</span><span>${cents(px)}</span></div><div><span>Indicative shares</span><span>${px > 0 ? (amt / px).toFixed(2) : '—'}</span></div><div><span>Opening fee</span><span>Quoted by Panta</span></div><div><span>USDC balance</span><span data-usdc>${Balances.v ? fmtNum(Balances.v.usdc, 2) : primaryWallet() ? '…' : 'No wallet'}</span></div></div>
     <button class="btn ${tr.side === 'YES' ? 'btn-yes on' : 'btn-no on'} lg block" data-action="listingReview" data-id="${m.id}">Review ${tr.side} order</button>
     <p class="mut" style="font-size:11.5px;line-height:1.45">Your order goes to Panta. As this market’s first trader you also pay Panta’s one-time opening fee (quoted before you sign; it becomes the market’s starting liquidity), then confirm Panta’s price. Each share pays $1 if the outcome is ${tr.side}.</p>`;
 }
@@ -216,7 +218,7 @@ function listingPanel(m, tr) {
 async function listingOrder(id) {
   const m = Poly.markets.get(id); const tr = UI.trade[id]; if (!m || !tr) return;
   const w = bkPreflight(); if (!w) return;
-  const amt = nz(tr.amt, 0); if (!(amt >= 1)) return toast({ title: 'Enter an amount of at least $1', kind: 'warn' });
+  const amt = nz(tr.amt, 0); if (!(amt >= Panta.FIRST_BET_MIN)) return toast({ title: `The first bet on this market must be at least $${Panta.FIRST_BET_MIN}`, body: 'It opens the market on Panta for everyone.', kind: 'warn' });
   openModal(`${modalHead('Review order', esc(m.q))}<div class="modal-body"><div class="pipe">${pipeStep('Checking the market on Panta', 'run')}</div></div>`, { label: 'Review order' });
   await Listings.lookup([m], true).catch(() => {});
   const p = Listings.pantaFor(m);

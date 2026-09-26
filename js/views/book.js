@@ -278,7 +278,7 @@ function bkSlip() {
   const cta = !Auth.user ? `<button class="btn btn-primary block" data-action="bkPlace">Log in to bet</button>` : !w ? `<button class="btn btn-primary block" data-action="bkPlace">${ic('wallet', 'sm')}Connect a Solana wallet</button>` : `<button class="btn btn-primary block" data-action="bkPlace">${acc ? 'Place accumulator' : `Place ${items.length === 1 ? 'bet' : items.length + ' bets'}`}</button>`;
   return `<div class="card bk-slip"><div class="card-head"><h3>Bet slip · ${items.length}</h3><button class="link" data-action="bkClear">Clear</button></div>${modeSeg ? `<div style="padding:10px 16px 0">${modeSeg}</div>` : ''}${rows}
     <div class="bk-slip-f">${foot}${cta}
-      <p class="mut" style="font-size:11.5px;margin-top:8px">Placed on Panta in USDC from your Solana wallet (minimum $${BK_MIN}). ${acc ? 'An accumulator is one Panta market that pays only if every selection wins.' : 'Each selection is its own bet.'} You see Panta’s odds and fees before signing. * estimated odds.</p></div></div>`;
+      <p class="mut" style="font-size:11.5px;margin-top:8px">Placed on Panta in USDC from your Solana wallet (minimum $${BK_MIN}; $${Panta.FIRST_BET_MIN} for the first bet on an option, or for an accumulator, because it opens a new Panta market). ${acc ? 'An accumulator is one Panta market that pays only if every selection wins.' : 'Each selection is its own bet.'} You see Panta’s odds and fees before signing. * estimated odds.</p></div></div>`;
 }
 function bkSlipBar() { const n = Book.slip.length; return `<button class="bk-slipbar ${n ? '' : 'hide'}" data-action="bkSlipOpen" id="bk-slipbar">${ic('list', 'sm')}Bet slip<span class="bk-n num">${n}</span></button>`; }
 function bkRepaintSlip() { $$('#bk-slip').forEach(el => { el.innerHTML = bkSlip(); hydrate(el); }); const b = $('#bk-slipbar'); if (b) b.outerHTML = bkSlipBar(); const m = $('.overlay .modal #bk-slip-modal'); if (m) { m.innerHTML = bkSlip(); hydrate(m); } bkBindSlip(); }
@@ -372,6 +372,7 @@ async function bkPlace() {
   let fees = 0;
   for (const s of bets) {
     const reg = Book.reg.get(s.g.id + ':' + s.prop); s.marketId = reg && reg.marketId;
+    if (!s.marketId && s.stake < Panta.FIRST_BET_MIN) { s.err = `This is the first bet on this option, which opens its Panta market: the minimum first bet is $${Panta.FIRST_BET_MIN}.`; continue; }
     try {
       if (s.marketId) { const q = await Panta.quoteBuy({ wallet: w.address, marketId: s.marketId, side: s.side, amountUsdc: s.stake.toFixed(2) }); s.preview = { price: nz(q.avgPrice, null), shares: nz(q.shares), fee: nz(q.feeUsdc) }; }
       else { const body = Book.createBody(s.g, s.prop); const q = await Panta.quoteCreate({ ...body, wallet: w.address }); s.createQuote = { at: now(), q }; s.fee = nz(q.paymentUsdc) / 1e6; fees += s.fee; }
@@ -419,7 +420,7 @@ async function bkPlaceAcc() {
   const legs = Book.resolved(); const probs = Book.accProblems(legs);
   if (probs.length) return toast({ title: 'Can’t place this accumulator', body: esc(probs.join(' ')), kind: 'warn' });
   const stake = nz(String(Book.accStake).replace(/[^0-9.]/g, ''), 0);
-  if (!(stake >= BK_MIN)) return toast({ title: `Minimum stake is $${BK_MIN}`, kind: 'warn' });
+  if (!(stake >= Panta.FIRST_BET_MIN)) return toast({ title: `Minimum accumulator stake is $${Panta.FIRST_BET_MIN}`, body: 'Each accumulator opens its own Panta market.', kind: 'warn' });
   if (Balances.v && Balances.v.usdc != null && Balances.v.usdc + 1e-9 < stake) return toast({ title: 'Not enough USDC', body: `Your wallet holds ${fmtNum(Balances.v.usdc, 2)} USDC.`, kind: 'warn' });
   const body = Book.accBody(legs); if (body.error) return toast({ title: 'Can’t place this accumulator', body: esc(body.error), kind: 'warn' });
   openModal(`${modalHead('Review accumulator')}<div class="modal-body"><div class="pipe">${pipeStep('Getting Panta’s quote', 'run')}</div></div>`, { label: 'Review accumulator' });

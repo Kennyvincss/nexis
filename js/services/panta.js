@@ -178,6 +178,8 @@ const Panta = {
      - trading must start at least 1 hour after the quote, unless a breaking market sets eventInProgress;
      - imageUrl must be an https image Panta can fetch. */
   SAFE_IMAGE: 'https://www.panta.market/favicon.png',
+  /** Minimum stake for a bet that opens a new Panta market (the opener also pays Panta's opening fee). */
+  FIRST_BET_MIN: 20,
   MIN_START_DELAY: 3600,
   prepCreate(body) {
     const b = { ...body }; const t = Math.floor(Date.now() / 1000);
