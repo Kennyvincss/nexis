@@ -35,6 +35,7 @@ module.exports = async (req, res) => {
   try {
     const up = await fetch(url, { method, headers, body, signal: AbortSignal.timeout(15000) });
     const text = await up.text();
+    if (!up.ok && method === 'POST') console.error('[panta]', method, path, up.status, text.slice(0, 2000)); // Panta's reply, for the host's function logs (no secrets)
     const extra = {};
     const ra = up.headers.get('retry-after'); if (ra) extra['retry-after'] = ra;
     if (method === 'GET' && up.ok) extra['cache-control'] = path.startsWith('positions') || path.startsWith('trades/status') ? 'no-store' : 'public, s-maxage=3, stale-while-revalidate=10';

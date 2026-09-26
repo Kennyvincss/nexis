@@ -186,6 +186,8 @@ const A_APP = {
   preset: (el) => { const id = el.dataset.id; UI.trade[id].amt = el.dataset.v === 'max' ? String(Math.floor((Balances.v ? Balances.v.usdc : 0) * 100) / 100) : el.dataset.v; repaintTrade(id); },
   reviewOrder: (el) => openOrder(el.dataset.id),
   listingReview: (el) => listingOrder(el.dataset.id),
+  pantaDiag: () => requireAuth(() => pantaDiag(), 'Log in to run the check'),
+  pantaDiagCopy: async () => { try { await navigator.clipboard.writeText(JSON.stringify(UI.pantaDiag, null, 2)); toast({ title: 'Report copied' }); } catch (e) { toast({ title: 'Couldn’t copy', body: 'Your browser blocked clipboard access.', kind: 'warn' }); } },
   listingConfirm: () => listingConfirm(),
   mMore: () => { UI.markets.limit = (UI.markets.limit || 60) + 60; refresh(); },
   confirmOrder: (el) => { el.disabled = true; confirmOrder(); },
