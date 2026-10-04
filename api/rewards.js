@@ -23,7 +23,7 @@ const DEFAULTS = {
   countdownAt: null, // ms timestamp for the Credit Guide release, or null
   brand: 'Nexis',
   social: { x: '', announcement: '', community: '' },
-  credits: { table: [[5, 30], [10, 26], [25, 20], [37, 10], [50, 8], [100, 4], [250, 1.5], [500, 0.5]], budget: null },
+  credits: { table: [[20, 30], [25, 25], [30, 15], [37, 10], [50, 10], [100, 6], [250, 3], [500, 1]], budget: null },
   guide: { title: 'How to use your credits', body: '' },
   // Only uses the product actually has. "active" means credits can really be spent there (phase 6).
   uses: [
@@ -44,9 +44,14 @@ const DEFAULTS = {
   milestones: [1, 3, 10, 25, 50, 100],
   antiAbuse: { perNetworkPerDay: 3, refDailyCap: 25, minXAgeDays: 30 },
 };
+/** Every member gets at least this much (no member is ever given $0). */
+const MIN_CREDIT = 20;
+const OLD_TABLE = '[[5,30],[10,26],[25,20],[37,10],[50,8],[100,4],[250,1.5],[500,0.5]]';
 const isObj = (x) => x && typeof x === 'object' && !Array.isArray(x);
 function merge(a, b) { const o = { ...a }; for (const [k, v] of Object.entries(b || {})) o[k] = isObj(v) && isObj(a[k]) ? merge(a[k], v) : v; return o; }
-async function getConfig(db) { return merge(DEFAULTS, (await db.get('rw:config')) || {}); }
+/** Credit amounts below the minimum are dropped; the original default table (with $5 and $10) becomes the new default. */
+function cleanTable(t) { if (!Array.isArray(t) || JSON.stringify(t) === OLD_TABLE) return DEFAULTS.credits.table; const ok = t.filter(r => r[0] >= MIN_CREDIT && r[1] > 0); return ok.length ? ok : DEFAULTS.credits.table; }
+async function getConfig(db) { const c = merge(DEFAULTS, (await db.get('rw:config')) || {}); c.credits = { ...c.credits, table: cleanTable(c.credits.table) }; return c; }
 function linkFor(cfg, key) { if (key === 'x') return cfg.social.x ? `https://x.com/${cfg.social.x.replace(/^@/, '')}` : ''; return cfg.social[key] || ''; }
 function pubConfig(cfg, memberCount) {
   const published = cfg.phase >= 5;
@@ -54,7 +59,7 @@ function pubConfig(cfg, memberCount) {
     gate: cfg.gate === 'open' ? 'open' : 'waitlist', xLogin: !!env('X_CLIENT_ID'), phase: cfg.phase, memberCap: cfg.memberCap, memberCount, countdownAt: cfg.countdownAt, brand: cfg.brand, social: cfg.social,
     uses: cfg.uses.map(u => ({ id: u.id, label: u.label, desc: u.desc, active: cfg.phase >= 6 && !!u.active })),
     missions: cfg.missions.filter(m => m.enabled).map(m => ({ id: m.id, title: m.title.replace('{x}', cfg.social.x ? '@' + cfg.social.x.replace(/^@/, '') : 'us'), xp: m.xp, kind: m.kind, target: m.target || 0, url: m.kind === 'link' ? linkFor(cfg, m.url) || (/^https:\/\//.test(m.url) ? m.url : '') : '' })),
-    statuses: cfg.statuses, xp: cfg.xp, milestones: cfg.milestones,
+    statuses: cfg.statuses, xp: cfg.xp, milestones: cfg.milestones, credits: cfg.credits.table.map(r => r[0]),
     guide: published ? { published: true, title: cfg.guide.title, body: cfg.guide.body } : { published: false, title: cfg.guide.title },
   };
 }
@@ -64,7 +69,7 @@ const hash = (key, v) => v ? crypto.createHmac('sha256', key).update('rw.' + v).
 const ipOf = (req) => String((req.headers && (req.headers['x-forwarded-for'] || req.headers['x-real-ip'])) || '').split(',')[0].trim();
 function drawCredits(cfg) {
   const t = cfg.credits.table.filter(r => r[0] > 0 && r[1] > 0); const sum = t.reduce((s, r) => s + r[1], 0);
-  let x = crypto.randomInt(1e9) / 1e9 * sum; for (const [amt, w] of t) { x -= w; if (x < 0) return amt; } return t.length ? t[t.length - 1][0] : 0;
+  let x = crypto.randomInt(1e9) / 1e9 * sum; for (const [amt, w] of t) { x -= w; if (x < 0) return Math.max(MIN_CREDIT, amt); } return t.length ? Math.max(MIN_CREDIT, t[t.length - 1][0]) : MIN_CREDIT;
 }
 const xpTotal = (m, cfg, qualified) => m.xpLog.reduce((s, e) => s + e.xp, 0) + qualified * cfg.xp.referral;
 function statusOf(cfg, xp) { let cur = cfg.statuses[0], next = null; for (const s of cfg.statuses) { if (xp >= s[1]) cur = s; else { next = s; break; } } return { name: cur[0], at: cur[1], next: next ? { name: next[0], at: next[1] } : null }; }
@@ -106,11 +111,12 @@ async function join(db, key, cfg, u, b, req) {
   if (u.x && u.x.created && cfg.antiAbuse.minXAgeDays && Date.now() - u.x.created < cfg.antiAbuse.minXAgeDays * DAY) flags.push(`X account younger than ${cfg.antiAbuse.minXAgeDays} days`);
   if (devH) { const seen = (await db.get('rw:dev:' + devH)) || []; if (seen.length) flags.push(`Device already used by member #${seen[0]}`); await db.set('rw:dev:' + devH, [...seen, n].slice(0, 20)); }
   const early = n <= cfg.memberCap;
-  let amount = early ? drawCredits(cfg) : 0;
-  if (amount && cfg.credits.budget != null) { const spent = Number((await db.get('rw:stat:credits')) || 0); const min = Math.min(...cfg.credits.table.map(r => r[0])); if (spent + amount > cfg.credits.budget) amount = spent + min <= cfg.credits.budget ? min : 0; }
-  const m = { uid: u.id, n, joinedAt: Date.now(), handle: u.handle || '', early, credits: { amount, status: !amount ? 'none' : flags.length ? 'held' : 'granted' }, ledger: amount ? [{ t: Date.now(), kind: 'grant', amount, note: 'Launch reward' }] : [], xpLog: [], missions: {}, revealed: false, flags, ipH, devH, referredBy: null, referral: null };
+  // Early members draw from the table; everyone else (and anyone past the budget) gets the minimum. Never $0.
+  let amount = early ? drawCredits(cfg) : MIN_CREDIT;
+  if (amount > MIN_CREDIT && cfg.credits.budget != null) { const spent = Number((await db.get('rw:stat:credits')) || 0); if (spent + amount > cfg.credits.budget) amount = MIN_CREDIT; }
+  const m = { uid: u.id, n, joinedAt: Date.now(), handle: u.handle || '', early, credits: { amount, status: flags.length ? 'held' : 'granted' }, ledger: [{ t: Date.now(), kind: 'grant', amount, note: 'Launch reward' }], minApplied: true, xpLog: [], missions: {}, revealed: false, flags, ipH, devH, referredBy: null, referral: null };
   addXp(m, 'join', cfg.xp.join, 'Joined');
-  if (amount) await db.incr('rw:stat:credits', amount);
+  await db.incr('rw:stat:credits', amount);
   if (flags.length) await review(db, u.id, n, flags.join('; '));
   const rn = parseInt(b.ref, 10);
   if (rn > 0 && rn !== n) {
@@ -192,11 +198,23 @@ const MEMBER = {
       if (await db.incr('rw:joinlock:' + u.id) === 1) m = await join(db, key, cfg, u, b, req);
       else { for (let i = 0; i < 20 && !m; i++) { await new Promise(r => setTimeout(r, 250)); m = await db.get('rw:m:' + u.id); } fresh = false; if (!m) throw fail(409, 'joining', 'Your membership is being created. Try again in a moment.'); }
     }
+    if (!m.minApplied) { m.minApplied = true; const d = MIN_CREDIT - m.credits.amount; if (d > 0) { m.credits.amount = MIN_CREDIT; if (m.credits.status === 'none') m.credits.status = m.flags.length ? 'held' : 'granted'; m.ledger.push({ t: Date.now(), kind: 'grant', amount: d, note: `Topped up to the $${MIN_CREDIT} minimum` }); await db.incr('rw:stat:credits', d); } }
     if (u.name && u.handle && u.bio) addXp(m, 'profile', cfg.xp.profile, 'Completed profile');
     if (m.referral && m.referral.status === 'pending' && qualifies(u, m)) await qualify(db, cfg, m);
     const rs = await refStats(db, u.id); autoMissions(m, cfg, rs.qualified); m.handle = u.handle || m.handle;
     await saveRow(db, cfg, m, u, rs.qualified); if (fresh || JSON.stringify(m) !== before) await db.set('rw:m:' + u.id, m); // write only on change
     return { member: await view(db, cfg, m, u, rs), fresh };
+  },
+  /** Referral dashboard: everyone you invited, their status, daily invites (last 14 days), rank and milestones. */
+  async referrals(db, key, cfg, u) {
+    const m = await db.get('rw:m:' + u.id); if (!m) throw fail(404, 'not_member', 'Not a member yet.');
+    const all = Object.entries(await db.hgetall('rw:refs:' + u.id)).map(([uid, r]) => ({ uid, ...r })).sort((a, b) => b.t - a.t);
+    const rows = all.length ? await db.hmget('rw:rows', all.slice(0, 200).map(r => r.uid)) : [];
+    const list = all.slice(0, 200).map((r, i) => ({ n: r.n, h: rows[i] && !rows[i].f && !rows[i].d ? rows[i].h : '', t: r.t, status: r.status }));
+    const count = (s) => all.filter(r => r.status === s).length; const day0 = new Date(); day0.setUTCHours(0, 0, 0, 0);
+    const daily = Array.from({ length: 14 }, (_, i) => { const a = day0.getTime() - (13 - i) * DAY; return { d: a, c: all.filter(r => r.t >= a && r.t < a + DAY).length }; });
+    const lb = await leaderboard(db, cfg); const rk = await ranks(db, u.id);
+    return { referrals: { total: all.length, qualified: count('qualified'), pending: count('pending'), review: count('review'), rejected: count('rejected'), xp: count('qualified') * cfg.xp.referral, perReferral: cfg.xp.referral, list, daily, rank: rk.refs, members: rk.total, top: lb.top.refs.filter(r => r.r > 0).slice(0, 5).map(r => ({ n: r.n, h: r.h, r: r.r })) } };
   },
   async reveal(db, key, cfg, u) { const m = await db.get('rw:m:' + u.id); if (!m) throw fail(404, 'not_member', 'Not a member yet.'); m.revealed = true; m.revealedPhase = cfg.phase; await db.set('rw:m:' + u.id, m); return {}; },
   async mission(db, key, cfg, u, b) {
@@ -234,6 +252,7 @@ const ADMIN = {
     if (isObj(p.credits)) {
       const t = Array.isArray(p.credits.table) ? p.credits.table.map(r => [Math.round(Number(r[0])), Number(r[1])]).filter(r => r[0] > 0 && r[1] > 0) : null;
       if (t && !t.length) throw fail(400, 'bad_table', 'The credit table needs at least one amount.');
+      if (t && t.some(r => r[0] < MIN_CREDIT)) throw fail(400, 'bad_table', `Every credit amount must be at least $${MIN_CREDIT}.`);
       out.credits = { table: t || cfg.credits.table, budget: p.credits.budget === '' || p.credits.budget == null ? null : Math.max(0, Number(p.credits.budget)) };
     }
     if (Array.isArray(p.uses)) out.uses = p.uses.slice(0, 20).map(x => ({ id: String(x.id || '').slice(0, 30), label: String(x.label || '').slice(0, 60), desc: String(x.desc || '').slice(0, 200), active: !!x.active })).filter(x => x.id && x.label);

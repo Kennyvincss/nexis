@@ -10,6 +10,7 @@ const RW_DEMO_CFG = {
   phase: 4, memberCap: 10000, memberCount: 7843, countdownAt: Date.now() + 9 * 864e5, brand: 'Nexis', social: { x: '', announcement: '', community: '' },
   uses: [{ id: 'opening_fee', label: 'Market opening fees', desc: 'Cover Panta’s fee when your bet opens a new market.', active: false }, { id: 'markets', label: 'Prediction market trades', desc: 'Put credits toward trades on Nexis markets.', active: false }, { id: 'sportsbook', label: 'Sportsbook bets', desc: 'Use credits on sportsbook bets.', active: false }, { id: 'drops', label: 'Future drops', desc: 'Early access to future Nexis drops.', active: false }],
   missions: [{ id: 'follow_x', title: 'Follow us on X', xp: 25, kind: 'link', url: '' }, { id: 'repost', title: 'Repost the launch announcement', xp: 25, kind: 'link', url: '' }, { id: 'community', title: 'Join the community', xp: 25, kind: 'link', url: '' }, { id: 'share_card', title: 'Share your Member Card', xp: 100, kind: 'share' }, { id: 'invite2', title: 'Invite 2 friends', xp: 100, kind: 'referrals', target: 2 }],
+  credits: [20, 25, 30, 37, 50, 100, 250, 500],
   statuses: [['NEW MEMBER', 0], ['MEMBER', 150], ['BUILDER', 400], ['EARLY OG', 1000], ['FAMILY LEGEND', 2500]], xp: { join: 100, profile: 50, referral: 50 }, milestones: [1, 3, 10, 25, 50, 100],
   guide: { published: false, title: 'How to use your credits' },
 };
@@ -80,6 +81,14 @@ const Rewards = {
     if (this.demo) return this.demoAct(action, body);
     const r = await this.call(action, body); if (r.member) this.me = r.member; if (r.config) this.cfg = r.config; Bus.emit('rewards'); return r;
   },
+  /** Referral dashboard data (cached 15s). */
+  async referrals(force) {
+    if (!force && this.rf && this.rf.uid === (Auth.user && Auth.user.id) && Date.now() - this.rfAt < 15e3) return this.rf.d;
+    let d;
+    if (this.demo) { const t = Date.now(), D = 864e5, day0 = new Date(); day0.setUTCHours(0, 0, 0, 0); const list = [['degenqueen', 'qualified', 1], ['sol_maxi', 'qualified', 2], ['predict0r', 'pending', 3], ['alpha_ana', 'qualified', 6]].map(([h, status, ago], i) => ({ n: 4100 + i * 13, h, status, t: t - ago * D })); d = { demo: true, total: 4, qualified: 3, pending: 1, review: 0, rejected: 0, xp: 150, perReferral: 50, list, daily: Array.from({ length: 14 }, (_, i) => { const a = day0.getTime() - (13 - i) * D; return { d: a, c: list.filter(r => r.t >= a && r.t < a + D).length }; }), rank: 212, members: (this.cfg && this.cfg.memberCount) || 0, top: this.demoLeaderboard().top.refs.slice(0, 5) }; }
+    else d = (await this.call('referrals')).referrals;
+    this.rf = { uid: Auth.user && Auth.user.id, d }; this.rfAt = Date.now(); return d;
+  },
   async leaderboard(force) {
     if (!force && this.lb && Date.now() - this.lbAt < 20e3) return this.lb;
     if (this.demo || !this.cfg) { this.lb = this.demoLeaderboard(); this.lbAt = Date.now(); return this.lb; }
@@ -89,16 +98,16 @@ const Rewards = {
 
   /* ---- reveal flow (member number → credits → guide) ---- */
   maybeReveal() {
-    if (this._revealing && !$('.rw-reveal')) { this._revealing = false; UI.rwRevealDone = null; } // the reveal was replaced by another dialog
+    if (this._revealing && !this._revealTimer && !$('.rw-reveal')) { this._revealing = false; UI.rwRevealDone = null; } // the reveal was replaced by another dialog
     const m = this.me; if (!m || this.demo || this._revealing || ['login', 'signup', 'onboarding', 'forgot', 'welcome', 'xdone'].includes(current.route) || (current.route === '' && !this.gated())) return;
     const needNumber = !m.revealed, needCredits = this.creditsVisible && (m.revealedPhase || 0) < 2 && m.credits && !m.credits.hidden;
-    if (needNumber || needCredits) { this._revealing = true; setTimeout(() => rwReveal(needNumber ? 'number' : 'credits'), 500); }
+    if (needNumber || needCredits) { this._revealing = true; this._revealTimer = setTimeout(() => { this._revealTimer = null; rwReveal(needNumber ? 'number' : 'credits'); }, 500); }
   },
 
   /* ---- demo mode (no rewards server): local, clearly labelled ---- */
   demoMember() {
     const u = Auth.user; let st; try { st = JSON.parse(localStorage.getItem('nexis-rw-demo:' + u.id) || 'null'); } catch (e) { st = null; }
-    if (!st) { let h = 0; for (const c of u.id) h = (h * 31 + c.charCodeAt(0)) >>> 0; const amounts = [5, 10, 10, 25, 25, 37, 50, 100]; st = { n: 1000 + (h % 8000), amount: amounts[h % amounts.length], missions: {}, shared: false, revealed: false, revealedPhase: 0, joinedAt: Date.now() }; }
+    if (!st) { let h = 0; for (const c of u.id) h = (h * 31 + c.charCodeAt(0)) >>> 0; const amounts = [20, 20, 25, 25, 30, 37, 50, 100]; st = { n: 1000 + (h % 8000), amount: amounts[h % amounts.length], missions: {}, shared: false, revealed: false, revealedPhase: 0, joinedAt: Date.now() }; }
     this._demo = st; this.demoSave();
     const xpLog = [{ k: 'join', xp: 100, label: 'Joined' }, ...(u.name && u.bio ? [{ k: 'profile', xp: 50, label: 'Completed profile' }] : []), ...Object.keys(st.missions).map(id => { const ms = this.cfg.missions.find(x => x.id === id) || {}; return { k: 'mission:' + id, xp: ms.xp || 0, label: ms.title || id }; })];
     const xp = xpLog.reduce((s, e) => s + e.xp, 0);

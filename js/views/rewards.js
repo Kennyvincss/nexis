@@ -60,10 +60,40 @@ function rwShare() {
 }
 
 /* ---------- reveal flow ---------- */
-function rwCountUp(el, to, ms = 1400, fmt = (v) => String(v)) {
-  if (!el) return; const t0 = performance.now();
-  const step = (t) => { const k = Math.min(1, (t - t0) / ms); const e = 1 - Math.pow(1 - k, 3); el.textContent = fmt(Math.round(to * e)); if (k < 1) requestAnimationFrame(step); else el.classList.add('done'); };
-  requestAnimationFrame(step);
+function rwCountUp(el, to, ms = 1400, fmt = (v) => String(v), from = 0) {
+  if (!el) return; const t0 = performance.now(); let end = false;
+  const fin = () => { if (end) return; end = true; el.textContent = fmt(to); el.classList.add('done'); };
+  const step = (t) => { if (end) return; const k = Math.min(1, Math.max(0, (t - t0) / ms)); const e = 1 - Math.pow(1 - k, 3); el.textContent = fmt(Math.round(from + (to - from) * e)); if (k < 1) requestAnimationFrame(step); else fin(); };
+  requestAnimationFrame(step); setTimeout(fin, ms + 250); // lands on the real value even if animation frames are paused
+}
+const rwReduced = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } };
+/** Slot-machine reel: flicks through possible amounts, slows down and lands on the real one. Never shows $0. */
+function rwSpin(el, final, done) {
+  if (!el) return done && done();
+  const pool = [...new Set([...(((Rewards.cfg && Rewards.cfg.credits) || []).filter(a => a >= 20)), 20, 25, 30, 37, 50, 100, 250, 500])];
+  if (rwReduced()) { el.textContent = rwMoney(final); return done && done(); }
+  let i = 0, last = null; const N = 24;
+  const tick = () => {
+    i++; let v = final;
+    if (i < N) { const opts = pool.filter(a => a !== last && a !== final); v = opts[Math.floor(Math.random() * opts.length)] || final; }
+    last = v; el.textContent = rwMoney(v); el.classList.remove('tick'); void el.offsetWidth; el.classList.add('tick');
+    if (i < N) setTimeout(tick, 45 + Math.pow(i / N, 3) * 380); else { el.classList.add('landed'); done && done(); }
+  };
+  tick();
+}
+/** Confetti burst over the page (skipped when the visitor prefers reduced motion). */
+function rwConfetti(n = 90) {
+  if (rwReduced()) return; const box = document.createElement('div'); box.className = 'rw-confetti'; box.setAttribute('aria-hidden', 'true');
+  const C = ['#F2B544', '#FFE7B0', '#8E6BFF', '#3D7BFF', '#1FCB7C', '#FF5C8A', '#FFFFFF'];
+  for (let i = 0; i < n; i++) { const p = document.createElement('i'); const w = 6 + Math.random() * 6; p.style.cssText = `left:${Math.random() * 100}%;background:${C[i % C.length]};width:${w}px;height:${w * (1.2 + Math.random())}px;--dx:${Math.round((Math.random() - .5) * 260)}px;--r:${Math.round(Math.random() * 900 - 450)}deg;animation-delay:${(Math.random() * .3).toFixed(2)}s;animation-duration:${(1.8 + Math.random() * 1.4).toFixed(2)}s;${i % 3 ? '' : 'border-radius:50%;'}`; box.appendChild(p); }
+  document.body.appendChild(box); setTimeout(() => box.remove(), 3800);
+}
+/** Plays an entrance animation the first time a page is shown in this visit, not on every refresh. */
+function rwOnce(key) { UI.rwSeen = UI.rwSeen || {}; if (UI.rwSeen[key]) return ''; UI.rwSeen[key] = true; return 'rw-stagger'; }
+/** Counts up elements marked data-count (member counter, referral stats) the first time they appear. */
+function rwAnimate(root) {
+  if (!root || rwReduced()) return; UI.rwCounted = UI.rwCounted || {};
+  root.querySelectorAll('[data-count]').forEach(el => { const k = el.dataset.ck || ''; const to = +el.dataset.count || 0; if (!k || UI.rwCounted[k] === to || to < 1) return; const from = UI.rwCounted[k] || 0; UI.rwCounted[k] = to; rwCountUp(el, to, 1100, (v) => fmtNum(v, 0), from); });
 }
 function rwReveal(step = 'number') {
   const m = Rewards.me; if (!m) { Rewards._revealing = false; return; }
@@ -71,19 +101,20 @@ function rwReveal(step = 'number') {
   const finish = UI.rwRevealDone || (UI.rwRevealDone = () => { UI.rwRevealDone = null; if (Rewards.me) Object.assign(Rewards.me, { revealed: true, revealedPhase: Rewards.phase }); Rewards._revealing = false; Rewards.act('reveal').catch(() => {}); });
   if (step === 'number') {
     openModal(`<div class="rw-reveal"><div class="rw-burst"></div><div class="rw-kicker">WELCOME TO ${esc(rwBrand().toUpperCase())}</div><div class="rw-reveal-label">YOUR MEMBER NUMBER</div>
-      <div class="rw-big-num num" id="rw-num">#0</div><div class="row" style="justify-content:center;gap:8px"><span class="rw-pill">${m.early !== false ? 'EARLY MEMBER' : 'MEMBER'}</span>${Rewards.demo ? '<span class="tag">DEMO</span>' : ''}</div>
+      <div class="rw-big-num num" id="rw-num">#${m.n}</div><div class="row" style="justify-content:center;gap:8px"><span class="rw-pill">${m.early !== false ? 'EARLY MEMBER' : 'MEMBER'}</span>${Rewards.demo ? '<span class="tag">DEMO</span>' : ''}</div>
       <p class="dim" style="margin-top:14px">This number is yours permanently. Nobody else will ever be Member #${m.n}.</p>
       <button class="btn btn-primary lg block" style="margin-top:18px" data-action="rwRevealNext" data-step="${Rewards.creditsVisible && m.credits && !m.credits.hidden ? 'credits' : 'done'}">${Rewards.creditsVisible && m.credits && !m.credits.hidden ? 'Reveal my reward' : 'Continue'}</button></div>`, { label: 'Your member number', onClose: finish });
-    rwCountUp($('#rw-num'), m.n, 1500, (v) => '#' + v);
+    if (!rwReduced()) rwCountUp($('#rw-num'), m.n, 1500, (v) => '#' + Math.max(1, v)); setTimeout(() => rwConfetti(50), 1300);
   } else if (step === 'credits') {
     const amt = m.credits.amount;
     setModalOrOpen(`<div class="rw-reveal"><div class="rw-burst gold"></div><div class="rw-kicker">MYSTERY REWARD</div>
-      <button class="rw-box" data-action="rwOpenBox" aria-label="Open your reward">${ic('gift', 'lg')}<span>Tap to open</span></button>
-      <div id="rw-credit" class="hide"><div class="rw-reveal-label">YOU HAVE</div><div class="rw-big-num num gold" id="rw-amt">$0</div><div class="rw-reveal-label">IN CREDITS</div>
+      <div class="rw-box-wrap"><div class="rw-rays"></div><button class="rw-box" data-action="rwOpenBox" aria-label="Open your reward">${ic('gift', 'lg')}<span>Tap to open</span></button></div>
+      <div id="rw-credit" class="hide"><div class="rw-reveal-label" id="rw-amt-label">SPINNING…</div><div class="rw-slot-win"><div class="rw-big-num num gold" id="rw-amt">${rwMoney(Math.max(20, ((Rewards.cfg && Rewards.cfg.credits) || [20])[0] || 20))}</div></div><div class="rw-reveal-label">IN CREDITS</div>
+      <div id="rw-credit-more" class="hide">
       ${m.credits.status === 'held' ? `<div class="rw-note warn">${ic('shield', 'sm')}<span>Your credits are under review while we verify your account. This is routine and protects the program from duplicate accounts.</span></div>` : ''}
       <div class="rw-note">${ic('info', 'sm')}<span><b>Promotional platform credits, not cash.</b> They’re already in your account and can be used on eligible ${esc(rwBrand())} products once the Credit Guide drops. They can’t be withdrawn.</span></div>
       <div class="rw-uses">${(Rewards.cfg.uses || []).map(u => `<span class="tag">${esc(u.label)}</span>`).join('')}</div>
-      <button class="btn btn-primary lg block" style="margin-top:16px" data-action="rwRevealNext" data-step="waiting">Continue</button></div></div>`, 'Your reward', finish);
+      <button class="btn btn-primary lg block" style="margin-top:16px" data-action="rwRevealNext" data-step="waiting">Continue</button></div></div></div>`, 'Your reward', finish);
     UI.rwAmt = amt;
   } else if (step === 'waiting') {
     setModalOrOpen(`<div class="rw-reveal">${Rewards.guidePublished ? `<div class="rw-kicker">THE GUIDE IS LIVE</div><h2 class="rw-h">HOW TO USE YOUR CREDITS</h2><p class="dim">The Credit Guide explains exactly where and how your credits work.</p>`
@@ -142,6 +173,7 @@ function rwInvitePanel(m) {
     <div class="rw-refs"><div><b class="num">${q}</b><span>REFERRALS</span></div><div><b class="num">${(m.refs && m.refs.pending) || 0}</b><span>PENDING</span></div>${m.refs && m.refs.review ? `<div><b class="num">${m.refs.review}</b><span>IN REVIEW</span></div>` : ''}</div>
     ${next ? `<div><div class="row" style="justify-content:space-between;font-size:12.5px"><span class="mut">NEXT MILESTONE</span><b class="num">${q} / ${next}</b></div><div class="rw-bar" style="margin-top:6px"><i style="width:${(q - prev) / (next - prev) * 100}%"></i></div></div>` : '<div class="mut" style="font-size:12.5px">Every milestone reached. Legend.</div>'}
     <label class="field"><span>Your referral link</span><div class="row" style="gap:8px"><input class="input num" readonly value="${esc(rwJoinLink(m.n))}" id="rw-link" style="flex:1;min-width:0"><button class="btn btn-ghost" data-action="rwCopyLink">${ic('copy', 'sm')}Copy</button></div></label>
+    <div class="row wrap" style="gap:8px"><a class="btn btn-primary" href="#/referrals">${ic('chart', 'sm')}Referral dashboard</a><button class="btn btn-ghost" data-action="rwInviteX">${xLogoSvg}Invite on X</button></div>
     <p class="mut" style="font-size:12px">${Rewards.gated() ? 'A friend counts once they’ve joined the waitlist with X. Referrals help you climb the ranks. They’re never paid out as cash.' : 'A friend counts once they’ve joined, finished setting up their account and verified X, an email or a wallet. Referrals earn XP and leaderboard rank, not cash.'}</p></div></div>`;
 }
 
@@ -152,9 +184,9 @@ Views.rewards = async () => {
   if (!Rewards.me) { if (Rewards.state !== 'loading') Rewards.sync(); return `<div class="page">${Rewards.err ? unavailable('Membership unavailable', esc(Rewards.err.message), '<button class="btn btn-ghost sm" data-action="rwRetry">Retry</button>') : skeletonCards(3)}</div>`; }
   const m = Rewards.me;
   return `<div class="page rw-page">
-    <div class="page-head"><div><h1>Membership</h1><p>Your Member Card, credits, missions and invites. ${rwPhasePill()}</p></div><div class="row"><a class="btn btn-ghost" href="#/leaderboard">${ic('trophy', 'sm')}Leaderboard</a>${Rewards.isAdmin ? `<a class="btn btn-ghost" href="#/admin">${ic('sliders', 'sm')}Admin</a>` : ''}</div></div>
+    <div class="page-head"><div><h1>Membership</h1><p>Your Member Card, credits, missions and invites. ${rwPhasePill()}</p></div><div class="row wrap" style="gap:8px"><a class="btn btn-ghost" href="#/referrals">${ic('chart', 'sm')}Referrals</a><a class="btn btn-ghost" href="#/leaderboard">${ic('trophy', 'sm')}Leaderboard</a>${Rewards.isAdmin ? `<a class="btn btn-ghost" href="#/admin">${ic('sliders', 'sm')}Admin</a>` : ''}</div></div>
     ${rwDemoNote()}
-    <div class="rw-grid rw-main">
+    <div class="rw-grid rw-main ${rwOnce('hub')}">
       <div class="stack" style="gap:16px;min-width:0"><div class="rw-o1">${rwMemberCard(m)}</div>
         <div class="row wrap rw-o2" style="gap:8px"><button class="btn btn-primary" data-action="rwShare">${ic('send', 'sm')}Share on X</button><button class="btn btn-ghost" data-action="rwDownload">${ic('download', 'sm')}Download card</button><button class="btn btn-ghost" data-action="rwReplay">${ic('play', 'sm')}Replay reveal</button></div>
         <div class="rw-o6">${rwXpPanel(m)}</div><div class="rw-o7">${rwMissionsPanel(m)}</div></div>
@@ -175,7 +207,7 @@ function rwJoinHero(ref) {
 function rwCounter() {
   const cfg = Rewards.cfg; if (!cfg) return '';
   const n = cfg.memberCount || 0, cap = cfg.memberCap || 10000, pct = Math.min(100, n / cap * 100);
-  return `<div class="rw-counter"><div class="row" style="justify-content:space-between;align-items:baseline;gap:10px"><b class="num"><span data-rwcount>${fmtNum(n, 0)}</span> / ${fmtNum(cap, 0)}</b><span class="rw-eyebrow">${n >= cap ? 'ROLLOUT FULL' : 'MEMBERS'}${Rewards.demo ? ' · DEMO' : ''}</span></div><div class="rw-bar gold"><i style="width:${pct}%"></i></div></div>`;
+  return `<div class="rw-counter"><div class="row" style="justify-content:space-between;align-items:baseline;gap:10px"><b class="num"><span data-rwcount data-count="${n}" data-ck="members">${fmtNum(n, 0)}</span> / ${fmtNum(cap, 0)}</b><span class="rw-eyebrow">${n >= cap ? 'ROLLOUT FULL' : 'MEMBERS'}${Rewards.demo ? ' · DEMO' : ''}</span></div><div class="rw-bar gold"><i style="width:${pct}%"></i></div></div>`;
 }
 
 /* ---------- LEADERBOARD ---------- */
@@ -292,13 +324,13 @@ function rwAdminPatch(form) {
 const xLogoSvg = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M17.75 3h3.07l-6.7 7.66L22 21h-6.17l-4.83-6.32L5.47 21H2.4l7.17-8.2L2 3h6.33l4.37 5.78L17.75 3Zm-1.08 16.2h1.7L7.4 4.73H5.58l11.09 14.47Z"/></svg>';
 function wlShell(inner, { me } = {}) {
   return `<div class="wl"><header class="wl-nav"><a class="logo" href="#/">${logoMark}<span class="wm">${esc(rwBrand().toUpperCase())}</span></a><span class="spacer"></span>
-    ${me ? `<span class="mut wl-user">@${esc(me)}</span><button class="btn btn-ghost sm" data-action="logout">Log out</button>` : ''}</header>
+    ${me ? `<nav class="wl-links"><a href="#/me" class="${current.route === 'me' ? 'on' : ''}">Membership</a><a href="#/referrals" class="${current.route === 'referrals' ? 'on' : ''}">Referrals</a></nav><span class="mut wl-user">@${esc(me)}</span><button class="btn btn-ghost sm" data-action="logout">Log out</button>` : ''}</header>
     <main class="wl-main">${inner}</main>
     <footer class="wl-foot"><span>${esc(rwBrand())} · launching soon</span><span class="mut">Credits are promotional platform credits, not cash, and can’t be withdrawn.</span></footer></div>`;
 }
 function wlWaitlist(params) {
   const cfg = Rewards.cfg || {}; const ref = params.get('ref') || Rewards.refCode(); const err = params.get('xerr');
-  return wlShell(`<section class="wl-hero"><div class="wl-glow"></div>
+  return wlShell(`<section class="wl-hero ${rwOnce('wl')}"><div class="wl-glow"></div><div class="wl-orb a"></div><div class="wl-orb b"></div>
     <div class="rw-kicker">${ref ? `MEMBER #${esc(ref)} INVITED YOU` : 'EARLY ACCESS · LIMITED SPOTS'}</div>
     <h1>Claim your<br>member number.</h1>
     <p class="dim">${esc(rwBrand())} is launching soon. Join the waitlist with X to get a permanent member number, a mystery credit reward and your own Member Card.</p>
@@ -306,13 +338,13 @@ function wlWaitlist(params) {
     ${err ? `<div class="rw-note warn" style="max-width:440px;margin:14px auto 0">${ic('alert', 'sm')}<span>${esc(err)}</span></div>` : ''}
     <div style="margin-top:20px">${cfg.xLogin ? `<a class="btn btn-primary lg wl-x" href="/api/xauth?action=start">${xLogoSvg}Connect with X</a>` : `<button class="btn btn-primary lg wl-x" disabled>Sign-up opens soon</button>`}</div>
     <p class="mut" style="font-size:12px;margin-top:10px">${cfg.xLogin ? 'We only read your public X profile. We never post for you.' : 'Sign-up with X isn’t switched on yet. Check back shortly.'}</p>
-    <ol class="wl-steps"><li><b>Connect X</b><span>One click, no password.</span></li><li><b>Get your number</b><span>Permanent. Only you will ever have it.</span></li><li><b>Reveal your credits</b><span>A mystery amount, already in your account.</span></li><li><b>Credit guide drops</b><span>Learn exactly how to use them.</span></li></ol></section>`);
+    <ol class="wl-steps"><li><b>Connect X</b><span>One click, no password.</span></li><li><b>Get your number</b><span>Permanent. Only you will ever have it.</span></li><li><b>Reveal your credits</b><span>A mystery amount from $20 up, already in your account.</span></li><li><b>Credit guide drops</b><span>Learn exactly how to use them.</span></li></ol></section>`);
 }
 function wlMe() {
   const m = Rewards.me; const u = Auth.user;
   if (!m) { if (Rewards.state !== 'loading') Rewards.sync(); return wlShell(Rewards.err ? unavailable('Membership unavailable', esc(Rewards.err.message), '<button class="btn btn-ghost sm" data-action="rwRetry">Retry</button>') : `<div class="wl-load"><span class="spin lg"></span><p class="mut">Loading your membership…</p></div>`, { me: u && u.handle }); }
   return wlShell(`${rwDemoNote()}<div class="wl-me-head"><div class="rw-kicker">YOU’RE IN</div><h1>Welcome, Member #${m.n}.</h1><p class="dim">Your spot is locked in. Share your card and invite friends while the Credit Guide gets ready.</p></div>
-    <div class="rw-page"><div class="rw-grid">
+    <div class="rw-page"><div class="rw-grid ${rwOnce('wlme')}">
       <div class="stack" style="gap:14px;min-width:0">${rwMemberCard(m)}<div class="row wrap" style="gap:8px"><button class="btn btn-primary" data-action="rwShare">${ic('send', 'sm')}Share on X</button><button class="btn btn-ghost" data-action="rwDownload">${ic('download', 'sm')}Download card</button><button class="btn btn-ghost" data-action="rwReplay">${ic('play', 'sm')}Replay reveal</button></div>${rwInvitePanel(m)}</div>
       <div class="stack" style="gap:14px;min-width:0">${rwCreditPanel(m)}${Rewards.creditsVisible ? rwGuidePanel() : ''}</div>
     </div></div>
@@ -320,6 +352,7 @@ function wlMe() {
 }
 async function wlRoute(route, params, arg) {
   if (route === 'me') return wlMe();
+  if (route === 'referrals') return wlShell(await rwReferralsPage(), { me: Auth.user && Auth.user.handle });
   if (route === 'member') { const html = await Views.member(params, arg); return wlShell(html); }
   return wlWaitlist(params);
 }
@@ -336,3 +369,59 @@ async function xDone(params) {
     await Rewards.sync(); location.replace(Rewards.home());
   } catch (e) { location.replace('#/?xerr=' + encodeURIComponent(e.message || 'X sign-in didn’t complete. Try again.')); }
 }
+
+/* =====================================================================
+   REFERRAL DASHBOARD (#/referrals) — everyone you invited, their status,
+   invites over the last 14 days, milestones and the top referrers.
+   Referrals earn XP and rank only, never cash.
+   ===================================================================== */
+const RW_REF_STATUS = { qualified: ['Counted', 'green', 'Joined and verified'], pending: ['Waiting', 'amber', 'Needs to finish setting up'], review: ['In review', '', 'We’re checking this one'], rejected: ['Not counted', 'red', 'Didn’t pass review'] };
+function rwMilestones(q) {
+  const ms = (Rewards.cfg && Rewards.cfg.milestones) || [1, 3, 10, 25, 50, 100]; const next = ms.find(x => x > q) || null; const prev = [...ms].reverse().find(x => x <= q) || 0;
+  const pct = next ? (q - prev) / (next - prev) : 1;
+  return `<div class="card"><div class="card-head"><h3>${ic('flag', 'sm')}MILESTONES</h3><span class="mut num" style="font-size:12.5px">${next ? `${next - q} more to ${next}` : 'All reached'}</span></div><div class="card-pad">
+    <div class="rw-ms">${ms.map((x, i) => { const done = q >= x, cur = x === next; const seg = i === 0 ? 0 : q >= x ? 1 : q > ms[i - 1] ? (q - ms[i - 1]) / (x - ms[i - 1]) : 0;
+      return `${i ? `<div class="rw-ms-seg"><i style="width:${Math.round(seg * 100)}%"></i></div>` : ''}<div class="rw-ms-node ${done ? 'done' : ''} ${cur ? 'cur' : ''}" title="${x} referral${x === 1 ? '' : 's'}"><span>${done ? ic('check', 'sm') : x}</span>${done ? `<b class="num">${x}</b>` : ''}</div>`; }).join('')}</div>
+    <p class="mut" style="font-size:12.5px;margin-top:12px">${next ? `${q} of ${next} counted referrals${pct > .5 ? ' — almost there.' : '.'} Each one adds +${(Rewards.cfg && Rewards.cfg.xp && Rewards.cfg.xp.referral) || 50} XP and moves you up the leaderboard.` : 'You’ve reached every milestone. Legend.'}</p></div></div>`;
+}
+function rwRefChart(daily) {
+  const max = Math.max(1, ...daily.map(x => x.c)); const total = daily.reduce((s, x) => s + x.c, 0);
+  const day = (t) => new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return `<div class="card"><div class="card-head"><h3>${ic('chart', 'sm')}INVITES · LAST 14 DAYS</h3><span class="num" style="font-size:13px">${fmtNum(total, 0)}</span></div><div class="card-pad">
+    <div class="rw-chart-wrap">${total ? '' : '<div class="rw-chart-empty">No one has joined with your link yet</div>'}<div class="rw-chart" role="img" aria-label="Friends who joined with your link per day over the last 14 days: ${total} in total">
+      ${daily.map((x, i) => `<div class="rw-col ${i === daily.length - 1 ? 'today' : ''}" tabindex="0" data-tip="${esc(day(x.d))} · ${x.c} joined"><i style="height:${x.c ? Math.max(6, x.c / max * 100) : 0}%"></i></div>`).join('')}
+    </div></div><div class="rw-chart-x mut num"><span>${esc(day(daily[0].d))}</span><span>Today</span></div>
+    <table class="sr-only"><caption>Joins per day</caption><tbody>${daily.map(x => `<tr><td>${esc(day(x.d))}</td><td>${x.c}</td></tr>`).join('')}</tbody></table></div></div>`;
+}
+async function rwReferralsPage() {
+  if (!Auth.user) { location.replace('#/'); return ''; }
+  if (!Rewards.me) await Rewards.sync(); const m = Rewards.me;
+  if (!m) return `<div class="page">${unavailable('Referrals unavailable', esc((Rewards.err && Rewards.err.message) || 'Your membership couldn’t be loaded.'), '<button class="btn btn-ghost sm" data-action="rwRetry">Retry</button>')}</div>`;
+  let d; try { d = await Rewards.referrals(); } catch (e) { return `<div class="page">${unavailable('Referrals unavailable', esc(e.message), '<button class="btn btn-ghost sm" data-action="rwRetry">Retry</button>')}</div>`; }
+  const tile = (k, v, s, ck, cls = '') => `<div class="rw-tile ${cls}"><span class="rw-eyebrow">${k}</span><b class="num" ${ck ? `data-count="${v}" data-ck="${ck}"` : ''}>${typeof v === 'number' ? fmtNum(v, 0) : v}</b><span class="mut">${s}</span></div>`;
+  const back = Rewards.gated() ? '#/me' : '#/rewards';
+  return `<div class="page rw-page rw-refs-page"><div class="page-head"><div><a class="link" href="${back}" style="font-size:12.5px">${ic('chevLeft', 'sm')}Membership</a><h1>Referral dashboard</h1><p>Everyone who joined with your link, and how close you are to your next milestone.</p></div>
+      <div class="row wrap" style="gap:8px"><button class="btn btn-primary" data-action="rwInviteX">${xLogoSvg}Invite on X</button><button class="btn btn-ghost" data-action="rwCopyLink">${ic('copy', 'sm')}Copy link</button></div></div>
+    ${d.demo ? rwDemoNote() : ''}
+    <div class="${rwOnce('refs')}">
+    <div class="rw-linkbar card"><span class="rw-eyebrow">YOUR LINK</span><input class="input num" readonly value="${esc(rwJoinLink(m.n))}" id="rw-link"><button class="btn btn-ghost sm" data-action="rwCopyLink">${ic('copy', 'sm')}Copy</button></div>
+    <div class="rw-tiles">
+      ${tile('FRIENDS INVITED', d.total, 'joined with your link', 'rf-total', 'hero')}
+      ${tile('COUNTED', d.qualified, 'verified referrals', 'rf-q')}
+      ${tile('WAITING', d.pending + d.review, d.review ? `${d.review} in review` : 'not verified yet', 'rf-p')}
+      ${tile('XP EARNED', d.xp, `+${d.perReferral} XP each`, 'rf-xp')}
+      ${tile('YOUR RANK', d.qualified && d.rank ? '#' + d.rank : '—', d.qualified ? `of ${fmtNum(d.members || 0, 0)} members` : 'first counted invite ranks you')}
+    </div>
+    ${rwMilestones(d.qualified)}
+    <div class="rw-grid" style="margin-top:16px">${rwRefChart(d.daily)}
+      <div class="card"><div class="card-head"><h3>${ic('trophy', 'sm')}TOP REFERRERS</h3>${Rewards.gated() ? '' : '<a class="link" href="#/leaderboard">Leaderboard</a>'}</div>
+        ${d.top.length ? d.top.map((r, i) => `<div class="rw-lb-row ${r.n === m.n ? 'me' : ''} ${i < 3 ? 'top' : ''}"><span class="rw-rank">${rwMedal(i)}</span><span class="rw-lb-name">@${esc(r.h || 'member')}<span class="mut num">#${r.n}</span></span><b class="num">${fmtNum(r.r, 0)}</b></div>`).join('') : '<p class="mut" style="padding:14px 18px;font-size:13px">No referrals counted yet. The first one takes the top spot.</p>'}
+        ${d.qualified && d.rank && d.rank > 5 ? `<div class="rw-lb-row me"><span class="rw-rank num">${d.rank}</span><span class="rw-lb-name">@${esc(m.handle || 'you')}<span class="mut num">#${m.n}</span></span><b class="num">${fmtNum(d.qualified, 0)}</b></div>` : ''}</div></div>
+    <div class="card" style="margin-top:16px"><div class="card-head"><h3>${ic('userPlus', 'sm')}YOUR INVITES</h3><span class="mut num" style="font-size:12.5px">${fmtNum(d.total, 0)}</span></div>
+      ${d.list.length ? `<div class="rw-reflist">${d.list.map(r => { const s = RW_REF_STATUS[r.status] || [r.status, '', '']; return `<div class="rw-refrow"><span class="rw-avatar">${esc((r.h || '#').slice(0, 1).toUpperCase())}</span><div style="flex:1;min-width:0"><b>${r.h ? '@' + esc(r.h) : 'Member'}</b> <span class="mut num">#${r.n}</span><div class="mut" style="font-size:12px">Joined ${agoT(r.t)} · ${esc(s[2])}</div></div><span class="tag ${s[1]}">${esc(s[0])}</span></div>`; }).join('')}</div>`
+        : `<div class="rw-empty">${ic('send', 'lg')}<b>No invites yet</b><p class="mut">Share your link. Friends who join with it show up here.</p><button class="btn btn-primary" data-action="rwInviteX">${xLogoSvg}Invite on X</button></div>`}</div>
+    <div class="card rw-how" style="margin-top:16px"><div class="card-pad"><ol><li><b>Share your link</b><span>Post it on X or send it to friends.</span></li><li><b>They join</b><span>They connect X and claim their own member number.</span></li><li><b>It counts</b><span>Once they’re verified, you get +${d.perReferral} XP and climb the leaderboard.</span></li></ol>
+      <p class="mut" style="font-size:12px;margin-top:10px">Referrals earn XP and rank, not cash. Self-referrals and duplicate accounts don’t count.</p></div></div>
+    </div></div>`;
+}
+Views.referrals = async () => rwReferralsPage();
