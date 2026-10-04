@@ -18,6 +18,7 @@ Views.landing = () => {
         <p class="sub">Trade real prediction markets on Panta with your Solana wallet, follow live sports and crypto, and track what real traders are doing — all updating in real time.</p>
         <div class="ctas"><a class="btn btn-primary lg" href="#/markets">Explore markets</a><a class="btn btn-ghost lg" href="#/home">Open the live dashboard</a></div>
         <div class="trust"><div><b data-land="panta">${Panta.markets.size || '—'}</b>Panta markets loaded</div><div><b>${Sports.list().filter(g => g.state === 'in').length}</b>games live now</div><div><b>${feedsLive}/${Object.keys(FEEDS).length}</b>data feeds connected</div></div>
+        <div id="rw-land">${rwLandingCounter()}</div>
       </div>
       <div class="mock" aria-label="Live data">
         <div class="mp stack" style="gap:10px"><div class="mini-row"><b style="font-size:12.5px">Panta</b><span style="margin-left:auto">${srcBadge('panta', true)}</span></div>

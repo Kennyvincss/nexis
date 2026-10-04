@@ -12,6 +12,7 @@ const ROUTES = {
   sports: () => require('../../api/sports.js'),
   pmgames: () => require('../../api/pmgames.js'),
   book: () => require('../../api/book.js'),
+  rewards: () => require('../../api/rewards.js'),
 };
 
 exports.handler = async (event) => {

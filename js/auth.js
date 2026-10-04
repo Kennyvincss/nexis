@@ -215,7 +215,7 @@ function onAuthed(res) {
   if (res.needs2FA) { UI.auth.pending = res; UI.auth.view = 'twofa'; closeModal(true); if (!['login', 'signup'].includes(current.route)) location.hash = '#/login'; else refreshAuth(); return; }
   const u = res.user; Store.init(u.id); closeModal(true);
   const next = UI.auth.next; UI.auth = { view: 'main', email: '', pending: null, next: '' };
-  setTimeout(() => { Wallets.watch(); Balances.refresh(); }, 300);
+  setTimeout(() => { Wallets.watch(); Balances.refresh(); Rewards.me = null; Rewards.state = 'idle'; Rewards.sync(); }, 300);
   if (res.isNew) { location.hash = '#/onboarding'; return; }
   toast({ title: `Welcome back${u.name ? ', ' + u.name.split(' ')[0] : ''}`, body: `Signed in with ${esc(res.session.method)}.` });
   location.hash = next && !/^\/?(login|signup|forgot|onboarding)/.test(next) ? '#' + next.replace(/^#/, '') : '#/home';
@@ -442,7 +442,7 @@ function confirmAct(title, body, label, fn, danger = true) {
   openModal(`${modalHead(title)}<div class="modal-body"><p class="dim">${body}</p><div data-err></div></div><div class="modal-foot"><button class="btn btn-ghost" data-action="closeModal">Cancel</button><button class="btn ${danger ? 'btn-no on' : 'btn-primary'}" id="confirm-act">${label}</button></div>`);
   $('#confirm-act').onclick = async (e) => { const b = e.currentTarget; setBusy(b, true); try { await fn(); } catch (err) { setBusy(b, false); const box = $('.overlay [data-err]'); if (box) box.innerHTML = authErrorHtml(err.message); } };
 }
-function logout() { Auth.adapter.signOut(); PrivyAuth.logout(); closeModal(true); const up = $('#user-pop'); if (up) up.innerHTML = ''; Store.init(null); Balances.v = null; UI.setTab = 'account'; location.hash = '#/'; toast({ title: 'You’re logged out', kind: 'info' }); }
+function logout() { Rewards.me = null; Rewards.isAdmin = false; Rewards.state = 'idle'; Auth.adapter.signOut(); PrivyAuth.logout(); closeModal(true); const up = $('#user-pop'); if (up) up.innerHTML = ''; Store.init(null); Balances.v = null; UI.setTab = 'account'; location.hash = '#/'; toast({ title: 'You’re logged out', kind: 'info' }); }
 function toggleUserMenu() {
   const pop = $('#user-pop'); if (!pop) return; if (pop.innerHTML) { pop.innerHTML = ''; return; }
   const u = Auth.user; const w = primaryWallet(); const b = Balances.v;

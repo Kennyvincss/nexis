@@ -233,6 +233,7 @@ const AUTHED = {
   async disable2fa(db, key, b, u) { u.twoFA = { enabled: false }; log(u, '2FA disabled', b.device); },
   async revokeSession(db, key, b, u, sid) { if (b.id !== sid) u.sessions = u.sessions.filter(x => x.id !== b.id); },
   async deleteAccount(db, key, b, u) {
+    try { await require('./rewards').onDelete(db, u.id); } catch (e) { /* rewards cleanup is best effort */ }
     const keys = [u.email && 'email:' + u.email, u.google && 'google:' + u.google.sub, u.handle && 'handle:' + u.handle.toLowerCase(), ...u.wallets.map(w => 'wallet:' + w.address), 'user:' + u.id].filter(Boolean);
     for (const k of keys) await db.del(k); return { deleted: true };
   },
@@ -260,5 +261,7 @@ const handler = async (req, res) => {
   }
 };
 module.exports = handler;
+// Shared with /api/rewards (same accounts and sessions).
+module.exports.helpers = { secret, readToken, getUser, saveUser, byIndex, fail };
 /* Test hook: swap the Privy client factory. */
 module.exports._setPrivyFactory = (f) => { privyFactory = f; };
