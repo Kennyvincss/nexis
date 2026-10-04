@@ -89,7 +89,7 @@ function rwReveal(step = 'number') {
     setModalOrOpen(`<div class="rw-reveal">${Rewards.guidePublished ? `<div class="rw-kicker">THE GUIDE IS LIVE</div><h2 class="rw-h">HOW TO USE YOUR CREDITS</h2><p class="dim">The Credit Guide explains exactly where and how your credits work.</p>`
       : `<div class="rw-kicker">YOUR CREDITS ARE WAITING</div><h2 class="rw-h">We’ll drop a full guide on how to use your credits soon.</h2><div class="rw-guide-lock">${ic('lock', 'sm')}CREDIT GUIDE — COMING SOON</div>${rwCountdownBlock()}`}
       <p class="mut" style="font-size:12.5px;margin-top:10px">Meanwhile: get your Member Card, complete your launch missions and invite friends to climb the leaderboard.</p>
-      <a class="btn btn-primary lg block" style="margin-top:16px" href="#/rewards" data-action="rwRevealClose">${Rewards.guidePublished ? 'Read the Credit Guide' : 'Get my Member Card'}</a></div>`, 'Credit guide', finish);
+      <a class="btn btn-primary lg block" style="margin-top:16px" href="${Rewards.home()}" data-action="rwRevealClose">${Rewards.guidePublished ? 'Read the Credit Guide' : 'Get my Member Card'}</a></div>`, 'Credit guide', finish);
   } else { if ($('.overlay .modal')) closeModal(); else finish(); }
 }
 function setModalOrOpen(html, label, onClose) { if ($('.overlay .modal')) setModal(html); else openModal(html, { label, onClose }); }
@@ -138,11 +138,11 @@ function rwXpPanel(m) {
 }
 function rwInvitePanel(m) {
   const q = (m.refs && m.refs.qualified) || 0; const ms = (Rewards.cfg && Rewards.cfg.milestones) || [1, 3, 10, 25, 50, 100]; const next = ms.find(x => x > q) || null; const prev = [...ms].reverse().find(x => x <= q) || 0;
-  return `<div class="card"><div class="card-head"><h3>${ic('userPlus', 'sm')}INVITE FRIENDS</h3>${m.rank && m.rank.refs ? `<a class="link" href="#/leaderboard">Rank #${m.rank.refs}</a>` : ''}</div><div class="card-pad stack" style="gap:12px">
+  return `<div class="card"><div class="card-head"><h3>${ic('userPlus', 'sm')}INVITE FRIENDS</h3>${m.rank && m.rank.refs ? (Rewards.gated() ? `<span class="mut num" style="font-size:12.5px">Rank #${m.rank.refs}</span>` : `<a class="link" href="#/leaderboard">Rank #${m.rank.refs}</a>`) : ''}</div><div class="card-pad stack" style="gap:12px">
     <div class="rw-refs"><div><b class="num">${q}</b><span>REFERRALS</span></div><div><b class="num">${(m.refs && m.refs.pending) || 0}</b><span>PENDING</span></div>${m.refs && m.refs.review ? `<div><b class="num">${m.refs.review}</b><span>IN REVIEW</span></div>` : ''}</div>
     ${next ? `<div><div class="row" style="justify-content:space-between;font-size:12.5px"><span class="mut">NEXT MILESTONE</span><b class="num">${q} / ${next}</b></div><div class="rw-bar" style="margin-top:6px"><i style="width:${(q - prev) / (next - prev) * 100}%"></i></div></div>` : '<div class="mut" style="font-size:12.5px">Every milestone reached. Legend.</div>'}
     <label class="field"><span>Your referral link</span><div class="row" style="gap:8px"><input class="input num" readonly value="${esc(rwJoinLink(m.n))}" id="rw-link" style="flex:1;min-width:0"><button class="btn btn-ghost" data-action="rwCopyLink">${ic('copy', 'sm')}Copy</button></div></label>
-    <p class="mut" style="font-size:12px">A friend counts once they’ve joined, finished setting up their account and verified an email or wallet. Referrals earn XP and leaderboard rank, not cash.</p></div></div>`;
+    <p class="mut" style="font-size:12px">${Rewards.gated() ? 'A friend counts once they’ve joined the waitlist with X. Referrals help you climb the ranks. They’re never paid out as cash.' : 'A friend counts once they’ve joined, finished setting up their account and verified X, an email or a wallet. Referrals earn XP and leaderboard rank, not cash.'}</p></div></div>`;
 }
 
 /* ---------- MEMBERSHIP HUB ---------- */
@@ -232,13 +232,19 @@ Views.admin = async () => {
   const field = (label, html) => `<label class="field"><span>${label}</span>${html}</label>`;
   return `<div class="page rw-page"><div class="page-head"><div><h1>Rollout admin</h1><p>Phase, credits, missions, guide and member review. Changes apply immediately.</p></div><button class="btn btn-ghost sm" data-action="rwAdminReload">${ic('refresh', 'sm')}Reload</button></div>
     <div class="stats-strip"><div class="stat"><div class="k">Members</div><div class="v num">${fmtNum(s.members, 0)} / ${fmtNum(c.memberCap, 0)}</div></div><div class="stat"><div class="k">Credits issued</div><div class="v num">${rwMoney(s.credits)}</div><div class="s mut">${c.credits.budget != null ? 'Budget ' + rwMoney(c.credits.budget) : 'No budget cap'}</div></div><div class="stat"><div class="k">Phase</div><div class="v">${c.phase} · ${esc(RW_PHASES[c.phase])}</div></div><div class="stat"><div class="k">Review queue</div><div class="v num">${s.review}</div></div></div>
+    <div class="card rw-access ${c.gate === 'open' ? 'open' : ''}" style="margin-top:16px"><div class="card-pad row wrap" style="gap:16px;align-items:center">
+      <div style="flex:1;min-width:240px"><span class="rw-eyebrow">WEBSITE ACCESS</span><h3 style="font-size:18px;margin-top:4px">${c.gate === 'open' ? 'The full website is open to everyone.' : 'Waitlist mode: visitors only see the waitlist site.'}</h3>
+        <p class="mut" style="font-size:12.5px;margin-top:4px">${c.gate === 'open' ? 'Members see the full Nexis site, with Membership, missions and the leaderboard.' : 'Visitors see the waitlist, Connect with X, their member number, credits, Member Card and invite link. Admins still see everything.'}</p>
+        <p style="font-size:12.5px;margin-top:6px">${(Config.c && Config.c.x && Config.c.x.configured) ? '<span class="tag green">Connect with X: on</span>' : `<span class="tag amber">Connect with X: off</span> <span class="mut">Add X_CLIENT_ID and X_CLIENT_SECRET (callback ${esc(location.origin)}/api/xauth), then redeploy.</span>`}</p></div>
+      <button class="btn ${c.gate === 'open' ? 'btn-ghost' : 'btn-primary'}" data-action="rwAdminGate" data-v="${c.gate === 'open' ? 'waitlist' : 'open'}">${c.gate === 'open' ? 'Back to waitlist mode' : 'Open the website'}</button></div></div>
     <div class="rw-grid" style="margin-top:16px">
       <form class="card" id="rw-adm-rollout"><div class="card-head"><h3>Rollout</h3><button type="button" class="btn btn-primary sm" data-action="rwAdminSave" data-form="rollout">Save</button></div><div class="card-pad stack" style="gap:12px">
         ${field('Phase', `<select class="select" name="phase">${[1, 2, 3, 4, 5, 6].map(p => `<option value="${p}" ${p === c.phase ? 'selected' : ''}>${p} — ${RW_PHASES[p]}</option>`).join('')}</select>`)}
         <div class="grid g2">${field('Member cap (early spots)', `<input class="input" name="memberCap" inputmode="numeric" value="${c.memberCap}">`)}${field('Guide countdown (your time)', `<input type="datetime-local" class="input" name="countdownAt" value="${dt}">`)}</div>
         <div class="grid g3">${field('Brand', `<input class="input" name="brand" value="${esc(c.brand)}">`)}${field('X handle', `<input class="input" name="x" value="${esc(c.social.x)}" placeholder="nexis">`)}${field('Credit budget ($, blank = none)', `<input class="input" name="budget" inputmode="numeric" value="${c.credits.budget ?? ''}">`)}</div>
         ${field('Launch announcement URL', `<input class="input" name="announcement" value="${esc(c.social.announcement)}" placeholder="https://x.com/…/status/…">`)}${field('Community URL', `<input class="input" name="community" value="${esc(c.social.community)}" placeholder="https://discord.gg/…">`)}
-        <div class="grid g2">${field('New members per network per day before review', `<input class="input" name="perNetworkPerDay" value="${c.antiAbuse.perNetworkPerDay}">`)}${field('Qualified referrals per referrer per day', `<input class="input" name="refDailyCap" value="${c.antiAbuse.refDailyCap}">`)}</div></div></form>
+        <div class="grid g2">${field('New members per network per day before review', `<input class="input" name="perNetworkPerDay" value="${c.antiAbuse.perNetworkPerDay}">`)}${field('Qualified referrals per referrer per day', `<input class="input" name="refDailyCap" value="${c.antiAbuse.refDailyCap}">`)}</div>
+        ${field('Hold credits for X accounts younger than (days, 0 = off)', `<input class="input" name="minXAgeDays" value="${c.antiAbuse.minXAgeDays ?? 30}">`)}</div></form>
       <form class="card" id="rw-adm-guide"><div class="card-head"><h3>Credit Guide</h3><button type="button" class="btn btn-primary sm" data-action="rwAdminSave" data-form="guide">Save</button></div><div class="card-pad stack" style="gap:12px">
         <p class="mut" style="font-size:12.5px">Members see this from phase 5. Lines starting with “- ” become bullets, “# ” a heading.</p>
         ${field('Title', `<input class="input" name="title" value="${esc(c.guide.title)}">`)}${field('Guide', `<textarea class="textarea" name="body" style="min-height:180px">${esc(c.guide.body)}</textarea>`)}
@@ -272,8 +278,61 @@ function rwAdminMember(m) {
 }
 function rwAdminPatch(form) {
   const f = $('#rw-adm-' + form); const v = (n) => f.elements[n] ? f.elements[n].value.trim() : '';
-  if (form === 'rollout') return { phase: +v('phase'), memberCap: +v('memberCap'), countdownAt: v('countdownAt') ? new Date(v('countdownAt')).getTime() : null, brand: v('brand'), social: { x: v('x').replace(/^@/, ''), announcement: v('announcement'), community: v('community') }, credits: { table: UI.rwAdmin.ov.config.credits.table, budget: v('budget') }, antiAbuse: { perNetworkPerDay: v('perNetworkPerDay'), refDailyCap: v('refDailyCap') } };
+  if (form === 'rollout') return { phase: +v('phase'), memberCap: +v('memberCap'), countdownAt: v('countdownAt') ? new Date(v('countdownAt')).getTime() : null, brand: v('brand'), social: { x: v('x').replace(/^@/, ''), announcement: v('announcement'), community: v('community') }, credits: { table: UI.rwAdmin.ov.config.credits.table, budget: v('budget') }, antiAbuse: { perNetworkPerDay: v('perNetworkPerDay'), refDailyCap: v('refDailyCap'), minXAgeDays: v('minXAgeDays') } };
   if (form === 'guide') { const uses = UI.rwAdmin.ov.config.uses.map((u, i) => ({ id: v('use_id_' + i), label: v('use_label_' + i), desc: v('use_desc_' + i), active: f.elements['use_active_' + i].checked })); return { guide: { title: v('title'), body: f.elements.body.value }, uses }; }
   if (form === 'credits') { const t = UI.rwAdmin.ov.config.credits.table.map((r, i) => [v('amt_' + i), v('w_' + i)]).filter(r => r[1] !== '' && +r[1] > 0); if (v('amt_new') && v('w_new')) t.push([v('amt_new'), v('w_new')]); return { credits: { table: t.map(r => [+r[0], +r[1]]), budget: UI.rwAdmin.ov.config.credits.budget } }; }
   if (form === 'missions') return { missions: JSON.parse(v('missions')), xp: { join: v('xp_join'), profile: v('xp_profile'), referral: v('xp_referral') }, statuses: JSON.parse(v('statuses')) };
+}
+
+/* =====================================================================
+   WAITLIST MODE — a standalone site shown to everyone except admins until
+   an admin opens the website (rollout admin → Website access).
+   Pages: waitlist (#/, #/join?ref=N) · my membership (#/me) · public card.
+   ===================================================================== */
+const xLogoSvg = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M17.75 3h3.07l-6.7 7.66L22 21h-6.17l-4.83-6.32L5.47 21H2.4l7.17-8.2L2 3h6.33l4.37 5.78L17.75 3Zm-1.08 16.2h1.7L7.4 4.73H5.58l11.09 14.47Z"/></svg>';
+function wlShell(inner, { me } = {}) {
+  return `<div class="wl"><header class="wl-nav"><a class="logo" href="#/">${logoMark}<span class="wm">${esc(rwBrand().toUpperCase())}</span></a><span class="spacer"></span>
+    ${me ? `<span class="mut wl-user">@${esc(me)}</span><button class="btn btn-ghost sm" data-action="logout">Log out</button>` : ''}</header>
+    <main class="wl-main">${inner}</main>
+    <footer class="wl-foot"><span>${esc(rwBrand())} · launching soon</span><span class="mut">Credits are promotional platform credits, not cash, and can’t be withdrawn.</span></footer></div>`;
+}
+function wlWaitlist(params) {
+  const cfg = Rewards.cfg || {}; const ref = params.get('ref') || Rewards.refCode(); const err = params.get('xerr');
+  return wlShell(`<section class="wl-hero"><div class="wl-glow"></div>
+    <div class="rw-kicker">${ref ? `MEMBER #${esc(ref)} INVITED YOU` : 'EARLY ACCESS · LIMITED SPOTS'}</div>
+    <h1>Claim your<br>member number.</h1>
+    <p class="dim">${esc(rwBrand())} is launching soon. Join the waitlist with X to get a permanent member number, a mystery credit reward and your own Member Card.</p>
+    ${rwCounter()}
+    ${err ? `<div class="rw-note warn" style="max-width:440px;margin:14px auto 0">${ic('alert', 'sm')}<span>${esc(err)}</span></div>` : ''}
+    <div style="margin-top:20px">${cfg.xLogin ? `<a class="btn btn-primary lg wl-x" href="/api/xauth?action=start">${xLogoSvg}Connect with X</a>` : `<button class="btn btn-primary lg wl-x" disabled>Sign-up opens soon</button>`}</div>
+    <p class="mut" style="font-size:12px;margin-top:10px">${cfg.xLogin ? 'We only read your public X profile. We never post for you.' : 'Sign-up with X isn’t switched on yet. Check back shortly.'}</p>
+    <ol class="wl-steps"><li><b>Connect X</b><span>One click, no password.</span></li><li><b>Get your number</b><span>Permanent. Only you will ever have it.</span></li><li><b>Reveal your credits</b><span>A mystery amount, already in your account.</span></li><li><b>Credit guide drops</b><span>Learn exactly how to use them.</span></li></ol></section>`);
+}
+function wlMe() {
+  const m = Rewards.me; const u = Auth.user;
+  if (!m) { if (Rewards.state !== 'loading') Rewards.sync(); return wlShell(Rewards.err ? unavailable('Membership unavailable', esc(Rewards.err.message), '<button class="btn btn-ghost sm" data-action="rwRetry">Retry</button>') : `<div class="wl-load"><span class="spin lg"></span><p class="mut">Loading your membership…</p></div>`, { me: u && u.handle }); }
+  return wlShell(`${rwDemoNote()}<div class="wl-me-head"><div class="rw-kicker">YOU’RE IN</div><h1>Welcome, Member #${m.n}.</h1><p class="dim">Your spot is locked in. Share your card and invite friends while the Credit Guide gets ready.</p></div>
+    <div class="rw-page"><div class="rw-grid">
+      <div class="stack" style="gap:14px;min-width:0">${rwMemberCard(m)}<div class="row wrap" style="gap:8px"><button class="btn btn-primary" data-action="rwShare">${ic('send', 'sm')}Share on X</button><button class="btn btn-ghost" data-action="rwDownload">${ic('download', 'sm')}Download card</button><button class="btn btn-ghost" data-action="rwReplay">${ic('play', 'sm')}Replay reveal</button></div>${rwInvitePanel(m)}</div>
+      <div class="stack" style="gap:14px;min-width:0">${rwCreditPanel(m)}${Rewards.creditsVisible ? rwGuidePanel() : ''}</div>
+    </div></div>
+    <p class="mut wl-end">That’s everything for now. We’ll let you know when the Credit Guide drops.</p>`, { me: u && u.handle });
+}
+async function wlRoute(route, params, arg) {
+  if (route === 'me') return wlMe();
+  if (route === 'member') { const html = await Views.member(params, arg); return wlShell(html); }
+  return wlWaitlist(params);
+}
+/** Finishes "Connect with X": trades the one-time code for a session. */
+async function xDone(params) {
+  const app = $('#app'); document.body.classList.add('is-landing');
+  app.innerHTML = wlShell(`<div class="wl-load"><span class="spin lg"></span><p class="mut">Signing you in with X…</p></div>`); hydrate(app);
+  try {
+    if (Auth.mode !== 'remote') Auth.setMode('remote');
+    const r = await Net.api('auth', { method: 'POST', timeout: 20000, body: { action: 'xclaim', code: params.get('c'), device: deviceLabel() } });
+    const res = RemoteAccounts.take(r); Store.init(res.user.id); Rewards.me = null; Rewards.state = 'idle';
+    setTimeout(() => { Wallets.watch(); Balances.refresh(); }, 300);
+    toast({ title: res.isNew ? `Welcome to ${rwBrand()}, @${res.user.handle}` : `Welcome back, @${res.user.handle}`, body: 'Signed in with X.' });
+    await Rewards.sync(); location.replace(Rewards.home());
+  } catch (e) { location.replace('#/?xerr=' + encodeURIComponent(e.message || 'X sign-in didn’t complete. Try again.')); }
 }

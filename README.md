@@ -38,6 +38,7 @@ To add them:
 | `KV_REST_API_URL`, `KV_REST_API_TOKEN` | **Yes on Vercel, for accounts** | Stores accounts on the server so they work on every device. In Vercel open **Storage → Create Database → Upstash for Redis** (free), connect it to the project and the variables are added automatically; `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` also work. Not needed on Netlify, which uses Netlify Blobs. |
 | `GOOGLE_CLIENT_ID` | Optional | "Continue with Google". Create an OAuth Web client in Google Cloud and add your domain as an authorized JavaScript origin. |
 | `ADMIN_EMAILS` / `ADMIN_HANDLES` / `ADMIN_USER_IDS` | For the rollout admin | Comma-separated admins for `#/admin` (launch rollout & rewards). |
+| `X_CLIENT_ID`, `X_CLIENT_SECRET` | For the waitlist | "Connect with X" sign-up (OAuth 2.0, callback `https://<domain>/api/xauth`). |
 
 ## Architecture
 
@@ -116,6 +117,30 @@ The services emit events on a small bus. `app.js` patches the visible page in pl
 
 
 ## Launch rollout & rewards
+
+### Waitlist mode (the site is closed until you open it)
+
+- **Default after deploying:** waitlist mode. Everyone except admins sees only a standalone waitlist site, with no app, menus or markets:
+  1. `#/` is the waitlist: member counter, **Connect with X**, and how it works. `/join?ref=N` shows the same page with "Member #N invited you".
+  2. Connect with X signs the visitor in.
+  3. The member-number reveal, then the credit reveal.
+  4. **`#/me`** is the only page members see. It has their number, credits, "CREDIT GUIDE — COMING SOON" with the countdown, the Member Card (Share on X, Download), and the invite link.
+- Every other address redirects to the waitlist or to `#/me`. Missions and the leaderboard stay hidden.
+- **Admins** (`ADMIN_EMAILS`, `ADMIN_HANDLES` (your X username works) or `ADMIN_USER_IDS`) still see the whole site.
+- **To open the website:** `#/admin` → Website access → **Open the website**. Everyone sees the full site immediately, and you can switch back the same way.
+- **Default phase is 4 (Anticipation):** new members see their credits and the "guide coming soon" state straight away.
+- The gate hides the app pages in the browser. The public data APIs it uses (markets, sports, prices) stay reachable, and no secrets are exposed either way.
+
+### Connect with X (sign-up for the waitlist)
+
+1. Create an app on [developer.x.com](https://developer.x.com). The free tier is enough.
+2. In **User authentication settings**, enable OAuth 2.0, set App type to **Web App (confidential client)**, set the Callback URL to `https://<your domain>/api/xauth` and the Website URL to your site.
+3. Add **`X_CLIENT_ID`** and **`X_CLIENT_SECRET`** (OAuth 2.0 Client ID and Secret) to Vercel's environment variables, then redeploy.
+
+- Sign-up only reads the public profile (scopes `users.read tweet.read`) and never posts.
+- The X username becomes the member's @handle.
+- X accounts younger than 30 days have their credits held for review. The limit is editable.
+- Until the keys are set, the waitlist shows "Sign-up opens soon".
 
 A membership layer on top of the existing app. It adds no new sign-up: the existing accounts and sessions are reused, and nothing that already worked was removed. It is served by `api/rewards.js`, `js/services/rewards.js` and `js/views/rewards.js`.
 

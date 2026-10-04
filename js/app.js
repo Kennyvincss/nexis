@@ -96,6 +96,23 @@ async function router({ silent = false } = {}) {
   const { route, arg, params } = parseHash(); const app = $('#app');
   const same = current.route === route && current.arg === arg;
   if (!silent || !same) stopViewTimers();
+  if (route === 'xdone') { current = { route, arg, params }; return xDone(params); }
+  // Waitlist mode: everyone except admins sees only the standalone waitlist site. A remembered setting is checked
+  // against the live one before redirecting anyone.
+  if (Rewards.gated() && !Rewards.cfg) { try { await Promise.race([Rewards.loadConfig(), delay(4000)]); } catch (e) { /* use the remembered setting */ } if (parseHash().route !== route) return; }
+  UI.wasGated = Rewards.gated();
+  if (!UI.wasGated && route === 'me') { location.replace('#/rewards'); return; }
+  if (UI.wasGated) {
+    const user = Auth.user, wl = ['', 'welcome', 'join', 'me', 'member'];
+    if (![...wl, 'login', 'forgot', 'onboarding'].includes(route)) { location.replace(user ? '#/me' : '#/'); return; }
+    if (user && ['', 'welcome', 'join'].includes(route) && user.onboarded) { location.replace('#/me'); return; }
+    if (!user && route === 'me') { location.replace('#/'); return; }
+    if (wl.includes(route)) {
+      document.body.classList.add('is-landing'); current = { route, arg, params };
+      const html = await wlRoute(route, params, arg); if (current.route !== route) return;
+      app.innerHTML = html; hydrate(app); if (!silent) window.scrollTo(0, 0); if (route === 'me' && Rewards.me) Rewards.maybeReveal(); return;
+    }
+  }
   if (!route || route === 'welcome') {
     document.body.classList.add('is-landing'); current = { route: '', arg, params };
     app.innerHTML = Views.landing(); hydrate(app); if (!silent) window.scrollTo(0, 0); return;
@@ -213,6 +230,7 @@ const A_APP = {
   rwCopyLink: async () => { const v = ($('#rw-link') || {}).value; try { await navigator.clipboard.writeText(v); toast({ title: 'Referral link copied' }); } catch (e) { const i = $('#rw-link'); if (i) { i.select(); } toast({ title: 'Press Ctrl+C to copy', kind: 'info' }); } },
   rwTab: (el) => { UI.rwTab = el.dataset.t; refresh(); },
   rwRetry: () => { Rewards.state = 'idle'; Rewards.err = null; Rewards.sync(); refresh(); },
+  rwAdminGate: (el) => confirmAct(el.dataset.v === 'open' ? 'Open the website?' : 'Back to waitlist mode?', el.dataset.v === 'open' ? 'Everyone will see the full Nexis website right away.' : 'Everyone except admins will only see the waitlist site again.', el.dataset.v === 'open' ? 'Open the website' : 'Switch to waitlist', async () => { await Rewards.call('admin_config', { patch: { gate: el.dataset.v } }); UI.rwAdmin.stale = true; await Rewards.loadConfig(); toast({ title: el.dataset.v === 'open' ? 'The website is open' : 'Waitlist mode is on' }); refresh(); }),
   rwAdminReload: () => { if (UI.rwAdmin) UI.rwAdmin.stale = true; refresh(); },
   rwAdminSave: async (el) => { let patch; try { patch = rwAdminPatch(el.dataset.form); } catch (e) { return toast({ title: 'Check the JSON fields', body: esc(e.message), kind: 'warn' }); } setBusy(el, true, 'Saving…'); try { await Rewards.call('admin_config', { patch }); UI.rwAdmin.stale = true; await Rewards.loadConfig(); Rewards.sync(); toast({ title: 'Saved' }); refresh(); } catch (e) { setBusy(el, false); toast({ title: 'Couldn’t save', body: esc(e.message), kind: 'err' }); } },
   rwAdminFind: async () => { const q = ($('#rw-adm-q') || {}).value; try { UI.rwAdmin.member = (await Rewards.call('admin_member', { q })).member; refresh(); } catch (e) { toast({ title: 'Not found', body: esc(e.message), kind: 'warn' }); } },
@@ -301,7 +319,8 @@ Bus.on('poly:price', ({ m }) => {
 });
 Bus.on('poly', () => softRefresh(['markets', 'home']));
 Bus.on('listings', () => softRefresh(['markets', 'home']));
-Bus.on('rewards', () => { renderChrome(current.route); softRefresh(['rewards', 'leaderboard', 'home', 'profile', 'admin', 'member']); const lc = $('#rw-land'); if (lc) lc.innerHTML = rwLandingCounter(); });
+function softRefreshWl() { if (!$('.wl') || $('.overlay .modal') || (document.activeElement && document.activeElement.matches('input,textarea'))) return; wlRoute(current.route, current.params, current.arg).then(h => { if (UI.wasGated && $('.wl')) { $('#app').innerHTML = h; hydrate($('#app')); if (current.route === 'me') Rewards.maybeReveal(); } }); }
+Bus.on('rewards', () => { if (Rewards.gated() !== UI.wasGated) return router({ silent: true }); if (UI.wasGated) { if (['me', ''].includes(current.route)) softRefreshWl(); return; } renderChrome(current.route); softRefresh(['rewards', 'leaderboard', 'home', 'profile', 'admin', 'member']); const lc = $('#rw-land'); if (lc) lc.innerHTML = rwLandingCounter(); });
 const paintPantaTapes = () => { const h = $('#home-ptape'); if (h) h.innerHTML = pantaTapeRows(PantaTape.all(), 10); const a = $('#act-ptape'); if (a) a.innerHTML = pantaTapeRows(PantaTape.all(), 80); };
 Bus.on('panta:trades', paintPantaTapes); Bus.on('panta:tape', paintPantaTapes);
 Bus.on('crypto:tick', ({ c, prev }) => {
@@ -334,6 +353,8 @@ Bus.on('auth:expired', () => { Store.init(null); Balances.v = null; toast({ titl
 window.addEventListener('hashchange', () => { const p = $('#user-pop'); if (p) p.innerHTML = ''; const n = $('#notif-pop'); if (n) n.innerHTML = ''; router(); });
 (async function boot() {
   Rewards.captureRef();
+  // Waitlist mode is decided before the first paint, so a closed site never flashes.
+  if (!Rewards.cachedGate()) { try { await Promise.race([Rewards.loadConfig(), delay(3000)]); } catch (e) { /* decided after boot */ } }
   Store.init(Auth.user && Auth.user.id);
   // When Nexis runs inside Claude, the page can use the viewer's own Claude connection for AI drafting.
   try { if (window.claude && typeof window.claude.use === 'function') { const s = await window.claude.use('sample'); if (s && typeof s.json === 'function') sampleFn = s; } } catch (e) { /* not available */ }

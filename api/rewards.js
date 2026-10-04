@@ -17,7 +17,8 @@ const fail = (status, code, message) => Object.assign(new Error(message), { stat
 
 /* ---------- configuration (admin-editable; merged over these defaults) ---------- */
 const DEFAULTS = {
-  phase: 1, // 1 join · 2 credit reveal · 3 community growth · 4 anticipation · 5 credit guide · 6 product activation
+  gate: 'waitlist', // 'waitlist': visitors only see the standalone waitlist site (admins see everything) · 'open': the full website
+  phase: 4, // 1 join · 2 credit reveal · 3 community growth · 4 anticipation · 5 credit guide · 6 product activation
   memberCap: 10000,
   countdownAt: null, // ms timestamp for the Credit Guide release, or null
   brand: 'Nexis',
@@ -41,7 +42,7 @@ const DEFAULTS = {
   xp: { join: 100, profile: 50, referral: 50 },
   statuses: [['NEW MEMBER', 0], ['MEMBER', 150], ['BUILDER', 400], ['EARLY OG', 1000], ['FAMILY LEGEND', 2500]],
   milestones: [1, 3, 10, 25, 50, 100],
-  antiAbuse: { perNetworkPerDay: 3, refDailyCap: 25 },
+  antiAbuse: { perNetworkPerDay: 3, refDailyCap: 25, minXAgeDays: 30 },
 };
 const isObj = (x) => x && typeof x === 'object' && !Array.isArray(x);
 function merge(a, b) { const o = { ...a }; for (const [k, v] of Object.entries(b || {})) o[k] = isObj(v) && isObj(a[k]) ? merge(a[k], v) : v; return o; }
@@ -50,7 +51,7 @@ function linkFor(cfg, key) { if (key === 'x') return cfg.social.x ? `https://x.c
 function pubConfig(cfg, memberCount) {
   const published = cfg.phase >= 5;
   return {
-    phase: cfg.phase, memberCap: cfg.memberCap, memberCount, countdownAt: cfg.countdownAt, brand: cfg.brand, social: cfg.social,
+    gate: cfg.gate === 'open' ? 'open' : 'waitlist', xLogin: !!env('X_CLIENT_ID'), phase: cfg.phase, memberCap: cfg.memberCap, memberCount, countdownAt: cfg.countdownAt, brand: cfg.brand, social: cfg.social,
     uses: cfg.uses.map(u => ({ id: u.id, label: u.label, desc: u.desc, active: cfg.phase >= 6 && !!u.active })),
     missions: cfg.missions.filter(m => m.enabled).map(m => ({ id: m.id, title: m.title.replace('{x}', cfg.social.x ? '@' + cfg.social.x.replace(/^@/, '') : 'us'), xp: m.xp, kind: m.kind, target: m.target || 0, url: m.kind === 'link' ? linkFor(cfg, m.url) || (/^https:\/\//.test(m.url) ? m.url : '') : '' })),
     statuses: cfg.statuses, xp: cfg.xp, milestones: cfg.milestones,
@@ -102,6 +103,7 @@ async function join(db, key, cfg, u, b, req) {
   const n = await db.incr('rw:seq'); await db.set('rw:num:' + n, u.id);
   const ipH = hash(key, ipOf(req)), devH = hash(key, String(b.dev || '').slice(0, 200)); const flags = [];
   if (ipH) { const day = new Date().toISOString().slice(0, 10); const c = await db.incr(`rw:ip:${ipH}:${day}`); if (c > cfg.antiAbuse.perNetworkPerDay) flags.push('Many new members from one network today'); }
+  if (u.x && u.x.created && cfg.antiAbuse.minXAgeDays && Date.now() - u.x.created < cfg.antiAbuse.minXAgeDays * DAY) flags.push(`X account younger than ${cfg.antiAbuse.minXAgeDays} days`);
   if (devH) { const seen = (await db.get('rw:dev:' + devH)) || []; if (seen.length) flags.push(`Device already used by member #${seen[0]}`); await db.set('rw:dev:' + devH, [...seen, n].slice(0, 20)); }
   const early = n <= cfg.memberCap;
   let amount = early ? drawCredits(cfg) : 0;
@@ -123,7 +125,7 @@ async function join(db, key, cfg, u, b, req) {
   return m;
 }
 /** A referral counts once the new member is real: onboarded, a verified email or a wallet, not flagged. */
-const qualifies = (u, m) => u.onboarded && u.handle && (u.emailVerified || (u.wallets && u.wallets.length) || u.google) && !m.flags.length;
+const qualifies = (u, m) => u.onboarded && u.handle && (u.emailVerified || (u.wallets && u.wallets.length) || u.google || u.x) && !m.flags.length;
 async function qualify(db, cfg, m) {
   const ruid = await db.get('rw:num:' + m.referredBy); if (!ruid) return;
   const day = new Date().toISOString().slice(0, 10); const c = await db.incr(`rw:refday:${ruid}:${day}`);
@@ -184,12 +186,16 @@ const PUBLIC = {
 };
 const MEMBER = {
   async me(db, key, cfg, u, b, req) {
-    let m = await db.get('rw:m:' + u.id); const fresh = !m; const before = m ? JSON.stringify(m) : '';
-    if (!m) m = await join(db, key, cfg, u, b, req);
+    let m = await db.get('rw:m:' + u.id); let fresh = !m; const before = m ? JSON.stringify(m) : '';
+    if (!m) {
+      // One join per account even when requests race: the first caller takes the lock, the others wait for its result.
+      if (await db.incr('rw:joinlock:' + u.id) === 1) m = await join(db, key, cfg, u, b, req);
+      else { for (let i = 0; i < 20 && !m; i++) { await new Promise(r => setTimeout(r, 250)); m = await db.get('rw:m:' + u.id); } fresh = false; if (!m) throw fail(409, 'joining', 'Your membership is being created. Try again in a moment.'); }
+    }
     if (u.name && u.handle && u.bio) addXp(m, 'profile', cfg.xp.profile, 'Completed profile');
     if (m.referral && m.referral.status === 'pending' && qualifies(u, m)) await qualify(db, cfg, m);
     const rs = await refStats(db, u.id); autoMissions(m, cfg, rs.qualified); m.handle = u.handle || m.handle;
-    await saveRow(db, cfg, m, u, rs.qualified); if (JSON.stringify(m) !== before) await db.set('rw:m:' + u.id, m); // write only on change
+    await saveRow(db, cfg, m, u, rs.qualified); if (fresh || JSON.stringify(m) !== before) await db.set('rw:m:' + u.id, m); // write only on change
     return { member: await view(db, cfg, m, u, rs), fresh };
   },
   async reveal(db, key, cfg, u) { const m = await db.get('rw:m:' + u.id); if (!m) throw fail(404, 'not_member', 'Not a member yet.'); m.revealed = true; m.revealedPhase = cfg.phase; await db.set('rw:m:' + u.id, m); return {}; },
@@ -213,6 +219,7 @@ const ADMIN = {
   },
   async admin_config(db, key, cfg, u, b) {
     const p = b.patch || {}; const cur = (await db.get('rw:config')) || {}; const out = { ...cur };
+    if (p.gate != null) out.gate = p.gate === 'open' ? 'open' : 'waitlist';
     if (p.phase != null) { const ph = parseInt(p.phase, 10); if (!(ph >= 1 && ph <= 6)) throw fail(400, 'bad_phase', 'Phase must be 1–6.'); out.phase = ph; }
     if (p.memberCap != null) out.memberCap = Math.max(1, parseInt(p.memberCap, 10) || DEFAULTS.memberCap);
     if ('countdownAt' in p) out.countdownAt = p.countdownAt ? Number(p.countdownAt) || Date.parse(p.countdownAt) || null : null;
@@ -233,7 +240,7 @@ const ADMIN = {
     if (Array.isArray(p.missions)) out.missions = p.missions.slice(0, 20).map(x => ({ id: String(x.id || '').slice(0, 30), title: String(x.title || '').slice(0, 80), xp: Math.max(0, parseInt(x.xp, 10) || 0), kind: ['link', 'share', 'referrals'].includes(x.kind) ? x.kind : 'link', url: ['x', 'announcement', 'community'].includes(x.url) || /^https:\/\/[^\s<>"']+$/.test(String(x.url || '')) ? String(x.url || '').slice(0, 300) : '', target: Math.max(0, parseInt(x.target, 10) || 0), enabled: x.enabled !== false })).filter(x => x.id && x.title);
     if (isObj(p.xp)) out.xp = { join: Math.max(0, parseInt(p.xp.join, 10) || 0), profile: Math.max(0, parseInt(p.xp.profile, 10) || 0), referral: Math.max(0, parseInt(p.xp.referral, 10) || 0) };
     if (Array.isArray(p.statuses)) out.statuses = p.statuses.map(s => [String(s[0]).slice(0, 30).toUpperCase(), Math.max(0, parseInt(s[1], 10) || 0)]).sort((a, b) => a[1] - b[1]);
-    if (isObj(p.antiAbuse)) out.antiAbuse = { perNetworkPerDay: Math.max(1, parseInt(p.antiAbuse.perNetworkPerDay, 10) || 3), refDailyCap: Math.max(1, parseInt(p.antiAbuse.refDailyCap, 10) || 25) };
+    if (isObj(p.antiAbuse)) out.antiAbuse = { perNetworkPerDay: Math.max(1, parseInt(p.antiAbuse.perNetworkPerDay, 10) || 3), refDailyCap: Math.max(1, parseInt(p.antiAbuse.refDailyCap, 10) || 25), minXAgeDays: Math.max(0, parseInt(p.antiAbuse.minXAgeDays, 10) || 0) };
     await db.set('rw:config', out); await db.del('rw:lb'); return { config: merge(DEFAULTS, out) };
   },
   async admin_member(db, key, cfg, u, b) {
@@ -241,7 +248,7 @@ const ADMIN = {
     if (/^#?\d+$/.test(q)) uid = await db.get('rw:num:' + q.replace('#', '')); else if (/^usr_/.test(q)) uid = q; else if (/^@?\w{3,20}$/.test(q)) { const x = await H().byIndex(db, 'handle', q.replace('@', '').toLowerCase()); uid = x && x.id; }
     const m = uid && await db.get('rw:m:' + uid); if (!m) throw fail(404, 'not_found', 'No member found for that number, @handle or user id.');
     const usr = await H().getUser(db, uid); const rs = await refStats(db, uid);
-    return { member: { ...m, xp: xpTotal(m, cfg, rs.qualified), refs: rs, email: usr && usr.email, handle: usr && usr.handle, created: usr && usr.created, verified: !!(usr && (usr.emailVerified || usr.wallets.length || usr.google)) } };
+    return { member: { ...m, xp: xpTotal(m, cfg, rs.qualified), refs: rs, email: usr && usr.email, handle: usr && usr.handle, x: usr && usr.x ? { username: usr.x.username, created: usr.x.created, followers: usr.x.followers } : null, created: usr && usr.created, verified: !!(usr && (usr.emailVerified || usr.wallets.length || usr.google || usr.x)) } };
   },
   async admin_member_update(db, key, cfg, u, b) {
     const m = await db.get('rw:m:' + b.uid); if (!m) throw fail(404, 'not_found', 'No such member.'); const note = String(b.note || '').slice(0, 200) || 'Admin';

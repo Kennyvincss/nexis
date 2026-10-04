@@ -79,10 +79,10 @@ async function byIndex(db, kind, key) { const id = await db.get(`${kind}:${key}`
 const saveUser = (db, u) => db.set('user:' + u.id, u);
 function newUser(p = {}) { return { id: rid('usr_', 9), email: p.email || null, emailVerified: !!p.emailVerified, name: p.name || '', handle: '', bio: '', hue: 200 + crypto.randomInt(120), picture: p.picture || null, created: Date.now(), onboarded: false, pw: null, google: null, wallets: [], twoFA: { enabled: false }, sessions: [], activity: [] }; }
 function log(u, method, device, ok = true) { u.activity = [{ t: Date.now(), method, device: device || 'Unknown device', ok }, ...(u.activity || [])].slice(0, 30); }
-function methods(u) { return [u.pw && 'password', u.google && 'google', ...u.wallets.map(w => 'wallet:' + w.address)].filter(Boolean); }
+function methods(u) { return [u.pw && 'password', u.google && 'google', u.x && 'x', ...u.wallets.map(w => 'wallet:' + w.address)].filter(Boolean); }
 function pub(u, sid) {
   return { id: u.id, email: u.email, emailVerified: u.emailVerified, name: u.name, handle: u.handle, bio: u.bio, hue: u.hue, picture: u.picture, created: u.created, onboarded: u.onboarded,
-    providers: { password: u.pw ? { set: u.pw.set } : null, google: u.google ? { email: u.google.email, name: u.google.name, linked: u.google.linked } : null },
+    providers: { password: u.pw ? { set: u.pw.set } : null, google: u.google ? { email: u.google.email, name: u.google.name, linked: u.google.linked } : null, x: u.x ? { username: u.x.username, linked: u.x.linked } : null },
     wallets: u.wallets, twoFA: u.twoFA.pending ? { enabled: false, pending: true, secret: u.twoFA.secret } : { enabled: !!u.twoFA.enabled, since: u.twoFA.since },
     sessions: u.sessions.map(s => ({ ...s, current: s.id === sid })), activity: u.activity };
 }
@@ -160,6 +160,12 @@ const PUBLIC = {
     if (!u) { u = newUser({ email, emailVerified: true }); await db.set('email:' + email, u.id); }
     u.emailVerified = true; if (pv) u.privy = pv.privyId; if (fresh || pv) await saveUser(db, u);
     return finishLogin(db, key, u, 'Email code', b.device, true, fresh);
+  },
+  /** Finishes "Connect with X": /api/xauth stores a one-time code (2 minutes) that the browser trades for the session. */
+  async xclaim(db, key, b) {
+    const c = await db.get('xc:' + String(b.code || '')); if (!c || Date.now() - c.t > 120e3) throw fail(400, 'x_expired', 'That sign-in link expired. Connect with X again.');
+    await db.del('xc:' + b.code); const u = await getUser(db, c.uid); if (!u) throw fail(404, 'no_user', 'Account not found.');
+    return startSession(db, key, u, 'X', b.device, true, c.fresh);
   },
   async google(db, key, b) {
     const g = await verifyGoogle(b.credential);
@@ -262,6 +268,6 @@ const handler = async (req, res) => {
 };
 module.exports = handler;
 // Shared with /api/rewards (same accounts and sessions).
-module.exports.helpers = { secret, readToken, getUser, saveUser, byIndex, fail };
+module.exports.helpers = { secret, readToken, getUser, saveUser, byIndex, fail, newUser, setHandle, rid };
 /* Test hook: swap the Privy client factory. */
 module.exports._setPrivyFactory = (f) => { privyFactory = f; };
