@@ -124,7 +124,7 @@ The services emit events on a small bus. `app.js` patches the visible page in pl
   1. `#/` is the waitlist: member counter, **Connect with X**, and how it works. `/join?ref=N` shows the same page with "Member #N invited you".
   2. Connect with X signs the visitor in.
   3. The member-number reveal, then the credit reveal.
-  4. **`#/me`** is the only page members see. It has their number, credits, "CREDIT GUIDE — COMING SOON" with the countdown, the Member Card (Share on X, Download), and the invite link.
+  4. **`#/me`** is the member's page, with **`#/referrals`** (the referral dashboard) beside it. These are the only pages members see. It has their number, credits, "CREDIT GUIDE — COMING SOON" with the countdown, the Member Card (Share on X, Download), and the invite link.
 - Every other address redirects to the waitlist or to `#/me`. Missions and the leaderboard stay hidden.
 - **Admins** (`ADMIN_EMAILS`, `ADMIN_HANDLES` (your X username works) or `ADMIN_USER_IDS`) still see the whole site.
 - **To open the website:** `#/admin` → Website access → **Open the website**. Everyone sees the full site immediately, and you can switch back the same way.
@@ -151,6 +151,7 @@ A membership layer on top of the existing app. It adds no new sign-up: the exist
   - member status and XP;
   - launch missions;
   - invites and leaderboard rank.
+- `#/referrals`: referral dashboard, also available in waitlist mode. It shows friends invited, counted, waiting, XP earned and rank; a milestone track; invites per day over the last 14 days; the top 5 referrers; and every invite with its status (Counted, Waiting, In review, Not counted). It also has Invite on X and Copy link.
 - `#/leaderboard`: public. Tabs for Top referrers, Top XP and Early members, plus "YOU ARE #n". Refreshes every 30s.
 - `/join?ref=<member number>`: referral link. Vercel and Netlify serve the app at `/join`, which keeps the code for 30 days, until sign-up.
 - `#/member/<n>`: public Member Card.
@@ -159,8 +160,9 @@ A membership layer on top of the existing app. It adds no new sign-up: the exist
 
 **Flow**
 - On first sign-in, a member gets a permanent, sequential member number (atomic counter) and **EARLY MEMBER** status if within the member cap.
-- They also get a weighted random credit amount: $5 30%, $10 26%, $25 20%, $37 10%, $50 8%, $100 4%, $250 1.5%, $500 0.5%. The amounts and weights are editable, with an optional total budget.
-- The reveal animates the number, then the mystery reward, then "YOUR CREDITS ARE WAITING · CREDIT GUIDE — COMING SOON" with a countdown.
+- They also get a weighted random credit amount: $20 30%, $25 25%, $30 15%, $37 10%, $50 10%, $100 6%, $250 3%, $500 1% (about $44 per member on average). The amounts and weights are editable, with an optional total budget.
+- **Nobody gets less than $20.** Admins can't save an amount below $20. Members past the member cap, or joining after the budget runs out, get $20. Members who joined before the minimum (with $5 or $10) are topped up to $20 the next time they open the site, with a ledger entry.
+- The reveal animates the number, then a mystery box that spins through amounts like a slot machine and lands on the real one with confetti, then "YOUR CREDITS ARE WAITING · CREDIT GUIDE — COMING SOON" with a countdown. Animated numbers use a solid colour, because Safari doesn't repaint gradient text when it changes.
 
 **Credits are promotional platform credits.** They are never cash and never withdrawable, and the UI says so wherever an amount appears. "Eligible uses" lists only things Nexis has: market opening fees, prediction market trades, sportsbook bets, future drops. A use shows as **Available** only when an admin marks it active in phase 6. Actual spending of credits is not wired yet (see below).
 

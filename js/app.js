@@ -89,7 +89,7 @@ function openMenu() {
 /* ---------------- router ---------------- */
 function parseHash() { const h = location.hash.slice(1) || '/'; const [path, qs] = h.split('?'); const parts = path.split('/').filter(Boolean); return { route: parts[0] || '', arg: parts[1] ? decodeURIComponent(parts.slice(1).join('/')) : null, params: new URLSearchParams(qs || '') }; }
 const AUTH_ROUTES = ['login', 'signup', 'forgot', 'onboarding'];
-const PROTECTED = ['portfolio', 'settings', 'profile', 'admin'];
+const PROTECTED = ['portfolio', 'settings', 'profile', 'admin', 'referrals'];
 let viewStops = [];
 function stopViewTimers() { viewStops.forEach(f => { try { f(); } catch (e) {} }); viewStops = []; }
 async function router({ silent = false } = {}) {
@@ -103,19 +103,19 @@ async function router({ silent = false } = {}) {
   UI.wasGated = Rewards.gated();
   if (!UI.wasGated && route === 'me') { location.replace('#/rewards'); return; }
   if (UI.wasGated) {
-    const user = Auth.user, wl = ['', 'welcome', 'join', 'me', 'member'];
+    const user = Auth.user, wl = ['', 'welcome', 'join', 'me', 'member', 'referrals'];
     if (![...wl, 'login', 'forgot', 'onboarding'].includes(route)) { location.replace(user ? '#/me' : '#/'); return; }
     if (user && ['', 'welcome', 'join'].includes(route) && user.onboarded) { location.replace('#/me'); return; }
-    if (!user && route === 'me') { location.replace('#/'); return; }
+    if (!user && ['me', 'referrals'].includes(route)) { location.replace('#/'); return; }
     if (wl.includes(route)) {
       document.body.classList.add('is-landing'); current = { route, arg, params };
       const html = await wlRoute(route, params, arg); if (current.route !== route) return;
-      app.innerHTML = html; hydrate(app); if (!silent) window.scrollTo(0, 0); if (route === 'me' && Rewards.me) Rewards.maybeReveal(); return;
+      app.innerHTML = html; hydrate(app); rwAnimate(app); if (!silent) window.scrollTo(0, 0); if (route === 'me' && Rewards.me) Rewards.maybeReveal(); return;
     }
   }
   if (!route || route === 'welcome') {
     document.body.classList.add('is-landing'); current = { route: '', arg, params };
-    app.innerHTML = Views.landing(); hydrate(app); if (!silent) window.scrollTo(0, 0); return;
+    app.innerHTML = Views.landing(); hydrate(app); rwAnimate(app); if (!silent) window.scrollTo(0, 0); return;
   }
   const user = Auth.user;
   if (user && !user.onboarded && !AUTH_ROUTES.includes(route)) { location.hash = '#/onboarding'; return; }
@@ -135,7 +135,7 @@ async function router({ silent = false } = {}) {
     const html = await view(params, arg);
     if (current.route !== route || current.arg !== arg) return;
     if (html == null) return;
-    main.innerHTML = html; hydrate(main); if (!silent || !same) stopViewTimers(); bindView(route, arg, params);
+    main.innerHTML = html; hydrate(main); rwAnimate(main); if (!silent || !same) stopViewTimers(); bindView(route, arg, params);
     if (Auth.user && !silent) { if (Rewards.me) Rewards.maybeReveal(); else if (Rewards.state === 'idle' && Rewards.cfg) Rewards.sync(); }
     if (silent && same) window.scrollTo(0, y); else if (!silent) { window.scrollTo(0, 0); main.focus({ preventScroll: true }); }
   } catch (e) {
@@ -222,12 +222,18 @@ const A_APP = {
   rwDownload: () => rwDownloadCard(),
   rwPostX: () => { const t = ($('#rw-share-text') || {}).value || rwShareText(Rewards.me); window.open('https://x.com/intent/post?text=' + encodeURIComponent(t), '_blank', 'noopener'); Rewards.act('shared').then(() => toast({ title: 'Mission complete', body: 'Shared your Member Card · +XP' })).catch(() => {}); closeModal(); },
   rwRevealNext: (el) => rwReveal(el.dataset.step),
-  rwOpenBox: (el) => { el.classList.add('opened'); setTimeout(() => { el.remove(); const c = $('#rw-credit'); if (c) { c.classList.remove('hide'); rwCountUp($('#rw-amt'), UI.rwAmt || 0, 1300, (v) => rwMoney(v)); } }, 380); },
+  rwOpenBox: (el) => {
+    if (el.dataset.busy) return; el.dataset.busy = '1'; el.classList.add('shake'); const rays = $('.rw-rays'); if (rays) rays.classList.add('on');
+    setTimeout(() => { el.classList.add('opened'); rwConfetti(40); }, 650);
+    setTimeout(() => { const w = el.closest('.rw-box-wrap'); (w || el).remove(); const c = $('#rw-credit'); if (!c) return; c.classList.remove('hide');
+      rwSpin($('#rw-amt'), UI.rwAmt || (Rewards.me && Rewards.me.credits && Rewards.me.credits.amount) || 20, () => { const l = $('#rw-amt-label'); if (l) l.textContent = 'YOU HAVE'; rwConfetti(110); setTimeout(() => { const mo = $('#rw-credit-more'); if (mo) mo.classList.remove('hide'); }, 450); }); }, 1000);
+  },
+  rwInviteX: () => { const m = Rewards.me; if (!m) return; const t = `Join me on ${rwBrand()} 👀\nClaim your member number and a mystery credit reward before the early spots run out.${rwXHandle() ? '\n' + rwXHandle() : ''}\n\n${rwJoinLink(m.n)}`; window.open('https://x.com/intent/post?text=' + encodeURIComponent(t), '_blank', 'noopener'); },
   rwRevealClose: () => closeModal(),
   rwReplay: () => { Rewards._revealing = true; rwReveal('number'); },
   rwMissionOpen: (el) => { UI.rwOpened = { ...(UI.rwOpened || {}), [el.dataset.id]: true }; setTimeout(() => softRefresh(['rewards']), 300); },
   rwMissionDone: async (el) => { setBusy(el, true); try { await Rewards.act('mission', { id: el.dataset.id }); toast({ title: 'Mission complete', body: '+XP added to your status.' }); } catch (e) { setBusy(el, false); toast({ title: 'Couldn’t complete the mission', body: esc(e.message), kind: 'warn' }); } },
-  rwCopyLink: async () => { const v = ($('#rw-link') || {}).value; try { await navigator.clipboard.writeText(v); toast({ title: 'Referral link copied' }); } catch (e) { const i = $('#rw-link'); if (i) { i.select(); } toast({ title: 'Press Ctrl+C to copy', kind: 'info' }); } },
+  rwCopyLink: async () => { const v = ($('#rw-link') || {}).value || (Rewards.me && rwJoinLink(Rewards.me.n)); try { await navigator.clipboard.writeText(v); toast({ title: 'Referral link copied', body: 'Share it anywhere. Friends who join show up on your referral dashboard.' }); rwConfetti(35); } catch (e) { const i = $('#rw-link'); if (i) { i.select(); } toast({ title: 'Press Ctrl+C to copy', kind: 'info' }); } },
   rwTab: (el) => { UI.rwTab = el.dataset.t; refresh(); },
   rwRetry: () => { Rewards.state = 'idle'; Rewards.err = null; Rewards.sync(); refresh(); },
   rwAdminGate: (el) => confirmAct(el.dataset.v === 'open' ? 'Open the website?' : 'Back to waitlist mode?', el.dataset.v === 'open' ? 'Everyone will see the full Nexis website right away.' : 'Everyone except admins will only see the waitlist site again.', el.dataset.v === 'open' ? 'Open the website' : 'Switch to waitlist', async () => { await Rewards.call('admin_config', { patch: { gate: el.dataset.v } }); UI.rwAdmin.stale = true; await Rewards.loadConfig(); toast({ title: el.dataset.v === 'open' ? 'The website is open' : 'Waitlist mode is on' }); refresh(); }),
@@ -319,8 +325,8 @@ Bus.on('poly:price', ({ m }) => {
 });
 Bus.on('poly', () => softRefresh(['markets', 'home']));
 Bus.on('listings', () => softRefresh(['markets', 'home']));
-function softRefreshWl() { if (!$('.wl') || $('.overlay .modal') || (document.activeElement && document.activeElement.matches('input,textarea'))) return; wlRoute(current.route, current.params, current.arg).then(h => { if (UI.wasGated && $('.wl')) { $('#app').innerHTML = h; hydrate($('#app')); if (current.route === 'me') Rewards.maybeReveal(); } }); }
-Bus.on('rewards', () => { if (Rewards.gated() !== UI.wasGated) return router({ silent: true }); if (UI.wasGated) { if (['me', ''].includes(current.route)) softRefreshWl(); return; } renderChrome(current.route); softRefresh(['rewards', 'leaderboard', 'home', 'profile', 'admin', 'member']); const lc = $('#rw-land'); if (lc) lc.innerHTML = rwLandingCounter(); });
+function softRefreshWl() { if (!$('.wl') || $('.overlay .modal') || (document.activeElement && document.activeElement.matches('input,textarea'))) return; wlRoute(current.route, current.params, current.arg).then(h => { if (UI.wasGated && $('.wl')) { $('#app').innerHTML = h; hydrate($('#app')); rwAnimate($('#app')); if (current.route === 'me') Rewards.maybeReveal(); } }); }
+Bus.on('rewards', () => { if (Rewards.gated() !== UI.wasGated) return router({ silent: true }); if (UI.wasGated) { if (['me', ''].includes(current.route)) softRefreshWl(); return; } renderChrome(current.route); softRefresh(['rewards', 'leaderboard', 'home', 'profile', 'admin', 'member', 'referrals']); const lc = $('#rw-land'); if (lc) lc.innerHTML = rwLandingCounter(); });
 const paintPantaTapes = () => { const h = $('#home-ptape'); if (h) h.innerHTML = pantaTapeRows(PantaTape.all(), 10); const a = $('#act-ptape'); if (a) a.innerHTML = pantaTapeRows(PantaTape.all(), 80); };
 Bus.on('panta:trades', paintPantaTapes); Bus.on('panta:tape', paintPantaTapes);
 Bus.on('crypto:tick', ({ c, prev }) => {
@@ -377,4 +383,14 @@ window.addEventListener('hashchange', () => { const p = $('#user-pop'); if (p) p
   Rewards.loadConfig().then(() => { if (Auth.user) Rewards.sync(); }).catch(() => {});
   Poller(() => Auth.user && Rewards.cfg ? Rewards.sync() : null, 60000, { immediate: false });
   if (current.route) refresh();
+})();
+
+/* Member Card tilt: follows the pointer on devices with hover. */
+(function () {
+  let card = null; const fine = () => { try { return matchMedia('(hover: hover) and (pointer: fine)').matches && !matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } };
+  document.addEventListener('pointermove', (e) => {
+    const c = e.target.closest && e.target.closest('.rw-card'); if (card && card !== c) { card.style.removeProperty('--rx'); card.style.removeProperty('--ry'); card = null; }
+    if (!c || !fine()) return; card = c; const r = c.getBoundingClientRect(); const x = (e.clientX - r.left) / r.width - .5, y = (e.clientY - r.top) / r.height - .5;
+    c.style.setProperty('--rx', (-y * 8).toFixed(2) + 'deg'); c.style.setProperty('--ry', (x * 10).toFixed(2) + 'deg'); c.style.setProperty('--mx', ((x + .5) * 100).toFixed(1) + '%'); c.style.setProperty('--my', ((y + .5) * 100).toFixed(1) + '%');
+  }, { passive: true });
 })();
