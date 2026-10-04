@@ -1022,6 +1022,8 @@ mark.pred{ background:rgba(61,123,255,.2); color:#fff; border-radius:3px; paddin
 @keyframes rwLand{ 0%{ transform:scale(.8); } 55%{ transform:scale(1.22); text-shadow:0 0 60px rgba(242,181,68,.95); } 100%{ transform:scale(1); } }
 .rw-slot-win{ display:inline-block; min-width:220px; padding:0 18px; margin-top:6px; border-radius:18px; overflow:hidden; background:linear-gradient(180deg,rgba(0,0,0,.35),rgba(255,255,255,.02) 30%,rgba(255,255,255,.02) 70%,rgba(0,0,0,.35)); border:1px solid rgba(242,181,68,.3); box-shadow:inset 0 0 24px rgba(242,181,68,.12); }
 .rw-slot-win .rw-big-num{ margin:6px 0; }
+/* generic hidden state, used by the reveal and the admin nav link */
+.hide{ display:none !important; }
 #rw-credit-more:not(.hide){ animation:rwRise .5s ease both; }
 .rw-box-wrap{ position:relative; width:150px; height:150px; margin:22px auto 6px; }
 .rw-box-wrap .rw-box{ margin:0; position:relative; z-index:1; box-shadow:0 0 0 0 rgba(242,181,68,.4); animation:rwWobble 2.2s ease-in-out infinite, rwGlow 2.2s ease-in-out infinite; cursor:pointer; }

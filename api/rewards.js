@@ -106,18 +106,19 @@ async function review(db, uid, n, reason) { await db.hset('rw:review', uid, { n,
 /* ---------- membership ---------- */
 async function join(db, key, cfg, u, b, req) {
   const n = await db.incr('rw:seq'); await db.set('rw:num:' + n, u.id);
-  const ipH = hash(key, ipOf(req)), devH = hash(key, String(b.dev || '').slice(0, 200)); const flags = [];
-  if (ipH) { const day = new Date().toISOString().slice(0, 10); const c = await db.incr(`rw:ip:${ipH}:${day}`); if (c > cfg.antiAbuse.perNetworkPerDay) flags.push('Many new members from one network today'); }
-  if (u.x && u.x.created && cfg.antiAbuse.minXAgeDays && Date.now() - u.x.created < cfg.antiAbuse.minXAgeDays * DAY) flags.push(`X account younger than ${cfg.antiAbuse.minXAgeDays} days`);
-  if (devH) { const seen = (await db.get('rw:dev:' + devH)) || []; if (seen.length) flags.push(`Device already used by member #${seen[0]}`); await db.set('rw:dev:' + devH, [...seen, n].slice(0, 20)); }
+  // Automatic checks only note signals for the admin review queue; they never hold credits or hide anyone (admins flag by hand).
+  const ipH = hash(key, ipOf(req)), devH = hash(key, String(b.dev || '').slice(0, 200)); const signals = [];
+  if (ipH) { const day = new Date().toISOString().slice(0, 10); const c = await db.incr(`rw:ip:${ipH}:${day}`); if (c > cfg.antiAbuse.perNetworkPerDay) signals.push('Many new members from one network today'); }
+  if (u.x && u.x.created && cfg.antiAbuse.minXAgeDays && Date.now() - u.x.created < cfg.antiAbuse.minXAgeDays * DAY) signals.push(`X account younger than ${cfg.antiAbuse.minXAgeDays} days`);
+  if (devH) { const seen = (await db.get('rw:dev:' + devH)) || []; if (seen.length) signals.push(`Device already used by member #${seen[0]}`); await db.set('rw:dev:' + devH, [...seen, n].slice(0, 20)); }
   const early = n <= cfg.memberCap;
   // Early members draw from the table; everyone else (and anyone past the budget) gets the minimum. Never $0.
   let amount = early ? drawCredits(cfg) : MIN_CREDIT;
   if (amount > MIN_CREDIT && cfg.credits.budget != null) { const spent = Number((await db.get('rw:stat:credits')) || 0); if (spent + amount > cfg.credits.budget) amount = MIN_CREDIT; }
-  const m = { uid: u.id, n, joinedAt: Date.now(), handle: u.handle || '', early, credits: { amount, status: flags.length ? 'held' : 'granted' }, ledger: [{ t: Date.now(), kind: 'grant', amount, note: 'Launch reward' }], minApplied: true, xpLog: [], missions: {}, revealed: false, flags, ipH, devH, referredBy: null, referral: null };
+  const m = { uid: u.id, n, joinedAt: Date.now(), handle: u.handle || '', early, credits: { amount, status: 'granted' }, ledger: [{ t: Date.now(), kind: 'grant', amount, note: 'Launch reward' }], minApplied: true, xpLog: [], missions: {}, revealed: false, flags: [], signals, ipH, devH, referredBy: null, referral: null };
   addXp(m, 'join', cfg.xp.join, 'Joined');
   await db.incr('rw:stat:credits', amount);
-  if (flags.length) await review(db, u.id, n, flags.join('; '));
+  if (signals.length) await review(db, u.id, n, signals.join('; '));
   const rn = parseInt(b.ref, 10);
   if (rn > 0 && rn !== n) {
     const ruid = await db.get('rw:num:' + rn); const rm = ruid && ruid !== u.id ? await db.get('rw:m:' + ruid) : null;
@@ -198,6 +199,8 @@ const MEMBER = {
       if (await db.incr('rw:joinlock:' + u.id) === 1) m = await join(db, key, cfg, u, b, req);
       else { for (let i = 0; i < 20 && !m; i++) { await new Promise(r => setTimeout(r, 250)); m = await db.get('rw:m:' + u.id); } fresh = false; if (!m) throw fail(409, 'joining', 'Your membership is being created. Try again in a moment.'); }
     }
+    // Credits held by the old automatic checks are released; only an admin's own hold or flag keeps them held.
+    if (!m.autoReleased) { m.autoReleased = true; if (!m.adminFlagged && m.flags.length) { m.signals = [...(m.signals || []), ...m.flags]; m.flags = []; } if (m.credits.status === 'held' && !m.adminFlagged && !m.ledger.some(e => e.kind === 'hold')) m.credits.status = m.credits.amount ? 'granted' : 'none'; }
     if (!m.minApplied) { m.minApplied = true; const d = MIN_CREDIT - m.credits.amount; if (d > 0) { m.credits.amount = MIN_CREDIT; if (m.credits.status === 'none') m.credits.status = m.flags.length ? 'held' : 'granted'; m.ledger.push({ t: Date.now(), kind: 'grant', amount: d, note: `Topped up to the $${MIN_CREDIT} minimum` }); await db.incr('rw:stat:credits', d); } }
     if (u.name && u.handle && u.bio) addXp(m, 'profile', cfg.xp.profile, 'Completed profile');
     if (m.referral && m.referral.status === 'pending' && qualifies(u, m)) await qualify(db, cfg, m);
@@ -277,8 +280,8 @@ const ADMIN = {
     else if (b.op === 'credits_release') { m.credits.status = m.credits.amount ? 'granted' : 'none'; m.ledger.push({ t: Date.now(), kind: 'release', amount: 0, note }); }
     else if (b.op === 'credits_hold') { m.credits.status = 'held'; m.ledger.push({ t: Date.now(), kind: 'hold', amount: 0, note }); }
     else if (b.op === 'xp_add') m.xpLog.push({ k: 'admin:' + Date.now(), xp: amt, label: note, t: Date.now() });
-    else if (b.op === 'flag') { m.flags.push(note); await review(db, m.uid, m.n, note); if (m.credits.status === 'granted') m.credits.status = 'held'; }
-    else if (b.op === 'unflag') { m.flags = []; await db.hdel('rw:review', m.uid); }
+    else if (b.op === 'flag') { m.flags.push(note); m.adminFlagged = true; await review(db, m.uid, m.n, note); if (m.credits.status === 'granted') m.credits.status = 'held'; }
+    else if (b.op === 'unflag') { m.flags = []; m.adminFlagged = false; m.signals = []; await db.hdel('rw:review', m.uid); }
     else if (b.op === 'referral') {
       if (!m.referral) throw fail(400, 'no_referral', 'This member wasn’t referred.');
       const st = b.status === 'qualified' ? 'qualified' : 'rejected'; m.referral.status = st; m.referral.reason = note;
