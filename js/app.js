@@ -5,7 +5,7 @@
    ===================================================================== */
 
 /* ---------------- shell ---------------- */
-const NAV = [['home', 'Home', 'home'], ['markets', 'Markets', 'chart'], ['crypto', 'Crypto', 'coin'], ['sports', 'Sports', 'soccer'], ['tracker', 'Trader Tracker', 'target'], ['activity', 'Activity', 'zap'], ['create', 'Create Market', 'plus'], ['portfolio', 'Portfolio', 'brief']];
+const NAV = [['home', 'Home', 'home'], ['markets', 'Markets', 'chart'], ['crypto', 'Crypto', 'coin'], ['sports', 'Sports', 'soccer'], ['tracker', 'Trader Tracker', 'target'], ['activity', 'Activity', 'zap'], ['rewards', 'Rewards', 'gift'], ['create', 'Create Market', 'plus'], ['portfolio', 'Portfolio', 'brief']];
 const CORE_FEEDS = ['panta', 'polymarket', 'sports', 'crypto', 'chain'];
 function feedPill() {
   const n = CORE_FEEDS.filter(k => Feeds.live(k)).length;
@@ -41,6 +41,7 @@ function shellHtml() {
         <a class="nav-item" data-nav="notifications" href="#/notifications">${ic('bell')}<span class="lbl">Notifications</span><span class="count" id="nav-notif"></span></a>
         <a class="nav-item" data-nav="settings" href="#/settings">${ic('sliders')}<span class="lbl">Settings</span></a>
         <a class="nav-item" data-nav="profile" href="#/profile">${ic('user')}<span class="lbl">Profile</span></a>
+        <a class="nav-item hide" id="nav-admin" data-nav="admin" href="#/admin">${ic('shield')}<span class="lbl">Rollout admin</span></a>
         <div class="panta-badge" id="panta-badge">${pantaBadge()}</div>
       </div>
     </nav>
@@ -51,7 +52,8 @@ function shellHtml() {
   </nav>`;
 }
 function renderChrome(route) {
-  const navFor = { market: 'markets', event: 'sports', book: 'sports', search: '' }[route] ?? route;
+  const navFor = { market: 'markets', event: 'sports', book: 'sports', search: '', leaderboard: 'rewards', member: 'rewards', join: 'rewards' }[route] ?? route;
+  const na = $('#nav-admin'); if (na) na.classList.toggle('hide', !Rewards.isAdmin);
   $$('[data-nav]').forEach(a => a.classList.toggle('on', a.dataset.nav === navFor));
   const nl = $('#nav-live'); if (nl) { const n = Sports.list().filter(g => g.state === 'in').length; nl.innerHTML = n ? `<span class="live-dot red"></span>${n}` : ''; }
   const u = Notify.unread();
@@ -87,13 +89,30 @@ function openMenu() {
 /* ---------------- router ---------------- */
 function parseHash() { const h = location.hash.slice(1) || '/'; const [path, qs] = h.split('?'); const parts = path.split('/').filter(Boolean); return { route: parts[0] || '', arg: parts[1] ? decodeURIComponent(parts.slice(1).join('/')) : null, params: new URLSearchParams(qs || '') }; }
 const AUTH_ROUTES = ['login', 'signup', 'forgot', 'onboarding'];
-const PROTECTED = ['portfolio', 'settings', 'profile'];
+const PROTECTED = ['portfolio', 'settings', 'profile', 'admin'];
 let viewStops = [];
 function stopViewTimers() { viewStops.forEach(f => { try { f(); } catch (e) {} }); viewStops = []; }
 async function router({ silent = false } = {}) {
   const { route, arg, params } = parseHash(); const app = $('#app');
   const same = current.route === route && current.arg === arg;
   if (!silent || !same) stopViewTimers();
+  if (route === 'xdone') { current = { route, arg, params }; return xDone(params); }
+  // Waitlist mode: everyone except admins sees only the standalone waitlist site. A remembered setting is checked
+  // against the live one before redirecting anyone.
+  if (Rewards.gated() && !Rewards.cfg) { try { await Promise.race([Rewards.loadConfig(), delay(4000)]); } catch (e) { /* use the remembered setting */ } if (parseHash().route !== route) return; }
+  UI.wasGated = Rewards.gated();
+  if (!UI.wasGated && route === 'me') { location.replace('#/rewards'); return; }
+  if (UI.wasGated) {
+    const user = Auth.user, wl = ['', 'welcome', 'join', 'me', 'member'];
+    if (![...wl, 'login', 'forgot', 'onboarding'].includes(route)) { location.replace(user ? '#/me' : '#/'); return; }
+    if (user && ['', 'welcome', 'join'].includes(route) && user.onboarded) { location.replace('#/me'); return; }
+    if (!user && route === 'me') { location.replace('#/'); return; }
+    if (wl.includes(route)) {
+      document.body.classList.add('is-landing'); current = { route, arg, params };
+      const html = await wlRoute(route, params, arg); if (current.route !== route) return;
+      app.innerHTML = html; hydrate(app); if (!silent) window.scrollTo(0, 0); if (route === 'me' && Rewards.me) Rewards.maybeReveal(); return;
+    }
+  }
   if (!route || route === 'welcome') {
     document.body.classList.add('is-landing'); current = { route: '', arg, params };
     app.innerHTML = Views.landing(); hydrate(app); if (!silent) window.scrollTo(0, 0); return;
@@ -117,6 +136,7 @@ async function router({ silent = false } = {}) {
     if (current.route !== route || current.arg !== arg) return;
     if (html == null) return;
     main.innerHTML = html; hydrate(main); if (!silent || !same) stopViewTimers(); bindView(route, arg, params);
+    if (Auth.user && !silent) { if (Rewards.me) Rewards.maybeReveal(); else if (Rewards.state === 'idle' && Rewards.cfg) Rewards.sync(); }
     if (silent && same) window.scrollTo(0, y); else if (!silent) { window.scrollTo(0, 0); main.focus({ preventScroll: true }); }
   } catch (e) {
     console.error(e);
@@ -170,6 +190,7 @@ function bindView(route, arg, params) {
       const r = await Traders.search(v); if (UI.tracker.q !== v) return; UI.tracker.searching = false; UI.tracker.results = r; const b = $('#tr-results'); if (b) b.innerHTML = trResults();
     });
   }
+  if (route === 'leaderboard') viewStops.push(Poller(() => Rewards.leaderboard(true).then(() => softRefresh(['leaderboard'])).catch(() => {}), 30000, { immediate: false }));
   if (route === 'search') debounceInput('#search-page-in', 300, (v) => { history.replaceState(null, '', '#/search?q=' + encodeURIComponent(v)); current.params = new URLSearchParams('q=' + v); refreshKeepFocus('#search-page-in'); });
   if (route === 'settings') { paintChainHistory(); paintTotpQr(); }
   if (route === 'portfolio' && UI.portfolio.tab === 'On-chain') paintChainHistory();
@@ -197,6 +218,25 @@ const A_APP = {
   mCat: (el) => { UI.markets.limit = 60; UI.markets.cat = el.dataset.cat; history.replaceState(null, '', '#/markets'); refresh(); },
   pfTab: (el) => { UI.portfolio.tab = el.dataset.t; history.replaceState(null, '', '#/portfolio'); refresh(); },
   trTab: (el) => { UI.tracker.tab = el.dataset.t; refresh(); },
+  rwShare: () => rwShare(),
+  rwDownload: () => rwDownloadCard(),
+  rwPostX: () => { const t = ($('#rw-share-text') || {}).value || rwShareText(Rewards.me); window.open('https://x.com/intent/post?text=' + encodeURIComponent(t), '_blank', 'noopener'); Rewards.act('shared').then(() => toast({ title: 'Mission complete', body: 'Shared your Member Card · +XP' })).catch(() => {}); closeModal(); },
+  rwRevealNext: (el) => rwReveal(el.dataset.step),
+  rwOpenBox: (el) => { el.classList.add('opened'); setTimeout(() => { el.remove(); const c = $('#rw-credit'); if (c) { c.classList.remove('hide'); rwCountUp($('#rw-amt'), UI.rwAmt || 0, 1300, (v) => rwMoney(v)); } }, 380); },
+  rwRevealClose: () => closeModal(),
+  rwReplay: () => { Rewards._revealing = true; rwReveal('number'); },
+  rwMissionOpen: (el) => { UI.rwOpened = { ...(UI.rwOpened || {}), [el.dataset.id]: true }; setTimeout(() => softRefresh(['rewards']), 300); },
+  rwMissionDone: async (el) => { setBusy(el, true); try { await Rewards.act('mission', { id: el.dataset.id }); toast({ title: 'Mission complete', body: '+XP added to your status.' }); } catch (e) { setBusy(el, false); toast({ title: 'Couldn’t complete the mission', body: esc(e.message), kind: 'warn' }); } },
+  rwCopyLink: async () => { const v = ($('#rw-link') || {}).value; try { await navigator.clipboard.writeText(v); toast({ title: 'Referral link copied' }); } catch (e) { const i = $('#rw-link'); if (i) { i.select(); } toast({ title: 'Press Ctrl+C to copy', kind: 'info' }); } },
+  rwTab: (el) => { UI.rwTab = el.dataset.t; refresh(); },
+  rwRetry: () => { Rewards.state = 'idle'; Rewards.err = null; Rewards.sync(); refresh(); },
+  rwAdminGate: (el) => confirmAct(el.dataset.v === 'open' ? 'Open the website?' : 'Back to waitlist mode?', el.dataset.v === 'open' ? 'Everyone will see the full Nexis website right away.' : 'Everyone except admins will only see the waitlist site again.', el.dataset.v === 'open' ? 'Open the website' : 'Switch to waitlist', async () => { await Rewards.call('admin_config', { patch: { gate: el.dataset.v } }); UI.rwAdmin.stale = true; await Rewards.loadConfig(); toast({ title: el.dataset.v === 'open' ? 'The website is open' : 'Waitlist mode is on' }); refresh(); }),
+  rwAdminReload: () => { if (UI.rwAdmin) UI.rwAdmin.stale = true; refresh(); },
+  rwAdminSave: async (el) => { let patch; try { patch = rwAdminPatch(el.dataset.form); } catch (e) { return toast({ title: 'Check the JSON fields', body: esc(e.message), kind: 'warn' }); } setBusy(el, true, 'Saving…'); try { await Rewards.call('admin_config', { patch }); UI.rwAdmin.stale = true; await Rewards.loadConfig(); Rewards.sync(); toast({ title: 'Saved' }); refresh(); } catch (e) { setBusy(el, false); toast({ title: 'Couldn’t save', body: esc(e.message), kind: 'err' }); } },
+  rwAdminFind: async () => { const q = ($('#rw-adm-q') || {}).value; try { UI.rwAdmin.member = (await Rewards.call('admin_member', { q })).member; refresh(); } catch (e) { toast({ title: 'Not found', body: esc(e.message), kind: 'warn' }); } },
+  rwAdminOpen: async (el) => { try { UI.rwAdmin.member = (await Rewards.call('admin_member', { q: el.dataset.q })).member; refresh(); } catch (e) { toast({ title: 'Not found', body: esc(e.message), kind: 'warn' }); } },
+  rwAdminOp: async (el) => { const body = { uid: el.dataset.uid, op: el.dataset.op, status: el.dataset.status, amount: ($('#rw-adm-amt') || {}).value, note: ($('#rw-adm-note') || {}).value }; setBusy(el, true); try { UI.rwAdmin.member = (await Rewards.call('admin_member_update', body)).member; UI.rwAdmin.stale = true; toast({ title: 'Updated' }); refresh(); } catch (e) { setBusy(el, false); toast({ title: 'Couldn’t update', body: esc(e.message), kind: 'err' }); } },
+  rwAdminLb: async () => { try { const r = await Rewards.call('admin_lb_refresh'); toast({ title: 'Leaderboard refreshed', body: `${r.total} members ranked` }); } catch (e) { toast({ title: 'Couldn’t refresh', body: esc(e.message), kind: 'err' }); } },
   actTab: (el) => { UI.activity.tab = el.dataset.t; history.replaceState(null, '', '#/activity'); refresh(); },
   sportFilter: (el) => { UI.sports.filter = el.dataset.f; history.replaceState(null, '', '#/sports'); refresh(); },
   spStatus: (el) => { UI.sports.status = el.dataset.v; UI.sports.limit = 60; refresh(); },
@@ -279,6 +319,8 @@ Bus.on('poly:price', ({ m }) => {
 });
 Bus.on('poly', () => softRefresh(['markets', 'home']));
 Bus.on('listings', () => softRefresh(['markets', 'home']));
+function softRefreshWl() { if (!$('.wl') || $('.overlay .modal') || (document.activeElement && document.activeElement.matches('input,textarea'))) return; wlRoute(current.route, current.params, current.arg).then(h => { if (UI.wasGated && $('.wl')) { $('#app').innerHTML = h; hydrate($('#app')); if (current.route === 'me') Rewards.maybeReveal(); } }); }
+Bus.on('rewards', () => { if (Rewards.gated() !== UI.wasGated) return router({ silent: true }); if (UI.wasGated) { if (['me', ''].includes(current.route)) softRefreshWl(); return; } renderChrome(current.route); softRefresh(['rewards', 'leaderboard', 'home', 'profile', 'admin', 'member']); const lc = $('#rw-land'); if (lc) lc.innerHTML = rwLandingCounter(); });
 const paintPantaTapes = () => { const h = $('#home-ptape'); if (h) h.innerHTML = pantaTapeRows(PantaTape.all(), 10); const a = $('#act-ptape'); if (a) a.innerHTML = pantaTapeRows(PantaTape.all(), 80); };
 Bus.on('panta:trades', paintPantaTapes); Bus.on('panta:tape', paintPantaTapes);
 Bus.on('crypto:tick', ({ c, prev }) => {
@@ -310,6 +352,9 @@ Bus.on('auth:expired', () => { Store.init(null); Balances.v = null; toast({ titl
 /* ---------------- boot ---------------- */
 window.addEventListener('hashchange', () => { const p = $('#user-pop'); if (p) p.innerHTML = ''; const n = $('#notif-pop'); if (n) n.innerHTML = ''; router(); });
 (async function boot() {
+  Rewards.captureRef();
+  // Waitlist mode is decided before the first paint, so a closed site never flashes.
+  if (!Rewards.cachedGate()) { try { await Promise.race([Rewards.loadConfig(), delay(3000)]); } catch (e) { /* decided after boot */ } }
   Store.init(Auth.user && Auth.user.id);
   // When Nexis runs inside Claude, the page can use the viewer's own Claude connection for AI drafting.
   try { if (window.claude && typeof window.claude.use === 'function') { const s = await window.claude.use('sample'); if (s && typeof s.json === 'function') sampleFn = s; } } catch (e) { /* not available */ }
@@ -329,5 +374,7 @@ window.addEventListener('hashchange', () => { const p = $('#user-pop'); if (p) p
   if (Panta.state !== 'unconfigured') { Panta.start(); PantaTape.start(); }
   Poly.start(); Crypto.start(); Sports.start(); Traders.start(); Portfolio.start(); Balances.start();
   if (Auth.user) Wallets.watch();
+  Rewards.loadConfig().then(() => { if (Auth.user) Rewards.sync(); }).catch(() => {});
+  Poller(() => Auth.user && Rewards.cfg ? Rewards.sync() : null, 60000, { immediate: false });
   if (current.route) refresh();
 })();

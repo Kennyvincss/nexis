@@ -12,3 +12,9 @@
   to = "/.netlify/functions/api/:splat"
   status = 200
   force = true
+
+# Referral links: /join?ref=<member number> opens the app, which keeps the code for sign-up.
+[[redirects]]
+  from = "/join"
+  to = "/index.html"
+  status = 200

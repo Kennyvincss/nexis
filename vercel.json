@@ -11,6 +11,18 @@
     },
     "api/book.js": {
       "maxDuration": 30
+    },
+    "api/rewards.js": {
+      "maxDuration": 30
+    },
+    "api/xauth.js": {
+      "maxDuration": 30
     }
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/join",
+      "destination": "/index.html"
+    }
+  ]
 }
