@@ -128,6 +128,7 @@ The services emit events on a small bus. `app.js` patches the visible page in pl
 - Every other address redirects to the waitlist or to `#/me`. Missions and the leaderboard stay hidden.
 - **Admins** (`ADMIN_EMAILS`, `ADMIN_HANDLES` (your X username works) or `ADMIN_USER_IDS`) still see the whole site.
 - **To open the website:** `#/admin` → Website access → **Open the website**. Everyone sees the full site immediately, and you can switch back the same way.
+- **Missions first (on by default):** after Connect with X, members must finish the launch missions that have links (Follow on X, Repost the announcement, Join the community) before they get their member number and credits. Set the X handle, announcement and community links in `#/admin`. Missions without a link are skipped, so with no links set there's no mission step. Turn it off in Admin → Rollout. Admins are never asked to do the missions.
 - **Default phase is 4 (Anticipation):** new members see their credits and the "guide coming soon" state straight away.
 - The gate hides the app pages in the browser. The public data APIs it uses (markets, sports, prices) stay reachable, and no secrets are exposed either way.
 

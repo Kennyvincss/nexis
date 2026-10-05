@@ -276,6 +276,7 @@ Views.admin = async () => {
         <div class="grid g3">${field('Brand', `<input class="input" name="brand" value="${esc(c.brand)}">`)}${field('X handle', `<input class="input" name="x" value="${esc(c.social.x)}" placeholder="nexis">`)}${field('Credit budget ($, blank = none)', `<input class="input" name="budget" inputmode="numeric" value="${c.credits.budget ?? ''}">`)}</div>
         ${field('Launch announcement URL', `<input class="input" name="announcement" value="${esc(c.social.announcement)}" placeholder="https://x.com/…/status/…">`)}${field('Community URL', `<input class="input" name="community" value="${esc(c.social.community)}" placeholder="https://discord.gg/…">`)}
         <div class="grid g2">${field('New members per network per day before it’s noted for review', `<input class="input" name="perNetworkPerDay" value="${c.antiAbuse.perNetworkPerDay}">`)}${field('Qualified referrals per referrer per day', `<input class="input" name="refDailyCap" value="${c.antiAbuse.refDailyCap}">`)}</div>
+        <label class="row" style="gap:8px;font-size:13px"><input type="checkbox" name="requireMissions" ${c.requireMissions ? 'checked' : ''}>Waitlist: require the launch missions (with links) before members get their number and credits</label>
         ${field('Note X accounts younger than (days, 0 = off)', `<input class="input" name="minXAgeDays" value="${c.antiAbuse.minXAgeDays ?? 30}">`)}</div></form>
       <form class="card" id="rw-adm-guide"><div class="card-head"><h3>Credit Guide</h3><button type="button" class="btn btn-primary sm" data-action="rwAdminSave" data-form="guide">Save</button></div><div class="card-pad stack" style="gap:12px">
         <p class="mut" style="font-size:12.5px">Members see this from phase 5. Lines starting with “- ” become bullets, “# ” a heading.</p>
@@ -310,7 +311,7 @@ function rwAdminMember(m) {
 }
 function rwAdminPatch(form) {
   const f = $('#rw-adm-' + form); const v = (n) => f.elements[n] ? f.elements[n].value.trim() : '';
-  if (form === 'rollout') return { phase: +v('phase'), memberCap: +v('memberCap'), countdownAt: v('countdownAt') ? new Date(v('countdownAt')).getTime() : null, brand: v('brand'), social: { x: v('x').replace(/^@/, ''), announcement: v('announcement'), community: v('community') }, credits: { table: UI.rwAdmin.ov.config.credits.table, budget: v('budget') }, antiAbuse: { perNetworkPerDay: v('perNetworkPerDay'), refDailyCap: v('refDailyCap'), minXAgeDays: v('minXAgeDays') } };
+  if (form === 'rollout') return { requireMissions: f.elements.requireMissions.checked, phase: +v('phase'), memberCap: +v('memberCap'), countdownAt: v('countdownAt') ? new Date(v('countdownAt')).getTime() : null, brand: v('brand'), social: { x: v('x').replace(/^@/, ''), announcement: v('announcement'), community: v('community') }, credits: { table: UI.rwAdmin.ov.config.credits.table, budget: v('budget') }, antiAbuse: { perNetworkPerDay: v('perNetworkPerDay'), refDailyCap: v('refDailyCap'), minXAgeDays: v('minXAgeDays') } };
   if (form === 'guide') { const uses = UI.rwAdmin.ov.config.uses.map((u, i) => ({ id: v('use_id_' + i), label: v('use_label_' + i), desc: v('use_desc_' + i), active: f.elements['use_active_' + i].checked })); return { guide: { title: v('title'), body: f.elements.body.value }, uses }; }
   if (form === 'credits') { const t = UI.rwAdmin.ov.config.credits.table.map((r, i) => [v('amt_' + i), v('w_' + i)]).filter(r => r[1] !== '' && +r[1] > 0); if (v('amt_new') && v('w_new')) t.push([v('amt_new'), v('w_new')]); return { credits: { table: t.map(r => [+r[0], +r[1]]), budget: UI.rwAdmin.ov.config.credits.budget } }; }
   if (form === 'missions') return { missions: JSON.parse(v('missions')), xp: { join: v('xp_join'), profile: v('xp_profile'), referral: v('xp_referral') }, statuses: JSON.parse(v('statuses')) };
@@ -338,10 +339,11 @@ function wlWaitlist(params) {
     ${err ? `<div class="rw-note warn" style="max-width:440px;margin:14px auto 0">${ic('alert', 'sm')}<span>${esc(err)}</span></div>` : ''}
     <div style="margin-top:20px">${cfg.xLogin ? `<a class="btn btn-primary lg wl-x" href="/api/xauth?action=start">${xLogoSvg}Connect with X</a>` : `<button class="btn btn-primary lg wl-x" disabled>Sign-up opens soon</button>`}</div>
     <p class="mut" style="font-size:12px;margin-top:10px">${cfg.xLogin ? 'We only read your public X profile. We never post for you.' : 'Sign-up with X isn’t switched on yet. Check back shortly.'}</p>
-    <ol class="wl-steps"><li><b>Connect X</b><span>One click, no password.</span></li><li><b>Get your number</b><span>Permanent. Only you will ever have it.</span></li><li><b>Reveal your credits</b><span>A mystery amount from $20 up, already in your account.</span></li><li><b>Credit guide drops</b><span>Learn exactly how to use them.</span></li></ol></section>`);
+    <ol class="wl-steps"><li><b>Connect X</b><span>One click, no password.</span></li>${cfg.required && cfg.required.length ? '<li><b>Complete missions</b><span>A few quick steps on X and in the community.</span></li>' : ''}<li><b>Get your number</b><span>Permanent. Only you will ever have it.</span></li><li><b>Reveal your credits</b><span>A mystery amount from $20 up, already in your account.</span></li><li><b>Credit guide drops</b><span>Learn exactly how to use them.</span></li></ol></section>`);
 }
 function wlMe() {
   const m = Rewards.me; const u = Auth.user;
+  if (m && m.locked) return wlMissionsGate(m, u);
   if (!m) { if (Rewards.state !== 'loading') Rewards.sync(); return wlShell(Rewards.err ? unavailable('Membership unavailable', esc(Rewards.err.message), '<button class="btn btn-ghost sm" data-action="rwRetry">Retry</button>') : `<div class="wl-load"><span class="spin lg"></span><p class="mut">Loading your membership…</p></div>`, { me: u && u.handle }); }
   return wlShell(`${rwDemoNote()}<div class="wl-me-head"><div class="rw-kicker">YOU’RE IN</div><h1>Welcome, Member #${m.n}.</h1><p class="dim">Your spot is locked in. Share your card and invite friends while the Credit Guide gets ready.</p></div>
     <div class="rw-page"><div class="rw-grid ${rwOnce('wlme')}">
@@ -352,9 +354,21 @@ function wlMe() {
 }
 async function wlRoute(route, params, arg) {
   if (route === 'me') return wlMe();
+  if (route === 'referrals' && Rewards.me && Rewards.me.locked) { location.replace('#/me'); return wlMe(); }
   if (route === 'referrals') return wlShell(await rwReferralsPage(), { me: Auth.user && Auth.user.handle });
   if (route === 'member') { const html = await Views.member(params, arg); return wlShell(html); }
   return wlWaitlist(params);
+}
+/** Waitlist step 2: the launch missions that unlock the member number and credits. */
+function wlMissionsGate(m, u) {
+  const req = (Rewards.cfg && Rewards.cfg.required) || []; const L = ((Rewards.cfg && Rewards.cfg.missions) || []).filter(x => req.includes(x.id)); const done = L.filter(x => m.missions && m.missions[x.id]).length;
+  const row = (x) => { const d = !!(m.missions && m.missions[x.id]);
+    return `<div class="rw-mission ${d ? 'done' : ''}"><span class="rw-check">${d ? ic('check', 'sm') : ''}</span><div style="flex:1;min-width:0"><b>${esc(x.title)}</b><div class="mut" style="font-size:12px">${d ? 'Done' : 'Open the link, then tap Done'}</div></div>
+      ${d ? '' : `<a class="btn btn-ghost sm" href="${esc(x.url)}" target="_blank" rel="noopener" data-action="rwMissionOpen" data-id="${esc(x.id)}">Open ${ic('ext', 'sm')}</a><button class="btn btn-primary sm" data-action="rwMissionDone" data-id="${esc(x.id)}" ${UI.rwOpened && UI.rwOpened[x.id] ? '' : 'disabled'}>Done</button>`}</div>`; };
+  return wlShell(`<div class="wl-me-head ${rwOnce('wlgate')}"><div class="rw-kicker">ONE LAST STEP</div><h1>Complete your missions.</h1><p class="dim">Finish these to claim your member number and reveal your mystery credits.</p></div>
+    <div class="card wl-gate"><div class="card-head"><h3>${ic('target', 'sm')}LAUNCH MISSIONS</h3><span class="num mut" style="font-size:12.5px">${done} / ${L.length} DONE</span></div>
+      <div class="card-pad" style="padding-bottom:6px"><div class="rw-bar"><i style="width:${L.length ? done / L.length * 100 : 0}%"></i></div></div>${L.map(row).join('')}
+      <p class="mut" style="font-size:12px;padding:12px 18px 16px">Your number and credits unlock as soon as every mission is done.</p></div>`, { me: u && u.handle });
 }
 /** Finishes "Connect with X": trades the one-time code for a session. */
 async function xDone(params) {

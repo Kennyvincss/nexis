@@ -231,7 +231,7 @@ const A_APP = {
   rwInviteX: () => { const m = Rewards.me; if (!m) return; const t = `Join me on ${rwBrand()} 👀\nClaim your member number and a mystery credit reward before the early spots run out.${rwXHandle() ? '\n' + rwXHandle() : ''}\n\n${rwJoinLink(m.n)}`; window.open('https://x.com/intent/post?text=' + encodeURIComponent(t), '_blank', 'noopener'); },
   rwRevealClose: () => closeModal(),
   rwReplay: () => { Rewards._revealing = true; rwReveal('number'); },
-  rwMissionOpen: (el) => { UI.rwOpened = { ...(UI.rwOpened || {}), [el.dataset.id]: true }; setTimeout(() => softRefresh(['rewards']), 300); },
+  rwMissionOpen: (el) => { UI.rwOpened = { ...(UI.rwOpened || {}), [el.dataset.id]: true }; const row = el.closest('.rw-mission'); const d = row && row.querySelector('[data-action=rwMissionDone]'); if (d) d.disabled = false; if (!UI.wasGated) setTimeout(() => softRefresh(['rewards']), 300); },
   rwMissionDone: async (el) => { setBusy(el, true); try { await Rewards.act('mission', { id: el.dataset.id }); toast({ title: 'Mission complete', body: '+XP added to your status.' }); } catch (e) { setBusy(el, false); toast({ title: 'Couldn’t complete the mission', body: esc(e.message), kind: 'warn' }); } },
   rwCopyLink: async () => { const v = ($('#rw-link') || {}).value || (Rewards.me && rwJoinLink(Rewards.me.n)); try { await navigator.clipboard.writeText(v); toast({ title: 'Referral link copied', body: 'Share it anywhere. Friends who join show up on your referral dashboard.' }); rwConfetti(35); } catch (e) { const i = $('#rw-link'); if (i) { i.select(); } toast({ title: 'Press Ctrl+C to copy', kind: 'info' }); } },
   rwTab: (el) => { UI.rwTab = el.dataset.t; refresh(); },

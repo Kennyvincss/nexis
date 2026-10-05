@@ -1168,3 +1168,5 @@ mark.pred{ background:rgba(61,123,255,.2); color:#fff; border-radius:3px; paddin
 .rw-how b{ color:var(--text); font-size:13.5px; }
 @media (max-width:960px){ .rw-tiles{ grid-template-columns:repeat(2,1fr); } .rw-tile.hero{ grid-column:1 / -1; } }
 @media (max-width:640px){ .rw-how ol{ grid-template-columns:1fr; } .rw-ms-node > span{ width:28px; height:28px; font-size:11px; } .rw-tile b{ font-size:24px; } .rw-tile.hero b{ font-size:34px; } .rw-linkbar .rw-eyebrow{ display:none; } }
+
+.wl-gate{ max-width:640px; margin:0 auto; }
