@@ -1183,8 +1183,8 @@ mark.pred{ background:rgba(61,123,255,.2); color:#fff; border-radius:3px; paddin
 .wl-blob.c1{ width:640px; height:320px; left:50%; top:-60px; transform:translateX(-50%); opacity:.55; }
 .wl section{ position:relative; }
 .wl section > *:not(.wl-blob){ position:relative; z-index:1; }
-.wl-badge{ display:inline-grid; place-items:center; width:46px; height:46px; border-radius:12px; background:linear-gradient(180deg,#3A4242,#1A1F1F); border:1px solid rgba(255,255,255,.14); box-shadow:0 8px 24px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.12); }
-.wl-badge svg{ width:22px; height:22px; }
+.wl-badge{ display:inline-grid; place-items:center; width:52px; height:52px; border-radius:12px; background:linear-gradient(180deg,#3A4242,#1A1F1F); border:1px solid rgba(255,255,255,.14); box-shadow:0 8px 24px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.12); }
+.wl-badge svg{ width:28px; height:28px; }
 .wl-badge.sm{ width:34px; height:34px; border-radius:9px; } .wl-badge.sm svg{ width:16px; height:16px; }
 .wl .wl-hero{ max-width:820px; margin:2vh auto 0; text-align:center; }
 .wl .wl-hero h1{ font-size:clamp(34px,5.4vw,56px); font-weight:400; letter-spacing:-.035em; line-height:1.12; margin:22px 0 14px; background:none; color:#F4F7F7; -webkit-text-fill-color:currentColor; }
