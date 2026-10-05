@@ -379,7 +379,7 @@ function wlMe() {
   return wlShell(`${rwDemoNote()}<div class="wl-me-head"><div class="rw-kicker">YOU’RE IN</div><h1>Welcome, Member #${m.n}.</h1><p class="dim">Your spot is locked in. Share your card and invite friends while the Credit Guide gets ready.</p></div>
     <div class="rw-page"><div class="rw-grid ${rwOnce('wlme')}">
       <div class="stack" style="gap:14px;min-width:0">${rwMemberCard(m)}<div class="row wrap" style="gap:8px"><button class="btn btn-primary" data-action="rwShare">${ic('send', 'sm')}Share on X</button><button class="btn btn-ghost" data-action="rwDownload">${ic('download', 'sm')}Download card</button><button class="btn btn-ghost" data-action="rwReplay">${ic('play', 'sm')}Replay reveal</button></div>${rwInvitePanel(m)}</div>
-      <div class="stack" style="gap:14px;min-width:0">${rwCreditPanel(m)}${Rewards.creditsVisible ? rwGuidePanel() : ''}</div>
+      <div class="stack" style="gap:14px;min-width:0">${rwCreditPanel(m)}${rwMissionsPanel(m)}${Rewards.creditsVisible ? rwGuidePanel() : ''}</div>
     </div></div>
     <p class="mut wl-end">That’s everything for now. We’ll let you know when the Credit Guide drops.</p>`, { me: u && u.handle });
 }
