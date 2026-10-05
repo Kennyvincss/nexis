@@ -84,7 +84,11 @@ const P = {
 };
 const ic = (n, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true">${P[n] || ''}</svg>`;
 const xLogo = (s = 16) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.75 3h3.07l-6.7 7.66L22 21h-6.17l-4.83-6.32L5.47 21H2.4l7.17-8.2L2 3h6.33l4.37 5.78zm-1.08 16.2h1.7L7.4 4.73H5.58z"/></svg>`;
-const logoMark = `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 19V5l16 14V5" stroke="#F2F4F8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="4" cy="19" r="2.2" fill="#3D7BFF"/><circle cx="20" cy="5" r="2.2" fill="#8E6BFF"/></svg>`;
+/* Nexis mark: a folded-ribbon "N" in silver and graphite. Each use gets its own gradient ids (an svg hidden with
+   display:none can't lend its gradients to other copies). Works anywhere a string does: `${logoMark}`, .replace(). */
+let _nxId = 0;
+const nexisMarkSvg = (id = 'nx' + (++_nxId)) => `<svg viewBox="0 0 100 100" fill="none" aria-hidden="true"><defs><linearGradient id="${id}d" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".5" stop-color="#D3DEDE"/><stop offset="1" stop-color="#8A9E9E"/></linearGradient><linearGradient id="${id}l" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#D2DDDD"/><stop offset=".55" stop-color="#7F9292"/><stop offset="1" stop-color="#3A4646"/></linearGradient><linearGradient id="${id}r" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#C3D0D0"/><stop offset=".6" stop-color="#5E6E6E"/><stop offset="1" stop-color="#2E3838"/></linearGradient></defs><path fill="url(#${id}l)" d="M9 24C9 19 11 17 15 15L33 25V77C33 82 31 85 27 87L14 95C11 97 9 96 9 92Z"/><path fill="url(#${id}r)" d="M67 23C67 18 69 16 73 14L87 6C90 4 92 5 92 9V74L67 46Z"/><path fill="url(#${id}d)" d="M9 22C13 15 21 9 28 9C32 9 35 11 38 14L89 72C92 75 93 79 91 83C88 89 81 93 75 93C71 93 68 91 66 88L15 28C13 25 11 23 9 22Z"/></svg>`;
+const logoMark = { toString: () => nexisMarkSvg(), replace: (...a) => nexisMarkSvg().replace(...a) };
 const pantaMark = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="m12 2 10 5-10 5L2 7z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>`;
 
 
