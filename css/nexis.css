@@ -1347,3 +1347,4 @@ body.is-landing .overlay .btn-primary{ background:linear-gradient(180deg,#F2F6F6
 body.is-landing .overlay .rw-note.warn{ background:#0B0D0D; border-color:rgba(230,240,240,.25); color:#DDE6E6; }
 @keyframes rwGlowSilver{ 50%{ box-shadow:0 0 34px 6px rgba(214,232,232,.3); } }
 body.is-landing .overlay .rw-box-wrap .rw-box{ animation:rwWobble 2.2s ease-in-out infinite, rwGlowSilver 2.2s ease-in-out infinite; }
+@media (max-width:560px){ .rw-card-stats b{ font-size:12.5px; } .rw-card-stats div{ padding:8px 9px; } }
