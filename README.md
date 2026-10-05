@@ -139,7 +139,7 @@ The services emit events on a small bus. `app.js` patches the visible page in pl
 
 - Sign-up only reads the public profile (scopes `users.read tweet.read`) and never posts.
 - The X username becomes the member's @handle.
-- X accounts younger than 30 days have their credits held for review. The limit is editable.
+- X accounts younger than 30 days are noted in the admin review queue. Their credits aren't held. The limit is editable.
 - Until the keys are set, the waitlist shows "Sign-up opens soon".
 
 A membership layer on top of the existing app. It adds no new sign-up: the existing accounts and sessions are reused, and nothing that already worked was removed. It is served by `api/rewards.js`, `js/services/rewards.js` and `js/views/rewards.js`.
@@ -192,9 +192,11 @@ A membership layer on top of the existing app. It adds no new sign-up: the exist
 - One membership per account. Existing rules already allow one account per email and per wallet.
 - Requests are signed with the session; there is no anonymous joining.
 - The IP and a device id are stored only as salted hashes.
-- New members are flagged, with credits **held** until an admin reviews them, when:
-  - there are more than 3 new members from one network in a day, or
-  - the device is already used by another member.
+- Credits are never held automatically. These signals only add the member to the admin review queue:
+  - there are more than 3 new members from one network in a day;
+  - the device is already used by another member;
+  - the X account is newer than the set age.
+- Only an admin can hold credits or flag an account, from the member lookup. Credits held by the old automatic checks are released the next time the member opens the site.
 - Referrals go to review when the referrer and the friend share a network or device, or when a referrer passes 25 qualified referrals in a day.
 - Self-referral is ignored, and flagged accounts are hidden from the leaderboards.
 - All limits are editable.
