@@ -26,16 +26,16 @@ function rwMemberCard(m, { compact = false } = {}) {
 /** The card as a 1200×675 PNG (good on X), drawn on a canvas. */
 async function rwCardBlob(m) {
   const W = 1200, Hh = 675, c = document.createElement('canvas'); c.width = W; c.height = Hh; const x = c.getContext('2d');
-  const g = x.createLinearGradient(0, 0, W, Hh); g.addColorStop(0, '#0B1020'); g.addColorStop(.55, '#0A0D18'); g.addColorStop(1, '#140C2A'); x.fillStyle = g; x.fillRect(0, 0, W, Hh);
+  const g = x.createLinearGradient(0, 0, W, Hh); g.addColorStop(0, '#161B1B'); g.addColorStop(.55, '#0B0D0D'); g.addColorStop(1, '#121616'); x.fillStyle = g; x.fillRect(0, 0, W, Hh);
   const glow = (cx, cy, r, col) => { const rg = x.createRadialGradient(cx, cy, 0, cx, cy, r); rg.addColorStop(0, col); rg.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = rg; x.fillRect(0, 0, W, Hh); };
-  glow(980, 120, 520, 'rgba(142,107,255,.35)'); glow(160, 620, 520, 'rgba(61,123,255,.28)');
+  glow(980, 120, 520, 'rgba(214,232,232,.22)'); glow(160, 620, 520, 'rgba(160,190,190,.16)');
   x.strokeStyle = 'rgba(255,255,255,.08)'; x.lineWidth = 2; x.strokeRect(28, 28, W - 56, Hh - 56);
   const F = (w, s) => `${w} ${s}px Geist, Inter, system-ui, -apple-system, Segoe UI, sans-serif`, M = (w, s) => `${w} ${s}px "Geist Mono", ui-monospace, Menlo, monospace`;
   x.fillStyle = '#F2F4F8'; x.font = F(700, 34); x.fillText(rwBrand().toUpperCase(), 80, 112);
   const pill = m.early !== false ? 'EARLY MEMBER' : 'MEMBER'; x.font = F(700, 22); const pw = x.measureText(pill).width + 44;
-  x.fillStyle = 'rgba(242,181,68,.16)'; x.beginPath(); x.roundRect(W - 80 - pw, 78, pw, 46, 23); x.fill(); x.fillStyle = '#F2B544'; x.fillText(pill, W - 80 - pw + 22, 109);
+  x.fillStyle = 'rgba(255,255,255,.08)'; x.beginPath(); x.roundRect(W - 80 - pw, 78, pw, 46, 23); x.fill(); x.fillStyle = '#E6EEEE'; x.fillText(pill, W - 80 - pw + 22, 109);
   x.fillStyle = '#A7AEBD'; x.font = F(600, 26); x.fillText('MEMBER', 80, 250);
-  const ng = x.createLinearGradient(80, 0, 760, 0); ng.addColorStop(0, '#FFFFFF'); ng.addColorStop(1, '#B8A4FF'); x.fillStyle = ng; x.font = M(700, 150); x.fillText('#' + m.n, 72, 385);
+  const ng = x.createLinearGradient(80, 0, 760, 0); ng.addColorStop(0, '#FFFFFF'); ng.addColorStop(1, '#AFC0C0'); x.fillStyle = ng; x.font = M(700, 150); x.fillText('#' + m.n, 72, 385);
   x.fillStyle = '#F2F4F8'; x.font = F(600, 40); x.fillText('@' + (m.handle || 'you'), 80, 450);
   const credits = rwCreditsText(m) || 'LOCKED', refs = String((m.refs && m.refs.qualified) || 0), st = (m.status || rwStatusOf(m.xp || 0)).name;
   [['CREDITS', credits], ['REFERRALS', refs], ['STATUS', st]].forEach(([k, v], i) => { const bx = 80 + i * 300; x.fillStyle = 'rgba(255,255,255,.05)'; x.beginPath(); x.roundRect(bx, 492, 270, 96, 14); x.fill(); x.fillStyle = '#6C7488'; x.font = F(600, 18); x.fillText(k, bx + 22, 529); x.fillStyle = '#F2F4F8'; let fs = k === 'STATUS' ? 28 : 34; x.font = k === 'STATUS' ? F(700, fs) : M(700, fs); while (x.measureText(v).width > 226 && fs > 16) { fs -= 2; x.font = k === 'STATUS' ? F(700, fs) : M(700, fs); } x.fillText(v, bx + 22, 571); });
@@ -84,7 +84,7 @@ function rwSpin(el, final, done) {
 /** Confetti burst over the page (skipped when the visitor prefers reduced motion). */
 function rwConfetti(n = 90) {
   if (rwReduced()) return; const box = document.createElement('div'); box.className = 'rw-confetti'; box.setAttribute('aria-hidden', 'true');
-  const C = ['#F2B544', '#FFE7B0', '#8E6BFF', '#3D7BFF', '#1FCB7C', '#FF5C8A', '#FFFFFF'];
+  const C = document.body.classList.contains('is-landing') ? ['#FFFFFF', '#EEF4F4', '#DDE6E6', '#AFC0C0', '#8FA3A3', '#5F6F6F'] : ['#F2B544', '#FFE7B0', '#8E6BFF', '#3D7BFF', '#1FCB7C', '#FF5C8A', '#FFFFFF'];
   for (let i = 0; i < n; i++) { const p = document.createElement('i'); const w = 6 + Math.random() * 6; p.style.cssText = `left:${Math.random() * 100}%;background:${C[i % C.length]};width:${w}px;height:${w * (1.2 + Math.random())}px;--dx:${Math.round((Math.random() - .5) * 260)}px;--r:${Math.round(Math.random() * 900 - 450)}deg;animation-delay:${(Math.random() * .3).toFixed(2)}s;animation-duration:${(1.8 + Math.random() * 1.4).toFixed(2)}s;${i % 3 ? '' : 'border-radius:50%;'}`; box.appendChild(p); }
   document.body.appendChild(box); setTimeout(() => box.remove(), 3800);
 }
