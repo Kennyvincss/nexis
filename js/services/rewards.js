@@ -99,7 +99,7 @@ const Rewards = {
   /* ---- reveal flow (member number → credits → guide) ---- */
   maybeReveal() {
     if (this._revealing && !this._revealTimer && !$('.rw-reveal')) { this._revealing = false; UI.rwRevealDone = null; } // the reveal was replaced by another dialog
-    const m = this.me; if (!m || this.demo || this._revealing || ['login', 'signup', 'onboarding', 'forgot', 'welcome', 'xdone'].includes(current.route) || (current.route === '' && !this.gated())) return;
+    const m = this.me; if (!m || m.locked || this.demo || this._revealing || ['login', 'signup', 'onboarding', 'forgot', 'welcome', 'xdone'].includes(current.route) || (current.route === '' && !this.gated())) return;
     const needNumber = !m.revealed, needCredits = this.creditsVisible && (m.revealedPhase || 0) < 2 && m.credits && !m.credits.hidden;
     if (needNumber || needCredits) { this._revealing = true; this._revealTimer = setTimeout(() => { this._revealTimer = null; rwReveal(needNumber ? 'number' : 'credits'); }, 500); }
   },

@@ -18,6 +18,7 @@ const fail = (status, code, message) => Object.assign(new Error(message), { stat
 /* ---------- configuration (admin-editable; merged over these defaults) ---------- */
 const DEFAULTS = {
   gate: 'waitlist', // 'waitlist': visitors only see the standalone waitlist site (admins see everything) · 'open': the full website
+  requireMissions: true, // waitlist mode: the member number and credits unlock once the launch missions with links are done
   phase: 4, // 1 join · 2 credit reveal · 3 community growth · 4 anticipation · 5 credit guide · 6 product activation
   memberCap: 10000,
   countdownAt: null, // ms timestamp for the Credit Guide release, or null
@@ -53,10 +54,12 @@ function merge(a, b) { const o = { ...a }; for (const [k, v] of Object.entries(b
 function cleanTable(t) { if (!Array.isArray(t) || JSON.stringify(t) === OLD_TABLE) return DEFAULTS.credits.table; const ok = t.filter(r => r[0] >= MIN_CREDIT && r[1] > 0); return ok.length ? ok : DEFAULTS.credits.table; }
 async function getConfig(db) { const c = merge(DEFAULTS, (await db.get('rw:config')) || {}); c.credits = { ...c.credits, table: cleanTable(c.credits.table) }; return c; }
 function linkFor(cfg, key) { if (key === 'x') return cfg.social.x ? `https://x.com/${cfg.social.x.replace(/^@/, '')}` : ''; return cfg.social[key] || ''; }
+/** Missions that must be done before a waitlist member is unlocked: enabled link missions that have a link. */
+const requiredMissions = (cfg) => cfg.requireMissions && cfg.gate !== 'open' ? cfg.missions.filter(m => m.enabled && m.kind === 'link' && (linkFor(cfg, m.url) || /^https:\/\//.test(m.url || ''))).map(m => m.id) : [];
 function pubConfig(cfg, memberCount) {
   const published = cfg.phase >= 5;
   return {
-    gate: cfg.gate === 'open' ? 'open' : 'waitlist', xLogin: !!env('X_CLIENT_ID'), phase: cfg.phase, memberCap: cfg.memberCap, memberCount, countdownAt: cfg.countdownAt, brand: cfg.brand, social: cfg.social,
+    gate: cfg.gate === 'open' ? 'open' : 'waitlist', requireMissions: !!cfg.requireMissions, required: requiredMissions(cfg), xLogin: !!env('X_CLIENT_ID'), phase: cfg.phase, memberCap: cfg.memberCap, memberCount, countdownAt: cfg.countdownAt, brand: cfg.brand, social: cfg.social,
     uses: cfg.uses.map(u => ({ id: u.id, label: u.label, desc: u.desc, active: cfg.phase >= 6 && !!u.active })),
     missions: cfg.missions.filter(m => m.enabled).map(m => ({ id: m.id, title: m.title.replace('{x}', cfg.social.x ? '@' + cfg.social.x.replace(/^@/, '') : 'us'), xp: m.xp, kind: m.kind, target: m.target || 0, url: m.kind === 'link' ? linkFor(cfg, m.url) || (/^https:\/\//.test(m.url) ? m.url : '') : '' })),
     statuses: cfg.statuses, xp: cfg.xp, milestones: cfg.milestones, credits: cfg.credits.table.map(r => r[0]),
@@ -149,6 +152,8 @@ function autoMissions(m, cfg, qualified) {
   for (const ms of cfg.missions) if (ms.enabled && ms.kind === 'referrals' && qualified >= (ms.target || 1) && !m.missions[ms.id]) { m.missions[ms.id] = Date.now(); addXp(m, 'mission:' + ms.id, ms.xp, ms.title); }
 }
 async function view(db, cfg, m, u, rs) {
+  const need = isAdmin(u) ? [] : requiredMissions(cfg).filter(id => !m.missions[id]);
+  if (need.length) return { locked: true, need, handle: u.handle, joinedAt: m.joinedAt, missions: m.missions, revealed: false, revealedPhase: 0, credits: { hidden: true }, xp: 0, status: statusOf(cfg, 0), xpLog: [], refs: { qualified: 0, pending: 0, review: 0 }, rank: {} };
   const xp = xpTotal(m, cfg, rs.qualified); const rk = await ranks(db, m.uid);
   const showCredits = cfg.phase >= 2;
   return {
@@ -211,6 +216,7 @@ const MEMBER = {
   /** Referral dashboard: everyone you invited, their status, daily invites (last 14 days), rank and milestones. */
   async referrals(db, key, cfg, u) {
     const m = await db.get('rw:m:' + u.id); if (!m) throw fail(404, 'not_member', 'Not a member yet.');
+    if (!isAdmin(u) && requiredMissions(cfg).some(id => !m.missions[id])) throw fail(403, 'locked', 'Finish the launch missions to unlock your membership.');
     const all = Object.entries(await db.hgetall('rw:refs:' + u.id)).map(([uid, r]) => ({ uid, ...r })).sort((a, b) => b.t - a.t);
     const rows = all.length ? await db.hmget('rw:rows', all.slice(0, 200).map(r => r.uid)) : [];
     const list = all.slice(0, 200).map((r, i) => ({ n: r.n, h: rows[i] && !rows[i].f && !rows[i].d ? rows[i].h : '', t: r.t, status: r.status }));
@@ -240,6 +246,7 @@ const ADMIN = {
   },
   async admin_config(db, key, cfg, u, b) {
     const p = b.patch || {}; const cur = (await db.get('rw:config')) || {}; const out = { ...cur };
+    if (p.requireMissions != null) out.requireMissions = !!p.requireMissions;
     if (p.gate != null) out.gate = p.gate === 'open' ? 'open' : 'waitlist';
     if (p.phase != null) { const ph = parseInt(p.phase, 10); if (!(ph >= 1 && ph <= 6)) throw fail(400, 'bad_phase', 'Phase must be 1–6.'); out.phase = ph; }
     if (p.memberCap != null) out.memberCap = Math.max(1, parseInt(p.memberCap, 10) || DEFAULTS.memberCap);
