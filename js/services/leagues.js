@@ -16,11 +16,11 @@ const SPORT_LEAGUES = [
   SOC('bel.1', 'Belgian Pro League'), SOC('tur.1', 'Süper Lig'), SOC('sco.1', 'Scottish Premiership'), SOC('gre.1', 'Greek Super League'), SOC('aut.1', 'Austrian Bundesliga'),
   SOC('sui.1', 'Swiss Super League'), SOC('den.1', 'Danish Superliga'), SOC('nor.1', 'Eliteserien'), SOC('swe.1', 'Allsvenskan'), SOC('rus.1', 'Russian Premier League'),
   SOC('pol.1', 'Ekstraklasa'), SOC('cro.1', 'Croatian HNL'),
-  SOC('srb.1', 'Serbian SuperLiga'), SOC('hun.1', 'Hungarian NB I'), SOC('bul.1', 'Bulgarian First League'), SOC('isr.1', 'Israeli Premier League'), SOC('cyp.1', 'Cypriot First Division'),
-  SOC('fin.1', 'Veikkausliiga'), SOC('irl.1', 'League of Ireland'), SOC('wal.1', 'Cymru Premier'), SOC('svk.1', 'Slovak Super Liga'),
+  SOC('hun.1', 'Hungarian NB I'), SOC('bul.1', 'Bulgarian First League'), SOC('isr.1', 'Israeli Premier League'), SOC('cyp.1', 'Cypriot First Division'),
+  SOC('irl.1', 'League of Ireland'), SOC('wal.1', 'Cymru Premier'), SOC('svk.1', 'Slovak Super Liga'),
   // ---- Football: Europe (lower divisions & cups) ----
   SOC('eng.2', 'Championship'), SOC('eng.3', 'League One'), SOC('eng.4', 'League Two'), SOC('eng.5', 'National League'), SOC('esp.2', 'La Liga 2'), SOC('ita.2', 'Serie B'),
-  SOC('ger.2', '2. Bundesliga'), SOC('ger.3', '3. Liga'), SOC('fra.2', 'Ligue 2'), SOC('ned.2', 'Eerste Divisie'), SOC('por.2', 'Liga Portugal 2'), SOC('sco.2', 'Scottish Championship'),
+  SOC('ger.2', '2. Bundesliga'), SOC('fra.2', 'Ligue 2'), SOC('ned.2', 'Eerste Divisie'), SOC('por.2', 'Liga Portugal 2'), SOC('sco.2', 'Scottish Championship'),
   SOC('eng.fa', 'FA Cup'), SOC('eng.league_cup', 'EFL Cup'), SOC('eng.trophy', 'EFL Trophy'), SOC('esp.copa_del_rey', 'Copa del Rey'), SOC('ita.coppa_italia', 'Coppa Italia'),
   SOC('ger.dfb_pokal', 'DFB-Pokal'), SOC('fra.coupe_de_france', 'Coupe de France'), SOC('ned.cup', 'KNVB Cup'),   SOC('esp.super_cup', 'Supercopa de España'), SOC('ita.super_cup', 'Supercoppa Italiana'), SOC('ger.super_cup', 'DFL-Supercup'), SOC('eng.charity', 'Community Shield'), SOC('uefa.super_cup', 'UEFA Super Cup'),
   SOC('uefa.champions_qual', 'Champions League Qualifying'), SOC('uefa.europa_qual', 'Europa League Qualifying'), SOC('uefa.europa.conf_qual', 'Conference League Qualifying'),
@@ -33,15 +33,15 @@ const SPORT_LEAGUES = [
   SOC('fifa.worldq.afc', 'World Cup Qualifying (AFC)'), SOC('fifa.worldq.ofc', 'World Cup Qualifying (OFC)'), SOC('uefa.euroq', 'Euro Qualifying'),   SOC('conmebol.america', 'Copa América'), SOC('caf.nations', 'Africa Cup of Nations'), SOC('caf.nations_qual', 'AFCON Qualifying'), SOC('afc.asian.cup', 'AFC Asian Cup'), SOC('concacaf.gold', 'Gold Cup'),
   SOC('concacaf.nations.league', 'CONCACAF Nations League'), SOC('fifa.cwc', 'FIFA Club World Cup'), SOC('fifa.olympics', 'Olympic Football'), SOC('fifa.world.u20', 'U-20 World Cup'),
   SOC('fifa.world.u17', 'U-17 World Cup'), SOC('uefa.euro.u21', 'U-21 Euro'),   // ---- Football: Americas ----
-  SOC('usa.1', 'MLS'), SOC('usa.open', 'U.S. Open Cup'), SOC('usa.usl.l1', 'USL League One'),   SOC('mex.2', 'Liga de Expansión MX'), SOC('concacaf.champions', 'CONCACAF Champions Cup'), SOC('concacaf.leagues.cup', 'Leagues Cup'),
+  SOC('usa.1', 'MLS'), SOC('usa.open', 'U.S. Open Cup'), SOC('usa.usl.l1', 'USL League One'),   SOC('concacaf.champions', 'CONCACAF Champions Cup'), SOC('concacaf.leagues.cup', 'Leagues Cup'),
   SOC('bra.copa_do_brazil', 'Copa do Brasil'), SOC('arg.copa', 'Copa Argentina'),
-  SOC('conmebol.libertadores', 'Copa Libertadores'), SOC('conmebol.sudamericana', 'Copa Sudamericana'), SOC('conmebol.recopa', 'Recopa Sudamericana'),
+  SOC('conmebol.recopa', 'Recopa Sudamericana'),
   SOC('chi.1', 'Chilean Primera'), SOC('uru.1', 'Uruguayan Primera'), SOC('per.1', 'Peruvian Liga 1'), SOC('ecu.1', 'Ecuadorian LigaPro'),
   SOC('par.1', 'Paraguayan Primera'), SOC('bol.1', 'Bolivian Primera'), SOC('ven.1', 'Venezuelan Primera'), SOC('crc.1', 'Costa Rican Primera'), SOC('hon.1', 'Honduran Liga Nacional'),
   SOC('slv.1', 'Salvadoran Primera'), SOC('jam.1', 'Jamaica Premier League'),
   // ---- Football: Asia, Middle East, Africa, Oceania ----
-  SOC('ksa.1', 'Saudi Pro League'), SOC('uae.1', 'UAE Pro League'), SOC('qat.1', 'Qatar Stars League'), SOC('jpn.1', 'J1 League'),   SOC('ind.1', 'Indian Super League'), SOC('tha.1', 'Thai League 1'), SOC('mys.1', 'Malaysia Super League'),
-  SOC('vie.1', 'V.League 1'), SOC('aus.1', 'A-League Men'), SOC('aus.w.1', 'A-League Women'), SOC('afc.champions', 'AFC Champions League Elite'), SOC('afc.cup', 'AFC Champions League Two'),
+  SOC('ksa.1', 'Saudi Pro League'), SOC('uae.1', 'UAE Pro League'), SOC('qat.1', 'Qatar Stars League'), SOC('jpn.1', 'J1 League'),   SOC('ind.1', 'Indian Super League'), SOC('mys.1', 'Malaysia Super League'),
+  SOC('vie.1', 'V.League 1'), SOC('aus.1', 'A-League Men'), SOC('aus.w.1', 'A-League Women'), SOC('afc.cup', 'AFC Champions League Two'),
   SOC('rsa.1', 'South African Premiership'), SOC('egy.1', 'Egyptian Premier League'), SOC('tun.1', 'Tunisian Ligue 1'), SOC('alg.1', 'Algerian Ligue 1'),
   SOC('nga.1', 'Nigeria Premier League'), SOC('gha.1', 'Ghana Premier League'), SOC('ken.1', 'Kenyan Premier League'), SOC('caf.champions', 'CAF Champions League'), SOC('caf.confed', 'CAF Confederation Cup'),
   // ---- Basketball ----
@@ -102,10 +102,10 @@ function footballPinned({ key, code, name } = {}) {
 const SPORT_EXCLUDED = {
   sports: ['American Football', 'Australian Football'],
   paths: ['football', 'australian-football'],
-  keys: ['soccer/fifa.friendly', 'soccer/club.friendly', 'soccer/col.1', 'soccer/jpn.2', 'soccer/mar.1', 'soccer/mex.1', 'soccer/gua.1', 'soccer/usa.nwsl', 'soccer/arg.1', 'soccer/usa.usl.1', 'soccer/bra.2',
+  keys: ['soccer/mex.2', 'soccer/ger.3', 'soccer/srb.1', 'soccer/afc.champions', 'soccer/conmebol.sudamericana', 'soccer/conmebol.libertadores', 'soccer/fin.1', 'soccer/tha.1', 'soccer/fifa.friendly', 'soccer/club.friendly', 'soccer/col.1', 'soccer/jpn.2', 'soccer/mar.1', 'soccer/mex.1', 'soccer/gua.1', 'soccer/usa.nwsl', 'soccer/arg.1', 'soccer/usa.usl.1', 'soccer/bra.2',
     'soccer/arg.2', 'soccer/nir.1', 'soccer/ukr.1', 'soccer/ned.1', 'soccer/rou.1', 'soccer/kor.1', 'soccer/bra.1', 'soccer/bra.3', 'soccer/cze.1', 'soccer/por.taca.portugal', 'soccer/chi.2', 'soccer/col.2', 'soccer/can.1', 'soccer/sco.tennents', 'soccer/idn.1', 'soccer/chn.1', 'soccer/chn.2'],
   codes: ['nfl', 'cfb', 'ufl', 'cfl', 'afl', 'lmx', 'arg', 'nwsl', 'ere', 'bra', 'bra2', 'bra3', 'kor', 'kl1', 'chn', 'csl', 'idn', 'rou', 'cze', 'ukr', 'upl', 'nir', 'can', 'cpl'],
-  names: /\bfriendl(y|ies)\b|\bprimera a\b|\bj2\b|j\.?\s?league 2|\bmorocc|botola|\bliga (bbva )?mx\b|guatemal|\bcfl\b|canadian football|\bnwsl\b|liga profesional|argentine primera|usl championship|brasileir[aã]o s[ée]rie b|brazil\w* s[ée]rie b|\bnfl\b|american football|college football|australian football|\bafl\b|primera nacional|\bnifl\b|ukrain|premier liha|eredivisie|romani|\bk[- ]?league|brasileir|primera divisi[oó]n|\bczech|ta[çc]a de portugal|\bprimera b\b|canadian premier league|women'?s? u-?20|u-?20 (women|premier league)|scottish cup|indonesi|\bchin(a|ese)\b/i,
+  names: /liga de expansi[oó]n|\b3\. ?liga\b|\bserbia\w*\s+super\s?liga|\bsuperliga srbije|afc champions league(?! two)|copa sudamericana|copa libertadores|\bconmebol libertadores|veikkausliiga|\bthai league|\bfriendl(y|ies)\b|\bprimera a\b|\bj2\b|j\.?\s?league 2|\bmorocc|botola|\bliga (bbva )?mx\b|guatemal|\bcfl\b|canadian football|\bnwsl\b|liga profesional|argentine primera|usl championship|brasileir[aã]o s[ée]rie b|brazil\w* s[ée]rie b|\bnfl\b|american football|college football|australian football|\bafl\b|primera nacional|\bnifl\b|ukrain|premier liha|eredivisie|romani|\bk[- ]?league|brasileir|primera divisi[oó]n|\bczech|ta[çc]a de portugal|\bprimera b\b|canadian premier league|women'?s? u-?20|u-?20 (women|premier league)|scottish cup|indonesi|\bchin(a|ese)\b/i,
 };
 /** True if a sport/league should not appear on Nexis. Pass whatever is known: { sport, path, key, code, name, tags }. */
 function sportExcluded({ sport, path, key, code, name, tags } = {}) {

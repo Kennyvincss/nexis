@@ -37,7 +37,6 @@ To add them:
 | `RESEND_API_KEY`, `EMAIL_FROM`, `AUTH_SECRET` | Optional | Alternative to Privy: Nexis sends its own codes through Resend (needs a verified domain). `AUTH_SECRET` is any long random string. |
 | `KV_REST_API_URL`, `KV_REST_API_TOKEN` | **Yes on Vercel, for accounts** | Stores accounts on the server so they work on every device. In Vercel open **Storage → Create Database → Upstash for Redis** (free), connect it to the project and the variables are added automatically; `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` also work. Not needed on Netlify, which uses Netlify Blobs. |
 | `GOOGLE_CLIENT_ID` | Optional | "Continue with Google". Create an OAuth Web client in Google Cloud and add your domain as an authorized JavaScript origin. |
-| `ADMIN_EMAILS` / `ADMIN_HANDLES` / `ADMIN_USER_IDS` | For the rollout admin | Comma-separated admins for `#/admin` (launch rollout & rewards). |
 | `X_CLIENT_ID`, `X_CLIENT_SECRET` | Optional | "Continue with X" sign-in (OAuth 2.0, callback `https://<domain>/api/xauth`). |
 
 ## Architecture
@@ -116,9 +115,7 @@ The services emit events on a small bus. `app.js` patches the visible page in pl
 - **Creating markets in bulk:** not possible. Each Panta market needs a creation fee and a wallet signature, so markets open one at a time as people trade them.
 
 
-## Launch rollout & rewards
-
-### Continue with X (sign-in)
+## Continue with X (sign-in)
 
 1. Create an app on [developer.x.com](https://developer.x.com). The free tier is enough.
 2. In **User authentication settings**, enable OAuth 2.0, set App type to **Web App (confidential client)**, set the Callback URL to `https://<your domain>/api/xauth` and the Website URL to your site.
@@ -126,78 +123,7 @@ The services emit events on a small bus. `app.js` patches the visible page in pl
 
 - Sign-in only reads the public profile (scopes `users.read tweet.read`) and never posts.
 - The X username becomes the member's @handle.
-- X accounts younger than 30 days are noted in the admin review queue. Their credits aren't held. The limit is editable.
 - **Continue with X** appears on the log-in and sign-up page once the keys are set. Sign-in errors are shown there too.
-
-A membership layer on top of the existing app. It adds no new sign-up: the existing accounts and sessions are reused, and nothing that already worked was removed. It is served by `api/rewards.js`, `js/services/rewards.js` and `js/views/rewards.js`.
-
-**Pages**
-- `#/rewards`: Membership hub. It shows:
-  - Member Card, with Share on X, Download card and Replay reveal;
-  - credit balance and Credit Guide;
-  - member status and XP;
-  - launch missions;
-  - invites and leaderboard rank.
-- `#/referrals`: referral dashboard. It shows friends invited, counted, waiting, XP earned and rank; a milestone track; invites per day over the last 14 days; the top 5 referrers; and every invite with its status (Counted, Waiting, In review, Not counted). It also has Invite on X and Copy link.
-- `#/leaderboard`: public. Tabs for Top referrers, Top XP and Early members, plus "YOU ARE #n". Refreshes every 30s.
-- `/join?ref=<member number>`: referral link. Vercel and Netlify serve the app at `/join`, which keeps the code for 30 days, until sign-up.
-- `#/member/<n>`: public Member Card.
-- `#/admin`: rollout admin.
-- Additions to existing pages: a credit card on Home, a Membership section on Profile, and a member counter on the landing page.
-
-**Flow**
-- On first sign-in, a member gets a permanent, sequential member number (atomic counter) and **EARLY MEMBER** status if within the member cap.
-- They also get a weighted random credit amount: $20 30%, $25 25%, $30 15%, $37 10%, $50 10%, $100 6%, $250 3%, $500 1% (about $44 per member on average). The amounts and weights are editable, with an optional total budget.
-- **Nobody gets less than $20.** Admins can't save an amount below $20. Members past the member cap, or joining after the budget runs out, get $20. Members who joined before the minimum (with $5 or $10) are topped up to $20 the next time they open the site, with a ledger entry.
-- The reveal animates the number, then a mystery box that spins through amounts like a slot machine and lands on the real one with confetti, then "YOUR CREDITS ARE WAITING · CREDIT GUIDE — COMING SOON" with a countdown. Animated numbers use a solid colour, because Safari doesn't repaint gradient text when it changes.
-
-**Credits are promotional platform credits.** They are never cash and never withdrawable, and the UI says so wherever an amount appears. "Eligible uses" lists only things Nexis has: market opening fees, prediction market trades, sportsbook bets, future drops. A use shows as **Available** only when an admin marks it active in phase 6. Actual spending of credits is not wired yet (see below).
-
-**Phases** (admin-controlled)
-1. **Join:** member numbers; credits hidden.
-2. **Credit reveal:** members see their credits. Anyone who only saw their number gets the credit reveal on their next visit.
-3. **Community growth**
-4. **Anticipation:** guide locked, with an optional countdown.
-5. **Credit Guide:** the admin-written guide is shown.
-6. **Product activation:** uses marked active show as Available.
-
-**Missions and XP** (all non-cash)
-- Default missions:
-  - Follow on X (+25);
-  - Repost the launch announcement (+25);
-  - Join the community (+25);
-  - Share your Member Card (+100);
-  - Invite 2 friends (+100).
-- Follow, repost and join are **self-reported**: X and Discord can't be verified without their APIs. "Done" unlocks only after the link was opened.
-- The share mission completes when you post from the share dialog. The invite mission completes automatically.
-- XP: +100 for joining, +50 for completing your profile (name, handle, bio), +50 per qualified referral, plus mission XP.
-- Statuses: NEW MEMBER → MEMBER (150) → BUILDER (400) → EARLY OG (1,000) → FAMILY LEGEND (2,500).
-
-**Referrals** count once the friend is real: onboarded with a handle, a verified email or a wallet, and not flagged. Referrals earn XP and rank only, never money.
-
-**Anti-abuse**
-- One membership per account. Existing rules already allow one account per email and per wallet.
-- Requests are signed with the session; there is no anonymous joining.
-- The IP and a device id are stored only as salted hashes.
-- Credits are never held automatically. These signals only add the member to the admin review queue:
-  - there are more than 3 new members from one network in a day;
-  - the device is already used by another member;
-  - the X account is newer than the set age.
-- Only an admin can hold credits or flag an account, from the member lookup. Credits held by the old automatic checks are released the next time the member opens the site.
-- Referrals go to review when the referrer and the friend share a network or device, or when a referrer passes 25 qualified referrals in a day.
-- Self-referral is ignored, and flagged accounts are hidden from the leaderboards.
-- All limits are editable.
-
-**Admin** (`#/admin`): put your email, @handle or user id in **`ADMIN_EMAILS` / `ADMIN_HANDLES` / `ADMIN_USER_IDS`** (comma-separated) in the host's environment variables, then redeploy. Admins can:
-- change the rollout phase, member cap, countdown, brand, X handle, announcement and community links, credit budget and anti-abuse limits;
-- edit the Credit Guide (title and body) and the eligible uses (and which are active);
-- edit the credit amounts and weights, the missions (JSON), XP values and statuses;
-- look up a member by #number, @handle or user id, then set or add credits, add XP, hold or release credits, flag or clear an account, or approve or reject a referral;
-- work through the review queue and refresh the leaderboard.
-
-**Storage:** the accounts store (Upstash Redis on Vercel), keys `rw:*`. Without server storage the program shows clearly labelled **DEMO** data and no reveal pop-up, and the admin page is unavailable.
-
-**Not done yet: spending credits (phase 6).** Spending needs real money behind the credits. The likely route is a Nexis-funded wallet paying Panta fees or stakes on a member's behalf, with a ledger debit (the member record already keeps a credit ledger). Until that is built, don't mark uses active.
 
 ## Sportsbook
 

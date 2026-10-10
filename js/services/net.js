@@ -54,7 +54,7 @@ const Config = {
 };
 
 const FEEDS = {
-  panta: { name: 'Panta markets', src: 'Panta API (via /api/panta)', what: 'Markets, YES/NO prices, volume, trades, positions, creation, resolution' },
+  panta: { name: 'Markets', src: 'Panta API (via /api/panta)', what: 'Markets, YES/NO prices, volume, trades, positions, creation, resolution' },
   polymarket: { name: 'Polymarket', src: 'Gamma, Data API and CLOB WebSocket', what: 'Reference markets, live trades, public trader positions' },
   sports: { name: 'Live sports', src: 'ESPN scoreboard + summary API', what: 'Scores, clock, status, lineups, stats and key events' },
   crypto: { name: 'Crypto prices', src: 'CoinGecko + Coinbase WebSocket', what: 'Price, 24h change/high/low/volume, market cap, charts' },

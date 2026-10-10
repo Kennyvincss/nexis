@@ -1,10 +1,10 @@
 /* =====================================================================
    LISTINGS — every open yes/no market from the public catalogue, traded
-   on Panta. A listed market becomes a Panta market the first time
+   on Panta. A listed market becomes a market the first time
    someone trades it: that trader signs Panta's creation (and pays its
    fee), Nexis records the market in /api/book under
    "<event id>:pm:<market id>" (verified server-side), and everyone after
-   trades the same Panta market. Until then prices are estimates.
+   trades the same market. Until then prices are estimates.
    ===================================================================== */
 const Listings = {
   reg: new Map(), regAt: new Map(), regIds: new Set(), regOk: true,
@@ -14,7 +14,7 @@ const Listings = {
     const t = now();
     return [...Poly.markets.values()].filter(m => m.listed && !m.game && m.ev && t - (m.seenAt || 0) < 20 * 60e3 && m.end && m.end > t + 30 * 60e3 && m.q && /^yes$/i.test(m.yesLabel) && /^no$/i.test(m.noLabel));
   },
-  /** Panta markets by normalized question, so a listing whose market already exists shows that market. */
+  /** Markets by normalized question, so a listing whose market already exists shows that market. */
   _ti: null, _tiKey: '',
   byTitle(q) {
     const key = Panta.loadedAt + ':' + Panta.markets.size;
@@ -22,13 +22,13 @@ const Listings = {
     return this._ti.get(this.norm(q)) || null;
   },
   norm: (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(),
-  /** The Panta market for a listing: registered in /api/book, or a Panta market with the same question. */
+  /** The market for a listing: registered in /api/book, or a market with the same question. */
   pantaFor(m) {
     const r = this.reg.get(this.key(m)); if (r) return Panta.markets.get(r.marketId) || { id: r.marketId, pending: true };
     return this.byTitle(m.q);
   },
   isMirror(p) { return !!p && (this.regIds.has(p.id) || /Listed on Nexis\.\s*$/.test(p.description || '')); },
-  /** Looks up registered Panta markets for these listings (cached 60s), then loads their Panta prices. */
+  /** Looks up registered markets for these listings (cached 60s), then loads their Panta prices. */
   async lookup(list, force) {
     const keys = [...new Set(list.filter(m => m.ev).map(m => this.key(m)))].filter(k => force || now() - (this.regAt.get(k) || 0) > 60e3);
     if (!keys.length) return; let found = false;

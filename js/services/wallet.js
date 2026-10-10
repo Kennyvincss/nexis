@@ -64,7 +64,7 @@ const Chain = {
     return this._w3;
   },
   b64(b64) { const bin = atob(b64); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; },
-  /** Legacy transaction from Panta's instruction list (primary buy, claim). */
+  /** Legacy transaction from the instruction list (primary buy, claim). */
   async txFromInstructions({ instructions, recentBlockhash, lastValidBlockHeight }, feePayer) {
     const W = await this.loadWeb3();
     const tx = new W.Transaction({ feePayer: new W.PublicKey(feePayer), blockhash: recentBlockhash, lastValidBlockHeight });
