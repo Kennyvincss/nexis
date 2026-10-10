@@ -131,7 +131,7 @@ The services emit events on a small bus. `app.js` patches the visible page in pl
 
 - **Layout:**
   - **Sport** and **League** dropdowns at the top (no swipe rows or side list);
-  - bet-type tabs: **3 Way & O/U**, **Double Chance** and **GG/NG** for football, **Winner** for other sports;
+  - bet-type tabs: **3 Way**, **Double Chance** and **GG/NG** for football, **Winner** for other sports;
   - games grouped by day ("24/09 Thursday") and league;
   - each row shows kick-off time and game ID, teams, a stats link, one odds column per selection, and "+N" for more bets;
   - Live, Upcoming and Results tabs, search (teams, leagues, game ID), and decimal, fractional or American odds.
@@ -149,7 +149,7 @@ The services emit events on a small bus. `app.js` patches the visible page in pl
   - **Handicap:** ±1.5 and ±2.5.
   - **More:** other markets Polymarket lists for the game.
   - Other sports: winner, plus Polymarket's total and spread lines.
-- **List tabs:** 3 Way & O/U, Over/Under, Handicap and Half Time. A game counts as football (1 · X · 2) if its league is football, ESPN says soccer, or Polymarket lists a draw.
+- **List tabs:** 3 Way (1 · X · 2), Over/Under (1.5, 2.5, 3.5), Handicap and Half Time. A game counts as football (1 · X · 2) if its league is football, ESPN says soccer, or Polymarket lists a draw.
 - **Bets are Panta markets:** each option is YES or NO on one Panta market per bet type and game, for example:
   - home win, draw, away win;
   - over N.5 goals;
