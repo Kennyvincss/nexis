@@ -61,9 +61,14 @@ async function verifyWallet(db, { address, message, signature, _host: host }) {
   const sig = /^[0-9a-f]{128}$/i.test(String(signature || '')) ? Buffer.from(String(signature), 'hex') : null; if (!sig) throw fail(400, 'bad_signature', 'Invalid signature.');
   const key = crypto.createPublicKey({ key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), pub]), format: 'der', type: 'spki' });
   if (!crypto.verify(null, Buffer.from(msg, 'utf8'), key, sig)) throw fail(401, 'bad_signature', 'The wallet signature didn’t verify.');
-  if (await db.get('nonce:' + nonce)) throw fail(400, 'replayed', 'That signature was already used. Try again.');
+  if (await db.get('nonce:' + nonce)) throw fail(400, 'replayed', 'That sign-in request was already used. Please sign again.');
   await db.set('nonce:' + nonce, Date.now());
+  // Returned to the caller: if the sign-in or link fails after this point, the nonce is released so the same signed
+  // message isn't wrongly reported as "already used" (it is only consumed by a successful sign-in).
+  return () => db.del('nonce:' + nonce).catch(() => {});
 }
+/** Runs a wallet action; a failure releases the message's nonce. */
+async function withWallet(db, b, fn) { const release = await verifyWallet(db, b); try { return await fn(); } catch (e) { await release(); throw e; } }
 async function verifyGoogle(credential) {
   const cid = env('GOOGLE_CLIENT_ID'); if (!cid) throw fail(503, 'GOOGLE_NOT_CONFIGURED', 'Google sign-in isn’t configured on this server.');
   const r = await fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(String(credential || ''))).catch(() => null);
@@ -177,10 +182,11 @@ const PUBLIC = {
     return finishLogin(db, key, u, 'Google', b.device, true, fresh);
   },
   async wallet(db, key, b) {
-    await verifyWallet(db, b);
-    let u = await byIndex(db, 'wallet', b.address); const fresh = !u;
-    if (!u) { u = newUser(); u.wallets.push({ address: b.address, label: String(b.label || 'Wallet').slice(0, 30), chain: 'Solana', primary: true, linked: Date.now() }); await db.set('wallet:' + b.address, u.id); await saveUser(db, u); }
-    return finishLogin(db, key, u, `Wallet · ${String(b.label || 'Wallet').slice(0, 30)}`, b.device, true, fresh);
+    return withWallet(db, b, async () => {
+      let u = await byIndex(db, 'wallet', b.address); const fresh = !u;
+      if (!u) { u = newUser(); u.wallets.push({ address: b.address, label: String(b.label || 'Wallet').slice(0, 30), chain: 'Solana', primary: true, linked: Date.now() }); await db.set('wallet:' + b.address, u.id); await saveUser(db, u); }
+      return finishLogin(db, key, u, `Wallet · ${String(b.label || 'Wallet').slice(0, 30)}`, b.device, true, fresh);
+    });
   },
   async exists(db, key, b) { const u = await byIndex(db, 'email', normEmail(b.email)); return { exists: !!u, password: !!(u && u.pw) }; },
   async reset(db, key, b) {
@@ -207,11 +213,13 @@ const AUTHED = {
   },
   async removePassword(db, key, b, u) { if (methods(u).length <= 1) throw fail(400, 'last_method', 'Add another sign-in method before removing your password.'); u.pw = null; },
   async linkWallet(db, key, b, u) {
-    await verifyWallet(db, b); const owner = await db.get('wallet:' + b.address);
-    if (owner && owner !== u.id) throw fail(409, 'wallet_taken', 'This wallet is linked to another Nexis account.');
-    if (owner) throw fail(409, 'wallet_linked', 'This wallet is already linked.');
-    u.wallets.push({ address: b.address, label: String(b.label || 'Wallet').slice(0, 30), chain: 'Solana', primary: !u.wallets.length, linked: Date.now() });
-    await db.set('wallet:' + b.address, u.id); log(u, `Wallet linked · ${b.label || 'Wallet'}`, b.device);
+    await withWallet(db, b, async () => {
+      const owner = await db.get('wallet:' + b.address);
+      if (owner && owner !== u.id) throw fail(409, 'wallet_taken', 'This wallet is linked to another Nexis account.');
+      if (owner) throw fail(409, 'wallet_linked', 'This wallet is already linked to your account.');
+      u.wallets.push({ address: b.address, label: String(b.label || 'Wallet').slice(0, 30), chain: 'Solana', primary: !u.wallets.length, linked: Date.now() });
+      await db.set('wallet:' + b.address, u.id); log(u, `Wallet linked · ${b.label || 'Wallet'}`, b.device);
+    });
   },
   async unlinkWallet(db, key, b, u) {
     if (methods(u).length <= 1) throw fail(400, 'last_method', 'This wallet is your only way to sign in. Add another method first.');

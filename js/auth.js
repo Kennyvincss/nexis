@@ -244,7 +244,12 @@ async function walletConnect(id) {
   setModal(`${modalHead('Verify ownership', `${W.name} · ${shortAddr(c.address)}`)}<div class="modal-body"><div class="row" style="gap:12px">${walletIcon(W, 40)}<div><b class="num">${shortAddr(c.address)}</b><div class="mut" style="font-size:12px">Connected</div></div><span class="tag green" style="margin-left:auto">${ic('check', 'sm')}Connected</span></div><div><div class="label" style="margin-bottom:6px">Message to sign</div><pre class="sigmsg">${esc(msg)}</pre></div><p class="mut" style="font-size:12px">This proves you control the wallet. It is not a transaction and costs nothing.</p></div><div class="modal-foot"><button class="btn btn-ghost" data-action="walletBack">Back</button><button class="btn btn-blue" data-action="walletSign" autofocus>${ic('key', 'sm')}Sign message</button></div>`);
 }
 async function walletSign(btn) {
-  const F = UI.walletFlow; const p = F.pending; setBusy(btn, true, 'Waiting for signature…');
+  const F = UI.walletFlow; const p = F.pending; if (F.signing) return; F.signing = true; setBusy(btn, true, 'Waiting for signature…');
+  // A fresh sign-in message (new nonce, new time) for every attempt, so a retry after an error never resends a used one.
+  p.msg = siwsMessage(p.address, randB58(16));
+  try { await walletSignSend(btn, F, p); } finally { F.signing = false; }
+}
+async function walletSignSend(btn, F, p) {
   let sig; try { sig = await Wallets.signMessage(p.prov, p.msg); } catch (e) { setBusy(btn, false); const declined = e.code === 4001 || /reject|declin|cancel|denied/i.test(e.message || ''); return toast({ title: declined ? 'Signature declined' : 'Your wallet couldn’t sign', body: declined ? 'Nothing was signed.' : esc(e.message || 'Try again, or use another wallet.'), kind: 'warn' }); }
   try {
     const proof = { address: p.address, label: p.W.name, message: p.msg, signature: sig };
