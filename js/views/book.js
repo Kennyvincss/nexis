@@ -1,6 +1,6 @@
 /* =====================================================================
    SPORTSBOOK VIEWS
-   #/sports            sportsbook: bet-type tabs (3 Way & O/U, Double Chance,
+   #/sports            sportsbook: bet-type tabs (3 Way, Double Chance,
                        GG/NG), games by day with odds columns, bet slip
                        (Scores & results tab: the ESPN views in sports.js)
    #/book/<game id>    every bet for one game

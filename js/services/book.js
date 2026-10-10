@@ -47,8 +47,8 @@ const bookRank = (name) => { const i = BOOK_TOP.indexOf(name); return i < 0 ? 99
    --------------------------------------------------------------------- */
 /* Football list tabs (column header, prop, side). Other sports get per-game columns from Book.tabs(). */
 const BOOK_FOOTBALL_TABS = [
-  { id: '3way', label: '3 Way & O/U', cols: [['1', 'home', 'YES'], ['X', 'draw', 'YES'], ['2', 'away', 'YES'], ['O 2.5', 'ou25', 'YES'], ['U 2.5', 'ou25', 'NO']] },
-  { id: 'ou', label: 'Over/Under', cols: [['O 1.5', 'ou15', 'YES'], ['U 1.5', 'ou15', 'NO'], ['O 3.5', 'ou35', 'YES'], ['U 3.5', 'ou35', 'NO']] },
+  { id: '3way', label: '3 Way', cols: [['1', 'home', 'YES'], ['X', 'draw', 'YES'], ['2', 'away', 'YES']] },
+  { id: 'ou', label: 'Over/Under', cols: [['O 1.5', 'ou15', 'YES'], ['U 1.5', 'ou15', 'NO'], ['O 2.5', 'ou25', 'YES'], ['U 2.5', 'ou25', 'NO'], ['O 3.5', 'ou35', 'YES'], ['U 3.5', 'ou35', 'NO']] },
   { id: 'hcp', label: 'Handicap', cols: [['1 −1.5', 'hc_h1', 'YES'], ['2 +1.5', 'hc_h1', 'NO'], ['1 +1.5', 'hc_a1', 'NO'], ['2 −1.5', 'hc_a1', 'YES']] },
   { id: 'ht', label: 'Half Time', cols: [['HT 1', 'ht_home', 'YES'], ['HT X', 'ht_draw', 'YES'], ['HT 2', 'ht_away', 'YES']] },
 ];
