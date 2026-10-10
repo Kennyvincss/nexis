@@ -34,12 +34,12 @@ function shellHtml() {
   </header>
   <div class="shell">
     <nav class="sidebar" aria-label="Main">
-      ${NAV.map(([k, l, i]) => `<a class="nav-item" data-nav="${k}" href="#/${k}">${ic(i)}<span class="lbl">${l}</span>${k === 'tracker' ? '<span class="count" id="nav-track"></span>' : k === 'sports' ? '<span class="count live-count" id="nav-live"></span>' : ''}</a>`).join('')}
+      ${NAV.map(([k, l, i]) => `<a class="nav-item" data-nav="${k}" href="#/${k}" data-tip="${l}" aria-label="${l}">${ic(i)}<span class="lbl">${l}</span>${k === 'tracker' ? '<span class="count" id="nav-track"></span>' : k === 'sports' ? '<span class="count live-count" id="nav-live"></span>' : ''}</a>`).join('')}
       <div class="nav-bottom">
         <div class="nav-sep"></div>
-        <a class="nav-item" data-nav="notifications" href="#/notifications">${ic('bell')}<span class="lbl">Notifications</span><span class="count" id="nav-notif"></span></a>
-        <a class="nav-item" data-nav="settings" href="#/settings">${ic('sliders')}<span class="lbl">Settings</span></a>
-        <a class="nav-item" data-nav="profile" href="#/profile">${ic('user')}<span class="lbl">Profile</span></a>
+        <a class="nav-item" data-nav="notifications" href="#/notifications" data-tip="Notifications" aria-label="Notifications">${ic('bell')}<span class="lbl">Notifications</span><span class="count" id="nav-notif"></span></a>
+        <a class="nav-item" data-nav="settings" href="#/settings" data-tip="Settings" aria-label="Settings">${ic('sliders')}<span class="lbl">Settings</span></a>
+        <a class="nav-item" data-nav="profile" href="#/profile" data-tip="Profile" aria-label="Profile">${ic('user')}<span class="lbl">Profile</span></a>
       </div>
     </nav>
     <main class="main" id="view" tabindex="-1"></main>
