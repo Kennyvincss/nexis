@@ -17,7 +17,7 @@ function originOf(req) {
   return `${proto}://${host}`;
 }
 function redirect(res, url) { res.setHeader('location', url); res.setHeader('cache-control', 'no-store'); res.status(302).send(''); }
-const back = (req, res, err) => redirect(res, `${originOf(req)}/#/?xerr=${encodeURIComponent(err)}`);
+const back = (req, res, err) => redirect(res, `${originOf(req)}/#/login?xerr=${encodeURIComponent(err)}`);
 
 module.exports = async (req, res) => {
   const id = env('X_CLIENT_ID'), secret = env('X_CLIENT_SECRET'); const q = req.query || {};

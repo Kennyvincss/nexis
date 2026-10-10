@@ -19,16 +19,7 @@ const Rewards = {
   get token() { return Auth.mode === 'remote' && typeof RemoteAccounts !== 'undefined' && RemoteAccounts.db ? RemoteAccounts.db.token : null; },
   async call(action, body = {}) { return Net.api('rewards', { method: 'POST', timeout: 20000, body: { action, ...body, ...(this.token ? { token: this.token } : {}) } }); },
 
-  /* ---- waitlist gate: until an admin opens the website, non-admins only see the waitlist site ---- */
-  cachedGate() { try { return localStorage.getItem('nexis-gate'); } catch (e) { return null; } },
-  cachedAdmin() { try { return !!(Auth.user && localStorage.getItem('nexis-admin') === Auth.user.id); } catch (e) { return false; } },
-  remember() { try { if (this.cfg && this.cfg.gate) localStorage.setItem('nexis-gate', this.cfg.gate); if (Auth.user) { if (this.isAdmin) localStorage.setItem('nexis-admin', Auth.user.id); else if (localStorage.getItem('nexis-admin') === Auth.user.id) localStorage.removeItem('nexis-admin'); } } catch (e) { /* storage unavailable */ } },
-  gated() {
-    if (this.demo) return false; // no rewards server: never lock the site
-    const g = this.cfg ? this.cfg.gate : this.cachedGate(); if (!g || g === 'open') return false;
-    return !(this.isAdmin || (this.state !== 'ready' && this.cachedAdmin()));
-  },
-  home() { return this.gated() ? '#/me' : '#/rewards'; },
+  home() { return '#/rewards'; },
 
   /* ---- phase helpers ---- */
   get phase() { return (this.cfg && this.cfg.phase) || 1; },
@@ -62,7 +53,7 @@ const Rewards = {
   async loadConfig() {
     try { const r = await this.call('config'); this.cfg = r.config; this.demo = false; this.err = null; }
     catch (e) { if (['REWARDS_UNAVAILABLE', 'NO_API'].includes(e.code) || e.status === 404) { this.demo = true; this.cfg = { ...RW_DEMO_CFG }; } else this.err = e; }
-    this.remember(); Bus.emit('rewards'); return this.cfg;
+    Bus.emit('rewards'); return this.cfg;
   },
   sync() { if (!this._sync) this._sync = this._doSync().finally(() => { this._sync = null; }); return this._sync; },
   async _doSync() {
@@ -72,7 +63,7 @@ const Rewards = {
     this.state = 'loading';
     try {
       const r = await this.call('me', { ref: this.refCode(), dev: this.devId() });
-      this.me = r.member; this.cfg = r.config; this.isAdmin = !!r.isAdmin; this.state = 'ready'; this.err = null; this.remember();
+      this.me = r.member; this.cfg = r.config; this.isAdmin = !!r.isAdmin; this.state = 'ready'; this.err = null;
       if (r.fresh) { try { localStorage.removeItem('nexis-ref'); } catch (e) { /* ignore */ } }
     } catch (e) { this.state = 'error'; this.err = e; }
     Bus.emit('rewards'); this.maybeReveal(); return this.me;
@@ -99,7 +90,7 @@ const Rewards = {
   /* ---- reveal flow (member number → credits → guide) ---- */
   maybeReveal() {
     if (this._revealing && !this._revealTimer && !$('.rw-reveal')) { this._revealing = false; UI.rwRevealDone = null; } // the reveal was replaced by another dialog
-    const m = this.me; if (!m || m.locked || this.demo || this._revealing || ['login', 'signup', 'onboarding', 'forgot', 'welcome', 'xdone'].includes(current.route) || (current.route === '' && !this.gated())) return;
+    const m = this.me; if (!m || this.demo || this._revealing || ['login', 'signup', 'onboarding', 'forgot', 'welcome', 'xdone'].includes(current.route) || current.route === '') return;
     const needNumber = !m.revealed, needCredits = this.creditsVisible && (m.revealedPhase || 0) < 2 && m.credits && !m.credits.hidden;
     if (needNumber || needCredits) { this._revealing = true; this._revealTimer = setTimeout(() => { this._revealTimer = null; rwReveal(needNumber ? 'number' : 'credits'); }, 500); }
   },

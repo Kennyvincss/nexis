@@ -84,7 +84,7 @@ function rwSpin(el, final, done) {
 /** Confetti burst over the page (skipped when the visitor prefers reduced motion). */
 function rwConfetti(n = 90) {
   if (rwReduced()) return; const box = document.createElement('div'); box.className = 'rw-confetti'; box.setAttribute('aria-hidden', 'true');
-  const C = document.body.classList.contains('is-landing') ? ['#FFFFFF', '#EEF4F4', '#DDE6E6', '#AFC0C0', '#8FA3A3', '#5F6F6F'] : ['#F2B544', '#FFE7B0', '#8E6BFF', '#3D7BFF', '#1FCB7C', '#FF5C8A', '#FFFFFF'];
+  const C = ['#F2B544', '#FFE7B0', '#8E6BFF', '#3D7BFF', '#1FCB7C', '#FF5C8A', '#FFFFFF'];
   for (let i = 0; i < n; i++) { const p = document.createElement('i'); const w = 6 + Math.random() * 6; p.style.cssText = `left:${Math.random() * 100}%;background:${C[i % C.length]};width:${w}px;height:${w * (1.2 + Math.random())}px;--dx:${Math.round((Math.random() - .5) * 260)}px;--r:${Math.round(Math.random() * 900 - 450)}deg;animation-delay:${(Math.random() * .3).toFixed(2)}s;animation-duration:${(1.8 + Math.random() * 1.4).toFixed(2)}s;${i % 3 ? '' : 'border-radius:50%;'}`; box.appendChild(p); }
   document.body.appendChild(box); setTimeout(() => box.remove(), 3800);
 }
@@ -169,12 +169,12 @@ function rwXpPanel(m) {
 }
 function rwInvitePanel(m) {
   const q = (m.refs && m.refs.qualified) || 0; const ms = (Rewards.cfg && Rewards.cfg.milestones) || [1, 3, 10, 25, 50, 100]; const next = ms.find(x => x > q) || null; const prev = [...ms].reverse().find(x => x <= q) || 0;
-  return `<div class="card"><div class="card-head"><h3>${ic('userPlus', 'sm')}INVITE FRIENDS</h3>${m.rank && m.rank.refs ? (Rewards.gated() ? `<span class="mut num" style="font-size:12.5px">Rank #${m.rank.refs}</span>` : `<a class="link" href="#/leaderboard">Rank #${m.rank.refs}</a>`) : ''}</div><div class="card-pad stack" style="gap:12px">
+  return `<div class="card"><div class="card-head"><h3>${ic('userPlus', 'sm')}INVITE FRIENDS</h3>${m.rank && m.rank.refs ? `<a class="link" href="#/leaderboard">Rank #${m.rank.refs}</a>` : ''}</div><div class="card-pad stack" style="gap:12px">
     <div class="rw-refs"><div><b class="num">${q}</b><span>REFERRALS</span></div><div><b class="num">${(m.refs && m.refs.pending) || 0}</b><span>PENDING</span></div>${m.refs && m.refs.review ? `<div><b class="num">${m.refs.review}</b><span>IN REVIEW</span></div>` : ''}</div>
     ${next ? `<div><div class="row" style="justify-content:space-between;font-size:12.5px"><span class="mut">NEXT MILESTONE</span><b class="num">${q} / ${next}</b></div><div class="rw-bar" style="margin-top:6px"><i style="width:${(q - prev) / (next - prev) * 100}%"></i></div></div>` : '<div class="mut" style="font-size:12.5px">Every milestone reached. Legend.</div>'}
     <label class="field"><span>Your referral link</span><div class="row" style="gap:8px"><input class="input num" readonly value="${esc(rwJoinLink(m.n))}" id="rw-link" style="flex:1;min-width:0"><button class="btn btn-ghost" data-action="rwCopyLink">${ic('copy', 'sm')}Copy</button></div></label>
     <div class="row wrap" style="gap:8px"><a class="btn btn-primary" href="#/referrals">${ic('chart', 'sm')}Referral dashboard</a><button class="btn btn-ghost" data-action="rwInviteX">${xLogoSvg}Invite on X</button></div>
-    <p class="mut" style="font-size:12px">${Rewards.gated() ? 'A friend counts once they’ve joined the waitlist with X. Referrals help you climb the ranks. They’re never paid out as cash.' : 'A friend counts once they’ve joined, finished setting up their account and verified X, an email or a wallet. Referrals earn XP and leaderboard rank, not cash.'}</p></div></div>`;
+    <p class="mut" style="font-size:12px">${'A friend counts once they’ve joined, finished setting up their account and verified X, an email or a wallet. Referrals earn XP and leaderboard rank, not cash.'}</p></div></div>`;
 }
 
 /* ---------- MEMBERSHIP HUB ---------- */
@@ -264,11 +264,6 @@ Views.admin = async () => {
   const field = (label, html) => `<label class="field"><span>${label}</span>${html}</label>`;
   return `<div class="page rw-page"><div class="page-head"><div><h1>Rollout admin</h1><p>Phase, credits, missions, guide and member review. Changes apply immediately.</p></div><button class="btn btn-ghost sm" data-action="rwAdminReload">${ic('refresh', 'sm')}Reload</button></div>
     <div class="stats-strip"><div class="stat"><div class="k">Members</div><div class="v num">${fmtNum(s.members, 0)} / ${fmtNum(c.memberCap, 0)}</div></div><div class="stat"><div class="k">Credits issued</div><div class="v num">${rwMoney(s.credits)}</div><div class="s mut">${c.credits.budget != null ? 'Budget ' + rwMoney(c.credits.budget) : 'No budget cap'}</div></div><div class="stat"><div class="k">Phase</div><div class="v">${c.phase} · ${esc(RW_PHASES[c.phase])}</div></div><div class="stat"><div class="k">Review queue</div><div class="v num">${s.review}</div></div></div>
-    <div class="card rw-access ${c.gate === 'open' ? 'open' : ''}" style="margin-top:16px"><div class="card-pad row wrap" style="gap:16px;align-items:center">
-      <div style="flex:1;min-width:240px"><span class="rw-eyebrow">WEBSITE ACCESS</span><h3 style="font-size:18px;margin-top:4px">${c.gate === 'open' ? 'The full website is open to everyone.' : 'Waitlist mode: visitors only see the waitlist site.'}</h3>
-        <p class="mut" style="font-size:12.5px;margin-top:4px">${c.gate === 'open' ? 'Members see the full Nexis site, with Membership, missions and the leaderboard.' : 'Visitors see the waitlist, Connect with X, their member number, credits, Member Card and invite link. Admins still see everything.'}</p>
-        <p style="font-size:12.5px;margin-top:6px">${(Config.c && Config.c.x && Config.c.x.configured) ? '<span class="tag green">Connect with X: on</span>' : `<span class="tag amber">Connect with X: off</span> <span class="mut">Add X_CLIENT_ID and X_CLIENT_SECRET (callback ${esc(location.origin)}/api/xauth), then redeploy.</span>`}</p></div>
-      <button class="btn ${c.gate === 'open' ? 'btn-ghost' : 'btn-primary'}" data-action="rwAdminGate" data-v="${c.gate === 'open' ? 'waitlist' : 'open'}">${c.gate === 'open' ? 'Back to waitlist mode' : 'Open the website'}</button></div></div>
     <div class="rw-grid" style="margin-top:16px">
       <form class="card" id="rw-adm-rollout"><div class="card-head"><h3>Rollout</h3><button type="button" class="btn btn-primary sm" data-action="rwAdminSave" data-form="rollout">Save</button></div><div class="card-pad stack" style="gap:12px">
         ${field('Phase', `<select class="select" name="phase">${[1, 2, 3, 4, 5, 6].map(p => `<option value="${p}" ${p === c.phase ? 'selected' : ''}>${p} — ${RW_PHASES[p]}</option>`).join('')}</select>`)}
@@ -276,7 +271,6 @@ Views.admin = async () => {
         <div class="grid g3">${field('Brand', `<input class="input" name="brand" value="${esc(c.brand)}">`)}${field('X handle', `<input class="input" name="x" value="${esc(c.social.x)}" placeholder="nexis">`)}${field('Credit budget ($, blank = none)', `<input class="input" name="budget" inputmode="numeric" value="${c.credits.budget ?? ''}">`)}</div>
         ${field('Launch announcement URL', `<input class="input" name="announcement" value="${esc(c.social.announcement)}" placeholder="https://x.com/…/status/…">`)}${field('Community URL', `<input class="input" name="community" value="${esc(c.social.community)}" placeholder="https://discord.gg/…">`)}
         <div class="grid g2">${field('New members per network per day before it’s noted for review', `<input class="input" name="perNetworkPerDay" value="${c.antiAbuse.perNetworkPerDay}">`)}${field('Qualified referrals per referrer per day', `<input class="input" name="refDailyCap" value="${c.antiAbuse.refDailyCap}">`)}</div>
-        <label class="row" style="gap:8px;font-size:13px"><input type="checkbox" name="requireMissions" ${c.requireMissions ? 'checked' : ''}>Waitlist: require the launch missions (with links) before members get their number and credits</label>
         ${field('Note X accounts younger than (days, 0 = off)', `<input class="input" name="minXAgeDays" value="${c.antiAbuse.minXAgeDays ?? 30}">`)}</div></form>
       <form class="card" id="rw-adm-guide"><div class="card-head"><h3>Credit Guide</h3><button type="button" class="btn btn-primary sm" data-action="rwAdminSave" data-form="guide">Save</button></div><div class="card-pad stack" style="gap:12px">
         <p class="mut" style="font-size:12.5px">Members see this from phase 5. Lines starting with “- ” become bullets, “# ” a heading.</p>
@@ -311,108 +305,25 @@ function rwAdminMember(m) {
 }
 function rwAdminPatch(form) {
   const f = $('#rw-adm-' + form); const v = (n) => f.elements[n] ? f.elements[n].value.trim() : '';
-  if (form === 'rollout') return { requireMissions: f.elements.requireMissions.checked, phase: +v('phase'), memberCap: +v('memberCap'), countdownAt: v('countdownAt') ? new Date(v('countdownAt')).getTime() : null, brand: v('brand'), social: { x: v('x').replace(/^@/, ''), announcement: v('announcement'), community: v('community') }, credits: { table: UI.rwAdmin.ov.config.credits.table, budget: v('budget') }, antiAbuse: { perNetworkPerDay: v('perNetworkPerDay'), refDailyCap: v('refDailyCap'), minXAgeDays: v('minXAgeDays') } };
+  if (form === 'rollout') return { phase: +v('phase'), memberCap: +v('memberCap'), countdownAt: v('countdownAt') ? new Date(v('countdownAt')).getTime() : null, brand: v('brand'), social: { x: v('x').replace(/^@/, ''), announcement: v('announcement'), community: v('community') }, credits: { table: UI.rwAdmin.ov.config.credits.table, budget: v('budget') }, antiAbuse: { perNetworkPerDay: v('perNetworkPerDay'), refDailyCap: v('refDailyCap'), minXAgeDays: v('minXAgeDays') } };
   if (form === 'guide') { const uses = UI.rwAdmin.ov.config.uses.map((u, i) => ({ id: v('use_id_' + i), label: v('use_label_' + i), desc: v('use_desc_' + i), active: f.elements['use_active_' + i].checked })); return { guide: { title: v('title'), body: f.elements.body.value }, uses }; }
   if (form === 'credits') { const t = UI.rwAdmin.ov.config.credits.table.map((r, i) => [v('amt_' + i), v('w_' + i)]).filter(r => r[1] !== '' && +r[1] > 0); if (v('amt_new') && v('w_new')) t.push([v('amt_new'), v('w_new')]); return { credits: { table: t.map(r => [+r[0], +r[1]]), budget: UI.rwAdmin.ov.config.credits.budget } }; }
   if (form === 'missions') return { missions: JSON.parse(v('missions')), xp: { join: v('xp_join'), profile: v('xp_profile'), referral: v('xp_referral') }, statuses: JSON.parse(v('statuses')) };
 }
 
-/* =====================================================================
-   WAITLIST MODE — a standalone site shown to everyone except admins until
-   an admin opens the website (rollout admin → Website access).
-   Pages: waitlist (#/, #/join?ref=N) · my membership (#/me) · public card.
-   ===================================================================== */
 const xLogoSvg = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M17.75 3h3.07l-6.7 7.66L22 21h-6.17l-4.83-6.32L5.47 21H2.4l7.17-8.2L2 3h6.33l4.37 5.78L17.75 3Zm-1.08 16.2h1.7L7.4 4.73H5.58l11.09 14.47Z"/></svg>';
-function wlShell(inner, { me, bare } = {}) {
-  const x = rwXHandle(); const year = new Date().getFullYear();
-  return `<div class="wl ${bare ? 'wl-bare' : ''}"><header class="wl-nav">${bare ? '' : `<a class="logo" href="#/">${logoMark}<span class="wm">${esc(rwBrand().toUpperCase())}</span></a>`}<span class="spacer"></span>
-    ${me ? `<nav class="wl-links"><a href="#/me" class="${current.route === 'me' ? 'on' : ''}">Membership</a><a href="#/referrals" class="${current.route === 'referrals' ? 'on' : ''}">Referrals</a></nav><span class="mut wl-user">@${esc(me)}</span><button class="btn btn-ghost sm" data-action="logout">Log out</button>` : ''}</header>
-    <main class="wl-main">${inner}</main>
-    <footer class="wl-foot"><div class="wl-foot-top"><span class="wl-badge sm">${logoMark}</span><span class="spacer"></span>${x ? `<a class="wl-soc" href="https://x.com/${esc(x.slice(1))}" target="_blank" rel="noopener" aria-label="${esc(rwBrand())} on X">${xLogoSvg}</a>` : ''}${Rewards.cfg && Rewards.cfg.social && Rewards.cfg.social.community ? `<a class="wl-soc" href="${esc(Rewards.cfg.social.community)}" target="_blank" rel="noopener" aria-label="Community">${ic('users', 'sm')}</a>` : ''}</div>
-      <div class="wl-word" aria-hidden="true">${esc(rwBrand().toUpperCase())}</div>
-      <div class="wl-foot-bot"><span>Credits are promotional platform credits, not cash, and can’t be withdrawn.</span><span>© ${year} ${esc(rwBrand())}. All rights reserved.</span></div></footer></div>`;
-}
-/** Overlapping initials for the "join others" row: generic, no real member names. */
-const wlFaces = () => `<span class="wl-faces">${['#C9D6D6', '#9FB2B2', '#E6ECEC', '#7E9090'].map((c, i) => `<i style="background:${c}">${'NXSM'[i]}</i>`).join('')}</span>`;
-function wlJoinBtn(cfg, label = 'Join waitlist') {
-  return cfg.xLogin ? `<a class="wl-x" href="/api/xauth?action=start">${xLogoSvg}<span>${label}</span></a>` : `<button class="wl-x" disabled><span>Sign-up opens soon</span></button>`;
-}
-function wlWaitlist(params) {
-  const cfg = Rewards.cfg || {}; const ref = params.get('ref') || Rewards.refCode(); const err = params.get('xerr'); const n = cfg.memberCount || 0;
-  const others = n ? `Join <b class="num" data-count="${n}" data-ck="members">${fmtNum(n, 0)}</b> other${n === 1 ? '' : 's'} on the waitlist` : 'Be the first on the waitlist';
-  const needMissions = cfg.required && cfg.required.length;
-  const steps = [['Connect your X', 'One tap with your X account. No password, and we never post for you.'], ...(needMissions ? [['Complete the missions', 'Follow, repost and join the community. It takes under a minute.']] : []), ['Get your number', 'A permanent member number, plus a mystery credit reward from $20 up.'], ['Credit guide drops', 'We’ll show you exactly where your credits work when the guide is out.']];
-  const why = [['user', 'Member number', 'Permanent and yours alone. Early members are marked forever.'], ['gift', 'Mystery credits', 'Every member gets promotional credits, from $20 to $500.'], ['card', 'Member Card', 'A card you can share on X or download as an image.'], ['trophy', 'Leaderboard', 'Invite friends and climb the ranks before launch.']];
-  const feats = [['chart', 'Prediction markets', 'Trade YES or NO on what happens next, with live prices.', 'a'], ['soccer', 'Sportsbook', 'Bet on games and props across major leagues.', 'b'], ['coin', 'Crypto', 'Live prices and charts for the coins you follow.', 'c'], ['plus', 'Create a market', 'Ask any yes/no question and open it for trading.', 'd']];
-  const P = (i) => (feats[i] || [])[3];
-  return wlShell(`<div class="${rwOnce('wl')}">
-    <section class="wl-hero"><div class="wl-blob h1"></div><div class="wl-blob h2"></div>
-      <span class="wl-badge">${logoMark}</span>
-      ${ref ? `<div class="wl-kick">Member #${esc(ref)} invited you</div>` : ''}
-      <h1>Claim your spot on<br>${esc(rwBrand())}</h1>
-      <p class="wl-sub">Prediction markets, sportsbook and crypto in one place. Join the waitlist with X for a permanent member number and mystery credits.</p>
-      ${err ? `<div class="rw-note warn" style="max-width:440px;margin:0 auto 14px">${ic('alert', 'sm')}<span>${esc(err)}</span></div>` : ''}
-      <div class="wl-pill"><span class="wl-pill-t">${xLogoSvg}<span>Sign up with your X account</span></span>${wlJoinBtn(cfg)}</div>
-      <div class="wl-others">${wlFaces()}<span>${others}</span></div>
-      <div class="wl-mock" aria-hidden="true">
-        <div class="wl-float l"><span class="wl-fi">${ic('user', 'sm')}</span><div><small>Your number</small><b>Member #${n ? fmtNum(n + 1, 0) : 1}</b></div></div>
-        <div class="wl-phone"><div class="wl-notch"><i></i></div><div class="wl-ph-top"><span>9:41</span><span>●●●</span></div>
-          <div class="wl-ph-h">Markets</div><div class="wl-ph-chips"><span class="on">All</span><span>Sports</span><span>Crypto</span><span>Politics</span></div>
-          ${[['Will it rain in Lagos tomorrow?', 62], ['Arsenal to win this weekend?', 54], ['BTC above $100k on Friday?', 41]].map(([q, y]) => `<div class="wl-ph-row"><span class="wl-ph-ic">${logoMark}</span><div><b>${q}</b><small>Example market</small></div><span class="wl-ph-y">${y}¢</span></div>`).join('')}</div>
-        <div class="wl-float r">${wlFaces()}<div><b>$20–$500</b><small>Mystery credits</small></div></div>
-      </div>
-    </section>
-    <section class="wl-sec"><div class="wl-tag">✦ Early access ✦</div><h2>Get in before everyone else</h2><p class="wl-sec-sub">The waitlist is open now. Here’s what every member gets.</p>
-      <div class="wl-grid4">${why.map(([i, t, d], k) => `<div class="wl-card ${k === 0 ? 'hi' : ''}"><span class="wl-ci">${ic(i, 'sm')}</span><b>${t}</b><p>${d}</p></div>`).join('')}</div></section>
-    <section class="wl-sec center"><div class="wl-blob s1"></div><div class="wl-tag">✦ Features ✦</div><h2>Built to help you call it first</h2><p class="wl-sec-sub">Everything ${esc(rwBrand())} members get at launch.</p>
-      <div class="wl-grid4">${feats.map(([i, t, d, v]) => `<div class="wl-feat"><div class="wl-art ${v}">${ic(i)}</div><b>${t}</b><p>${d}</p></div>`).join('')}</div></section>
-    <section class="wl-sec"><div class="wl-tag">✦ The process ✦</div><h2>${steps.length === 4 ? 'Four' : 'Three'} simple steps</h2><p class="wl-sec-sub">From sign-up to your credits. We handle everything in between.</p>
-      <ol class="wl-steps">${steps.map(([t, d], k) => `<li><span class="num">${String(k + 1).padStart(2, '0')}</span><b>${t}</b><p>${d}</p></li>`).join('')}</ol></section>
-    <section class="wl-cta"><div class="wl-blob c1"></div>${wlFaces()}<p class="wl-sub sm">${n ? `${fmtNum(n, 0)} member${n === 1 ? ' has' : 's have'} already joined` : 'Early spots are limited'}</p>
-      <h2>Be among the first<br>${esc(rwBrand())} members</h2><p class="wl-sub sm">Join the waitlist and lock in your member number today.</p>${wlJoinBtn(cfg)}</section>
-  </div>`, { bare: true });
-}
-function wlMe() {
-  const m = Rewards.me; const u = Auth.user;
-  if (m && m.locked) return wlMissionsGate(m, u);
-  if (!m) { if (Rewards.state !== 'loading') Rewards.sync(); return wlShell(Rewards.err ? unavailable('Membership unavailable', esc(Rewards.err.message), '<button class="btn btn-ghost sm" data-action="rwRetry">Retry</button>') : `<div class="wl-load"><span class="spin lg"></span><p class="mut">Loading your membership…</p></div>`, { me: u && u.handle }); }
-  return wlShell(`${rwDemoNote()}<div class="wl-me-head"><div class="rw-kicker">YOU’RE IN</div><h1>Welcome, Member #${m.n}.</h1><p class="dim">Your spot is locked in. Share your card and invite friends while the Credit Guide gets ready.</p></div>
-    <div class="rw-page"><div class="rw-grid ${rwOnce('wlme')}">
-      <div class="stack" style="gap:14px;min-width:0">${rwMemberCard(m)}<div class="row wrap" style="gap:8px"><button class="btn btn-primary" data-action="rwShare">${ic('send', 'sm')}Share on X</button><button class="btn btn-ghost" data-action="rwDownload">${ic('download', 'sm')}Download card</button><button class="btn btn-ghost" data-action="rwReplay">${ic('play', 'sm')}Replay reveal</button></div>${rwInvitePanel(m)}</div>
-      <div class="stack" style="gap:14px;min-width:0">${rwCreditPanel(m)}${Rewards.creditsVisible ? rwGuidePanel() : ''}</div>
-    </div></div>
-    <p class="mut wl-end">That’s everything for now. We’ll let you know when the Credit Guide drops.</p>`, { me: u && u.handle });
-}
-async function wlRoute(route, params, arg) {
-  if (route === 'me') return wlMe();
-  if (route === 'referrals' && Rewards.me && Rewards.me.locked) { location.replace('#/me'); return wlMe(); }
-  if (route === 'referrals') return wlShell(await rwReferralsPage(), { me: Auth.user && Auth.user.handle });
-  if (route === 'member') { const html = await Views.member(params, arg); return wlShell(html); }
-  return wlWaitlist(params);
-}
-/** Waitlist step 2: the launch missions that unlock the member number and credits. */
-function wlMissionsGate(m, u) {
-  const req = (Rewards.cfg && Rewards.cfg.required) || []; const L = ((Rewards.cfg && Rewards.cfg.missions) || []).filter(x => req.includes(x.id)); const done = L.filter(x => m.missions && m.missions[x.id]).length;
-  const row = (x) => { const d = !!(m.missions && m.missions[x.id]);
-    return `<div class="rw-mission ${d ? 'done' : ''}"><span class="rw-check">${d ? ic('check', 'sm') : ''}</span><div style="flex:1;min-width:0"><b>${esc(x.title)}</b><div class="mut" style="font-size:12px">${d ? 'Done' : 'Open the link, then tap Done'}</div></div>
-      ${d ? '' : `<a class="btn btn-ghost sm" href="${esc(x.url)}" target="_blank" rel="noopener" data-action="rwMissionOpen" data-id="${esc(x.id)}">Open ${ic('ext', 'sm')}</a><button class="btn btn-primary sm" data-action="rwMissionDone" data-id="${esc(x.id)}" ${UI.rwOpened && UI.rwOpened[x.id] ? '' : 'disabled'}>Done</button>`}</div>`; };
-  return wlShell(`<div class="wl-me-head ${rwOnce('wlgate')}"><div class="rw-kicker">ONE LAST STEP</div><h1>Complete your missions.</h1><p class="dim">Finish these to claim your member number and reveal your mystery credits.</p></div>
-    <div class="card wl-gate"><div class="card-head"><h3>${ic('target', 'sm')}LAUNCH MISSIONS</h3><span class="num mut" style="font-size:12.5px">${done} / ${L.length} DONE</span></div>
-      <div class="card-pad" style="padding-bottom:6px"><div class="rw-bar"><i style="width:${L.length ? done / L.length * 100 : 0}%"></i></div></div>${L.map(row).join('')}
-      <p class="mut" style="font-size:12px;padding:12px 18px 16px">Your number and credits unlock as soon as every mission is done.</p></div>`, { me: u && u.handle });
-}
 /** Finishes "Connect with X": trades the one-time code for a session. */
 async function xDone(params) {
   const app = $('#app'); document.body.classList.add('is-landing');
-  app.innerHTML = wlShell(`<div class="wl-load"><span class="spin lg"></span><p class="mut">Signing you in with X…</p></div>`); hydrate(app);
+  app.innerHTML = `<div class="auth-wrap" style="min-height:100vh;display:grid;place-items:center"><div class="stack" style="align-items:center;gap:12px"><span class="spin lg"></span><p class="mut">Signing you in with X…</p></div></div>`;
   try {
     if (Auth.mode !== 'remote') Auth.setMode('remote');
     const r = await Net.api('auth', { method: 'POST', timeout: 20000, body: { action: 'xclaim', code: params.get('c'), device: deviceLabel() } });
     const res = RemoteAccounts.take(r); Store.init(res.user.id); Rewards.me = null; Rewards.state = 'idle';
     setTimeout(() => { Wallets.watch(); Balances.refresh(); }, 300);
     toast({ title: res.isNew ? `Welcome to ${rwBrand()}, @${res.user.handle}` : `Welcome back, @${res.user.handle}`, body: 'Signed in with X.' });
-    await Rewards.sync(); location.replace(Rewards.home());
-  } catch (e) { location.replace('#/?xerr=' + encodeURIComponent(e.message || 'X sign-in didn’t complete. Try again.')); }
+    Rewards.sync(); location.replace(res.user.onboarded ? '#/home' : '#/onboarding');
+  } catch (e) { location.replace('#/login?xerr=' + encodeURIComponent(e.message || 'X sign-in didn’t complete. Try again.')); }
 }
 
 /* =====================================================================
@@ -444,7 +355,7 @@ async function rwReferralsPage() {
   if (!m) return `<div class="page">${unavailable('Referrals unavailable', esc((Rewards.err && Rewards.err.message) || 'Your membership couldn’t be loaded.'), '<button class="btn btn-ghost sm" data-action="rwRetry">Retry</button>')}</div>`;
   let d; try { d = await Rewards.referrals(); } catch (e) { return `<div class="page">${unavailable('Referrals unavailable', esc(e.message), '<button class="btn btn-ghost sm" data-action="rwRetry">Retry</button>')}</div>`; }
   const tile = (k, v, s, ck, cls = '') => `<div class="rw-tile ${cls}"><span class="rw-eyebrow">${k}</span><b class="num" ${ck ? `data-count="${v}" data-ck="${ck}"` : ''}>${typeof v === 'number' ? fmtNum(v, 0) : v}</b><span class="mut">${s}</span></div>`;
-  const back = Rewards.gated() ? '#/me' : '#/rewards';
+  const back = '#/rewards';
   return `<div class="page rw-page rw-refs-page"><div class="page-head"><div><a class="link" href="${back}" style="font-size:12.5px">${ic('chevLeft', 'sm')}Membership</a><h1>Referral dashboard</h1><p>Everyone who joined with your link, and how close you are to your next milestone.</p></div>
       <div class="row wrap" style="gap:8px"><button class="btn btn-primary" data-action="rwInviteX">${xLogoSvg}Invite on X</button><button class="btn btn-ghost" data-action="rwCopyLink">${ic('copy', 'sm')}Copy link</button></div></div>
     ${d.demo ? rwDemoNote() : ''}
@@ -459,7 +370,7 @@ async function rwReferralsPage() {
     </div>
     ${rwMilestones(d.qualified)}
     <div class="rw-grid" style="margin-top:16px">${rwRefChart(d.daily)}
-      <div class="card"><div class="card-head"><h3>${ic('trophy', 'sm')}TOP REFERRERS</h3>${Rewards.gated() ? '' : '<a class="link" href="#/leaderboard">Leaderboard</a>'}</div>
+      <div class="card"><div class="card-head"><h3>${ic('trophy', 'sm')}TOP REFERRERS</h3><a class="link" href="#/leaderboard">Leaderboard</a></div>
         ${d.top.length ? d.top.map((r, i) => `<div class="rw-lb-row ${r.n === m.n ? 'me' : ''} ${i < 3 ? 'top' : ''}"><span class="rw-rank">${rwMedal(i)}</span><span class="rw-lb-name">@${esc(r.h || 'member')}<span class="mut num">#${r.n}</span></span><b class="num">${fmtNum(r.r, 0)}</b></div>`).join('') : '<p class="mut" style="padding:14px 18px;font-size:13px">No referrals counted yet. The first one takes the top spot.</p>'}
         ${d.qualified && d.rank && d.rank > 5 ? `<div class="rw-lb-row me"><span class="rw-rank num">${d.rank}</span><span class="rw-lb-name">@${esc(m.handle || 'you')}<span class="mut num">#${m.n}</span></span><b class="num">${fmtNum(d.qualified, 0)}</b></div>` : ''}</div></div>
     <div class="card" style="margin-top:16px"><div class="card-head"><h3>${ic('userPlus', 'sm')}YOUR INVITES</h3><span class="mut num" style="font-size:12.5px">${fmtNum(d.total, 0)}</span></div>

@@ -294,6 +294,7 @@ function authCard(mode) {
     <div class="seg text auth-tabs" role="tablist"><a class="${isLogin ? 'on' : ''}" href="#/login" role="tab" aria-selected="${isLogin}">Log in</a><a class="${!isLogin ? 'on' : ''}" href="#/signup" role="tab" aria-selected="${!isLogin}">Create account</a></div>
     <div class="stack" style="gap:8px">
       <button class="sso" data-action="authGoogle">${googleG}<span>Continue with Google</span><span class="sso-sub">${gReady ? 'Gmail' : 'Not configured'}</span></button>
+      ${Config.c && Config.c.x && Config.c.x.configured ? `<a class="sso" href="/api/xauth?action=start">${xLogoSvg}<span>Continue with X</span><span class="sso-sub">X account</span></a>` : ''}
       <button class="sso" data-action="authWallet">${ic('wallet')}<span>Continue with Wallet</span><span class="sso-sub">Phantom, Backpack, Solflare</span></button>
       <button class="sso" data-action="authView" data-v="emailCode" ${emailReady ? '' : 'disabled title="Email delivery isn’t configured"'}>${ic('mail')}<span>Continue with Email</span><span class="sso-sub">${emailReady ? 'One-time code' : 'Not configured'}</span></button>
     </div>
