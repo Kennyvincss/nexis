@@ -1,6 +1,6 @@
 /* =====================================================================
    LIVE SPORTS — scoreboard hub + match page (ESPN data, auto-updating)
-   Related markets are real Panta (tradable) and Polymarket (reference)
+   Related markets are real tradable
    markets whose titles mention the teams. No odds are invented.
    ===================================================================== */
 function crest(t, size = '') {
@@ -28,7 +28,7 @@ function gameCard(g) {
   return `<article class="ecard ${g.state === 'in' ? 'live' : ''}" data-game="${g.id}">${top}${body}
     ${g.lastPlay && g.state === 'in' ? `<div class="mut" style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(g.lastPlay)}</div>` : ''}
     ${gameOdds(g, rel)}
-    <div class="mcard-foot"><span>${n ? `<b>${n}</b> market${n === 1 ? '' : 's'} to trade` : '<span class="mut">No markets yet</span>'}</span>${g.odds && g.odds.text ? `<span class="mut" title="${esc(g.odds.provider || 'Sportsbook')} line via ESPN">${esc(g.odds.text)}</span>` : ''}<span style="margin-left:auto">${followBtn(g)}</span></div>
+    <div class="mcard-foot"><span>${n ? `<b>${n}</b> market${n === 1 ? '' : 's'} to trade` : '<span class="mut">No markets yet</span>'}</span>${g.odds && g.odds.text ? `<span class="mut" title="${esc(g.odds.provider || 'Sportsbook')} line">${esc(g.odds.text)}</span>` : ''}<span style="margin-left:auto">${followBtn(g)}</span></div>
   </article>`;
 }
 /* The game's Polymarket win / draw prices as quick trade buttons (moneyline markets only). */
@@ -44,7 +44,7 @@ function gameOdds(g, rel) {
 }
 function sportsState() {
   if (Sports.games.size) return null;
-  if (Sports.state === 'offline') return unavailable('Live sports unavailable', `Nexis couldn’t reach ESPN${Sports.error ? ': ' + esc(Sports.error.message || String(Sports.error)) : ''}. It retries automatically.`, '<button class="btn btn-ghost sm" data-action="retry">Retry now</button>');
+  if (Sports.state === 'offline') return unavailable('Live sports unavailable', `Scores couldn’t be loaded${Sports.error ? ': ' + esc(Sports.error.message || String(Sports.error)) : ''}. It retries automatically.`, '<button class="btn btn-ghost sm" data-action="retry">Retry now</button>');
   if (Sports.state === 'idle') return skeletonCards(6);
   return null;
 }
@@ -72,11 +72,11 @@ Views.sportsScores = async (params) => {
   if (st.league) return sportsLeagueView(st);
   const days = sportsDays(); if (!days.some(d => d.k === st.day)) st.day = 'today';
   const sel = sportsSelection(st.day);
-  const head = `<div class="page-head"><div><h1>Sports</h1><p>Live scores, results and fixtures from ESPN for football, basketball, tennis, US sports, MMA, golf, motorsport, rugby and more.</p></div><div class="row" style="gap:8px">${bkModeTabs('scores')}${srcBadge('espn')}</div></div>`;
+  const head = `<div class="page-head"><div><h1>Sports</h1><p>Live scores, results and fixtures for football, basketball, tennis, US sports, MMA, golf, motorsport, rugby and more.</p></div><div class="row" style="gap:8px">${bkModeTabs('scores')}${srcBadge('espn')}</div></div>`;
   if (Sports.state === 'idle') await Sports.poll();
   let rangeErr = null; try { await Sports.loadRange(sel.from, sel.to); } catch (e) { rangeErr = e; }
   const rs = Sports.rangeState(sel.from, sel.to);
-  if (!Sports.games.size) { const blocked = sportsState() || (rangeErr || (rs && rs.error) ? unavailable('Sports data unavailable', `Nexis couldn’t load the schedule from ESPN${(rangeErr || rs.error).message ? ': ' + esc((rangeErr || rs.error).message) : ''}. It retries automatically.`, '<button class="btn btn-ghost sm" data-action="retry">Retry now</button>') : null); if (blocked) return `<div class="page">${head}${daysHtml(days, st.day)}${blocked}</div>`; }
+  if (!Sports.games.size) { const blocked = sportsState() || (rangeErr || (rs && rs.error) ? unavailable('Sports data unavailable', `The schedule couldn’t be loaded${(rangeErr || rs.error).message ? ': ' + esc((rangeErr || rs.error).message) : ''}. It retries automatically.`, '<button class="btn btn-ghost sm" data-action="retry">Retry now</button>') : null); if (blocked) return `<div class="page">${head}${daysHtml(days, st.day)}${blocked}</div>`; }
   let pool = Sports.between(sel.from, sel.to);
   if (sel.today) Sports.list().filter(g => g.state === 'in').forEach(g => { if (!pool.includes(g)) pool.push(g); });
   if (st.day === 'past') pool = pool.filter(g => g.state !== 'pre');
@@ -99,7 +99,7 @@ Views.sportsScores = async (params) => {
   const total = list.length; const shown = list.slice(0, st.limit);
   const groups = {}; shown.forEach(g => { const k = sel.multi ? new Date(g.start).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : g.league + (g.kind !== 'team' ? '' : ''); (groups[k] = groups[k] || []).push(g); });
   const groupList = Object.entries(groups); if (!sel.multi) groupList.sort((a, b) => leagueRank(a[0]) - leagueRank(b[0]));
-  const partial = rs && rs.failed > rs.ok ? `<div class="sim-note" style="margin-bottom:14px">${ic('info', 'sm')}<span>Some leagues didn’t load from ESPN just now. Retrying automatically.</span></div>` : '';
+  const partial = rs && rs.failed > rs.ok ? `<div class="sim-note" style="margin-bottom:14px">${ic('info', 'sm')}<span>Some leagues didn’t load just now. Retrying automatically.</span></div>` : '';
   const leagueOpts = leagueOptions(st.sport, byLeague, st.league);
   return `<div class="page">${head}${daysHtml(days, st.day)}
     <div class="sp-filters">
@@ -114,10 +114,10 @@ Views.sportsScores = async (params) => {
       ${st.q || st.sport !== 'all' || st.status !== 'all' || st.bettable || st.following ? '<button class="link" data-action="spReset">Reset filters</button>' : ''}
       <span class="mut" style="margin-left:auto;font-size:12.5px">${total} ${total === 1 ? 'event' : 'events'}</span>
     </div>
-    ${Sports.state === 'stale' && sel.today ? `<div class="sim-note" style="margin-bottom:14px">${ic('alert', 'sm')}<span>ESPN didn’t respond to the last refresh — scores may be behind. Retrying.</span></div>` : ''}${partial}
+    ${Sports.state === 'stale' && sel.today ? `<div class="sim-note" style="margin-bottom:14px">${ic('alert', 'sm')}<span>The last refresh didn’t go through — scores may be behind. Retrying.</span></div>` : ''}${partial}
     ${sel.title ? `<h2 style="font-size:17px;margin-bottom:12px">${esc(sel.title)}</h2>` : ''}
     ${shown.length ? groupList.map(([k, gs]) => `<section class="section" style="margin-top:${sel.title ? 14 : 18}px"><div class="section-head"><h2 style="font-size:15px">${esc(k)}</h2><span class="mut" style="font-size:12px">${gs.length} ${gs.length === 1 ? 'event' : 'events'}</span></div><div class="grid gauto">${gs.map(gameCard).join('')}</div></section>`).join('') + (total > shown.length ? `<div style="text-align:center;margin-top:18px"><button class="btn btn-ghost" data-action="spMore">Show more · ${total - shown.length} left</button></div>` : '')
-      : `<div class="card">${emptyState({ icon: 'soccer', title: q ? `Nothing matches “${esc(st.q)}”` : st.status === 'live' ? 'Nothing live right now' : st.following ? 'You’re not following any of these' : st.bettable ? 'No events with markets here' : 'No events', body: q ? 'Try a team, player, league or tournament name, or another day.' : st.bettable ? 'Only events with a related Panta or Polymarket market are shown. Turn off “Has markets” to see everything.' : st.day === 'past' ? 'No results in the last 7 days for this filter.' : st.day === 'next' ? 'No fixtures in the next 7 days for this filter.' : 'Nothing scheduled on this day for this filter.' })}</div>`}
+      : `<div class="card">${emptyState({ icon: 'soccer', title: q ? `Nothing matches “${esc(st.q)}”` : st.status === 'live' ? 'Nothing live right now' : st.following ? 'You’re not following any of these' : st.bettable ? 'No events with markets here' : 'No events', body: q ? 'Try a team, player, league or tournament name, or another day.' : st.bettable ? 'Only events with a related market are shown. Turn off “Has markets” to see everything.' : st.day === 'past' ? 'No results in the last 7 days for this filter.' : st.day === 'next' ? 'No fixtures in the next 7 days for this filter.' : 'Nothing scheduled on this day for this filter.' })}</div>`}
   </div>`;
 };
 /* League shortcuts shown above the filters on every Sports page. */
@@ -155,8 +155,8 @@ async function sportsLeagueView(st) {
   const more = list.filter(STATUS.upcoming).length > up.length || list.filter(STATUS.finished).length > done.length;
   const withMk = pool.filter(g => { const r = Sports.related(g); return r.panta.length + r.poly.length > 0; }).length;
   const head = `<div class="page-head"><div><a class="link" href="#/sports" data-action="spLeague" data-v="">${ic('chevLeft', 'sm')}All sports</a><h1 style="margin-top:6px">${esc(name)}</h1><p>${esc(L ? L[3] : '')}${L ? ' · ' : ''}${counts.upcoming} upcoming · ${counts.finished} results in the last week${withMk ? ` · ${withMk} with markets` : ''}</p></div>${srcBadge('espn')}</div>`;
-  const empty = err && !pool.length ? unavailable('League unavailable', `Nexis couldn’t load ${esc(name)} from ESPN${err.message ? ': ' + esc(err.message) : ''}. It retries automatically.`, '<button class="btn btn-ghost sm" data-action="retry">Retry now</button>')
-    : `<div class="card">${emptyState({ icon: 'soccer', title: q ? `Nothing matches “${esc(st.q)}”` : st.bettable ? 'No games with markets yet' : 'No games in this window', body: q ? 'Try another team or player name.' : st.bettable ? 'Polymarket usually lists a game’s markets a few days before kick-off. Turn off “Has markets” to see every fixture.' : `${esc(name)} has no games from the last 7 days through the next 4 weeks — it may be between seasons.` })}</div>`;
+  const empty = err && !pool.length ? unavailable('League unavailable', `${esc(name)} couldn’t be loaded${err.message ? ': ' + esc(err.message) : ''}. It retries automatically.`, '<button class="btn btn-ghost sm" data-action="retry">Retry now</button>')
+    : `<div class="card">${emptyState({ icon: 'soccer', title: q ? `Nothing matches “${esc(st.q)}”` : st.bettable ? 'No games with markets yet' : 'No games in this window', body: q ? 'Try another team or player name.' : st.bettable ? 'Markets usually open a few days before kick-off. Turn off “Has markets” to see every fixture.' : `${esc(name)} has no games from the last 7 days through the next 4 weeks — it may be between seasons.` })}</div>`;
   return `<div class="page">${head}
     <div class="sp-filters" style="margin-top:12px">
       <label class="search-trigger sp-search">${ic('search', 'sm')}<input id="sp-q" value="${esc(st.q)}" placeholder="Search ${esc(name)} teams or players" autocomplete="off" aria-label="Search this league">${st.q ? '<button class="iconbtn" data-action="spClear" aria-label="Clear search" style="width:26px;height:26px">' + ic('x', 'sm') + '</button>' : ''}</label>
@@ -179,17 +179,17 @@ function daysHtml(days, cur) {
 Views.event = async (params, id) => {
   if (Sports.state === 'idle' || !Sports.games.has(id)) await Sports.poll();
   let g = Sports.games.get(id); if (!g) { try { g = await Sports.fetchGame(id); } catch (e) { g = null; } }
-  if (!g) { const b = sportsState(); return `<div class="page"><a class="link" href="#/sports">${ic('chevLeft', 'sm')}Sports</a><div style="margin-top:14px">${b || `<div class="card">${emptyState({ icon: 'soccer', title: 'Game not found', body: 'ESPN has no game with this link. It may have been removed, or the link is wrong.' })}</div>`}</div></div>`; }
+  if (!g) { const b = sportsState(); return `<div class="page"><a class="link" href="#/sports">${ic('chevLeft', 'sm')}Sports</a><div style="margin-top:14px">${b || `<div class="card">${emptyState({ icon: 'soccer', title: 'Game not found', body: 'There’s no game at this link. It may have been removed, or the link is wrong.' })}</div>`}</div></div>`; }
   const rel = Sports.related(g); Panta.watch(rel.panta.map(m => m.id));
   if (g.kind === 'match' || g.kind === 'field') return eventSimple(g, rel);
   return `<div class="page"><a class="link" href="#/sports">${ic('chevLeft', 'sm')}Sports</a>
     <div class="card ev-hero ${g.state === 'in' ? 'live' : ''}" style="margin-top:12px" id="ev-hero">${eventHero(g)}</div>
     <div class="mkt-layout" style="margin-top:16px"><div style="min-width:0" class="stack">
-      <div class="card"><div class="card-head"><h3>Match stats</h3>${srcBadge('espn', true)}</div><div id="ev-stats" style="padding:8px 18px 12px"><p class="mut" style="font-size:13px;padding:8px 0">Loading from ESPN…</p></div></div>
+      <div class="card"><div class="card-head"><h3>Match stats</h3>${srcBadge('espn', true)}</div><div id="ev-stats" style="padding:8px 18px 12px"><p class="mut" style="font-size:13px;padding:8px 0">Loading…</p></div></div>
       <div class="card"><div class="card-head"><h3>${g.sport === 'Football' ? 'Key events' : 'Play-by-play'}</h3></div><div id="ev-events">${detailsTimeline(g)}</div></div>
       <div class="card"><div class="card-head"><h3>Lineups &amp; leaders</h3></div><div id="ev-lineups"><p class="mut" style="padding:14px 18px;font-size:13px">Loading…</p></div></div>
     </div><aside class="stack">
-      <div id="ev-markets">${relatedMarketsCard(rel, `No Panta markets mention ${g.home.short} or ${g.away.short} yet.`)}</div>
+      <div id="ev-markets">${relatedMarketsCard(rel, `No markets mention ${g.home.short} or ${g.away.short} yet.`)}</div>
       <div class="card"><div class="card-head"><h3>Game info</h3></div><div id="ev-info">${gameInfo(g)}</div></div>
     </aside></div></div>`;
 };
@@ -200,12 +200,12 @@ function eventSimple(g, rel) {
     <div class="mkt-layout" style="margin-top:16px"><div style="min-width:0" class="stack">
       <div class="card"><div class="card-head"><h3>${g.kind === 'field' ? 'Leaderboard' + (g.session ? ' · ' + esc(g.session) : '') : g.sport === 'Tennis' ? 'Set by set' : 'Fight'}</h3>${srcBadge('espn', true)}</div><div id="ev-board">${eventBoard(g)}</div></div>
     </div><aside class="stack">
-      <div id="ev-markets">${relatedMarketsCard(rel, g.kind === 'field' ? `No Panta markets mention ${g.name} yet.` : `No Panta markets mention ${g.home.name} or ${g.away.name} yet.`)}</div>
+      <div id="ev-markets">${relatedMarketsCard(rel, g.kind === 'field' ? `No markets mention ${g.name} yet.` : `No markets mention ${g.home.name} or ${g.away.name} yet.`)}</div>
       <div class="card"><div class="card-head"><h3>Event info</h3></div><div id="ev-info">${gameInfo(g)}</div></div>
     </aside></div></div>`;
 }
 function eventBoard(g) {
-  if (g.kind === 'field') return g.leaders.length ? `<div class="lb big"><div class="lb-row lb-head"><span>Pos</span><span></span><span>Name</span><span>${g.sport === 'Golf' ? 'To par' : 'Result'}</span><span>${g.sport === 'Golf' ? 'Thru' : ''}</span></div>${leaderRows(g, 40)}</div>` : `<p class="mut" style="padding:14px 18px;font-size:13px">${g.state === 'pre' ? 'The leaderboard appears once play starts.' : 'ESPN hasn’t published a leaderboard for this event.'}</p>`;
+  if (g.kind === 'field') return g.leaders.length ? `<div class="lb big"><div class="lb-row lb-head"><span>Pos</span><span></span><span>Name</span><span>${g.sport === 'Golf' ? 'To par' : 'Result'}</span><span>${g.sport === 'Golf' ? 'Thru' : ''}</span></div>${leaderRows(g, 40)}</div>` : `<p class="mut" style="padding:14px 18px;font-size:13px">${g.state === 'pre' ? 'The leaderboard appears once play starts.' : 'No leaderboard is available for this event yet.'}</p>`;
   const n = Math.max(g.home.sets.length, g.away.sets.length);
   if (!n) return `<p class="mut" style="padding:14px 18px;font-size:13px">${g.state === 'pre' ? 'Scores appear once the match starts.' : g.state === 'post' ? `${esc((g.home.winner ? g.home : g.away).name)} won${g.detail ? ' · ' + esc(g.detail) : ''}.` : 'Live — no score breakdown published.'}</p>`;
   const row = (p, o) => `<tr><td>${p.logo ? `<img src="${esc(p.logo)}" alt="" width="18" height="12" style="vertical-align:middle;margin-right:6px" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}<b style="font-weight:${p.winner ? 700 : 500}">${esc(p.name)}</b>${p.winner ? ' ' + ic('check', 'sm') : ''}</td>${Array.from({ length: n }, (_, i) => { const x = p.sets[i], y = o.sets[i]; const won = x && y && x.v > y.v; return `<td class="r num" style="${won ? 'font-weight:700' : 'color:var(--muted)'}">${x && x.v != null ? x.v : ''}${x && x.tb != null ? `<sup>${x.tb}</sup>` : ''}</td>`; }).join('')}</tr>`;
@@ -223,7 +223,7 @@ function eventHero(g) {
   return `<div class="row" style="gap:8px;font-size:12.5px;color:var(--text-2)">${ic(SPORT_IC[g.sport] || 'ball', 'sm')}<span>${esc(g.league)}</span>${g.notes ? `<span class="mut">· ${esc(g.notes)}</span>` : ''}<span style="margin-left:auto" class="row">${gameBadge(g)}${followBtn(g)}</span></div>
     ${scoreboardHtml(g, true)}
     ${g.state === 'in' && g.lastPlay ? `<p class="dim" style="text-align:center;font-size:13px;margin-bottom:6px">${esc(g.lastPlay)}</p>` : ''}
-    <div class="row wrap ev-meta"><span>${ic('clock', 'sm')}${esc(g.state === 'pre' ? Sports.label(g) : g.detail || '')}</span>${g.venue ? `<span>${ic('flag', 'sm')}${esc(g.venue)}${g.city ? ', ' + esc(g.city) : ''}</span>` : ''}${g.broadcast ? `<span>${ic('radio', 'sm')}${esc(g.broadcast)}</span>` : ''}${g.odds && g.odds.text ? `<span title="Sportsbook line published by ESPN">${ic('chart', 'sm')}${esc(g.odds.text)}${g.odds.ou != null ? ' · O/U ' + esc(g.odds.ou) : ''}${g.odds.provider ? ' <span class="mut">(' + esc(g.odds.provider) + ')</span>' : ''}</span>` : ''}<span class="mut" style="margin-left:auto">Updated ${agoT(Sports.updatedAt || now())}</span></div>`;
+    <div class="row wrap ev-meta"><span>${ic('clock', 'sm')}${esc(g.state === 'pre' ? Sports.label(g) : g.detail || '')}</span>${g.venue ? `<span>${ic('flag', 'sm')}${esc(g.venue)}${g.city ? ', ' + esc(g.city) : ''}</span>` : ''}${g.broadcast ? `<span>${ic('radio', 'sm')}${esc(g.broadcast)}</span>` : ''}${g.odds && g.odds.text ? `<span title="Sportsbook line">${ic('chart', 'sm')}${esc(g.odds.text)}${g.odds.ou != null ? ' · O/U ' + esc(g.odds.ou) : ''}${g.odds.provider ? ' <span class="mut">(' + esc(g.odds.provider) + ')</span>' : ''}</span>` : ''}<span class="mut" style="margin-left:auto">Updated ${agoT(Sports.updatedAt || now())}</span></div>`;
 }
 function gameInfo(g) {
   if (g.kind === 'match' || g.kind === 'field') { const rows = [['Starts', new Date(g.start).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })], ['Ends', g.end ? fmtDate(g.end, { month: 'short', day: 'numeric' }) : ''], ['Status', g.detail || g.statusName], ['Competition', g.league], ['Event', g.tournament], [g.kind === 'field' ? 'Session' : 'Round', g.kind === 'field' ? g.session : g.round], ['Venue', g.venue], ['Records', g.kind === 'match' ? [g.home.record && `${g.home.short} ${g.home.record}`, g.away.record && `${g.away.short} ${g.away.record}`].filter(Boolean).join(' · ') : '']].filter(r => r[1]);
@@ -252,7 +252,7 @@ function statsBlock(g) {
   let rows = [];
   if (H && A) { const am = new Map(A.stats.map(x => [x.name, x])); rows = H.stats.map(h => [h.label, h.value, (am.get(h.name) || {}).value]).filter(r => r[2] != null && r[1] !== '' && r[1] != null); }
   else { const hs = g.home.stats, as = g.away.stats; rows = Object.keys(hs).filter(k => as[k] != null).map(k => [k.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase()), hs[k], as[k]]); }
-  if (!rows.length) return `<p class="mut" style="font-size:13px;padding:8px 0">${g.state === 'pre' ? 'Team statistics appear once the game starts.' : 'ESPN hasn’t published team statistics for this game.'}</p>`;
+  if (!rows.length) return `<p class="mut" style="font-size:13px;padding:8px 0">${g.state === 'pre' ? 'Team statistics appear once the game starts.' : 'Team statistics aren’t available for this game yet.'}</p>`;
   const head = `<div class="srow" style="font-weight:600"><span>${esc(g.home.abbr || g.home.short)}</span><span></span><span>${esc(g.away.abbr || g.away.short)}</span></div>`;
   return head + rows.slice(0, 16).map(([label, a, b]) => {
     const na = parseFloat(String(a).replace('%', '')), nb = parseFloat(String(b).replace('%', ''));

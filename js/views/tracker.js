@@ -1,9 +1,9 @@
 /* =====================================================================
    TRADER TRACKER — search, track, alerts, copy settings (real activity only)
-   Panta traders (Solana wallets) only. Tracking only watches. Copy never trades by itself:
+   Solana wallets only. Tracking only watches. Copy never trades by itself:
    each new position becomes a pre-filled order you review and sign.
    ===================================================================== */
-const trSrcTag = () => '<span class="tag blue">Panta · Solana</span>';
+const trSrcTag = () => '<span class="tag blue">Solana wallet</span>';
 const trExt = (id) => explorerAddr(id.slice(4));
 function trAvatar(id, size = '') { const d = Traders.data[id]; return avatarFor(Traders.name(id), d && d.img, size); }
 const pnlCell = (v) => v == null ? '<span class="mut">—</span>' : `<span class="num ${v >= 0 ? 'up' : 'down'}">${sUsd(v, Math.abs(v) >= 1000 ? 0 : 2)}</span>`;
@@ -19,13 +19,13 @@ function trackerHome() {
       <div class="stack" style="gap:18px">
         <div class="card"><div class="card-head"><h3>Tracked traders</h3><span class="mut num" style="font-size:12px">${T.length}</span></div>
           ${T.length ? `<div class="table-wrap"><table class="t"><thead><tr><th>Trader</th><th class="r">Portfolio</th><th class="r">Open P&amp;L</th><th class="r">Active</th><th>Alerts</th><th>Copy</th></tr></thead><tbody>${T.map(t => { const d = Traders.data[t.id] || {}; const s = d.stats || {}; const cp = Store.s.copy[t.id];
-            return `<tr class="click" data-href="${Traders.href(t.id)}"><td><span class="row" style="gap:10px">${trAvatar(t.id, 'sm')}<span style="min-width:0"><b style="font-weight:600">@${esc(Traders.name(t.id))}</b><div class="mut" style="font-size:11.5px">Panta · ${d.error ? '<span class="down">unavailable</span>' : d.t ? 'updated ' + ago(d.t) : 'loading…'}</div></span></span></td><td class="r num">${s.value != null ? usd(s.value, 0) : '—'}</td><td class="r">${pnlCell(s.unreal)}</td><td class="r num">${s.active ?? '—'}</td><td>${t.notify ? '<span class="tag green">On</span>' : '<span class="tag">Off</span>'}</td><td>${cp && cp.on ? `<span class="tag blue">≤ ${usd(cp.max, 0)}</span>` : '<span class="mut">—</span>'}</td></tr>`; }).join('')}</tbody></table></div>`
-            : emptyState({ icon: 'target', title: 'Not tracking anyone yet', body: 'Paste a wallet above, or pick someone active on Panta or from a market’s trades tape.' })}</div>
+            return `<tr class="click" data-href="${Traders.href(t.id)}"><td><span class="row" style="gap:10px">${trAvatar(t.id, 'sm')}<span style="min-width:0"><b style="font-weight:600">@${esc(Traders.name(t.id))}</b><div class="mut" style="font-size:11.5px">Solana wallet · ${d.error ? '<span class="down">unavailable</span>' : d.t ? 'updated ' + ago(d.t) : 'loading…'}</div></span></span></td><td class="r num">${s.value != null ? usd(s.value, 0) : '—'}</td><td class="r">${pnlCell(s.unreal)}</td><td class="r num">${s.active ?? '—'}</td><td>${t.notify ? '<span class="tag green">On</span>' : '<span class="tag">Off</span>'}</td><td>${cp && cp.on ? `<span class="tag blue">≤ ${usd(cp.max, 0)}</span>` : '<span class="mut">—</span>'}</td></tr>`; }).join('')}</tbody></table></div>`
+            : emptyState({ icon: 'target', title: 'Not tracking anyone yet', body: 'Paste a wallet above, or pick someone active or from a market’s trades tape.' })}</div>
         <div class="card"><div class="card-head"><h3>Tracked activity</h3>${log.length ? '<span class="mut" style="font-size:12px">From real positions, detected as they change</span>' : ''}</div>
           ${log.length ? log.map(trLogRow).join('') : `<p class="mut" style="padding:14px 18px;font-size:13px">${T.length ? 'No changes detected since you started tracking. New positions, size changes and closes appear here and as notifications.' : 'Activity from traders you track appears here.'}</p>`}</div>
       </div>
       <div class="stack" style="gap:18px">
-        <div class="card"><div class="card-head"><h3>Active on Panta</h3>${srcBadge('panta', true)}</div>${act.length ? act.map(r => `<a class="row" href="${Traders.href(r.id)}" style="padding:10px 18px;border-bottom:1px solid var(--line);gap:10px">${avatarFor(r.name, null, 'sm')}<span class="num" style="font-size:13px">${esc(r.name)}</span><span class="mut" style="margin-left:auto;font-size:12px">${r.n} trade${r.n === 1 ? '' : 's'} · ${fmtNum(r.amt, 0)}</span></a>`).join('') : `<p class="mut" style="padding:14px 18px;font-size:13px">${Panta.state === 'live' ? 'Wallets appear here as Nexis loads Panta trades.' : 'Needs the Panta API.'}</p>`}</div>
+        <div class="card"><div class="card-head"><h3>Active traders</h3>${srcBadge('panta', true)}</div>${act.length ? act.map(r => `<a class="row" href="${Traders.href(r.id)}" style="padding:10px 18px;border-bottom:1px solid var(--line);gap:10px">${avatarFor(r.name, null, 'sm')}<span class="num" style="font-size:13px">${esc(r.name)}</span><span class="mut" style="margin-left:auto;font-size:12px">${r.n} trade${r.n === 1 ? '' : 's'} · ${fmtNum(r.amt, 0)}</span></a>`).join('') : `<p class="mut" style="padding:14px 18px;font-size:13px">${Panta.state === 'live' ? 'Wallets appear here as Nexis loads trades.' : 'Unavailable right now.'}</p>`}</div>
       </div>
     </div></div>`;
 }
@@ -39,10 +39,10 @@ function trResults() {
 }
 
 async function trackerDetail(id) {
-  if (isPmId(id)) return `<div class="page"><a class="link" href="#/tracker">${ic('chevLeft', 'sm')}Trader Tracker</a>${emptyState({ icon: 'target', title: 'Trader not available', body: 'The Trader Tracker follows Panta traders (Solana wallets) only.', cta: '<a class="btn btn-primary sm" href="#/tracker">Find traders</a>' })}</div>`;
+  if (isPmId(id)) return `<div class="page"><a class="link" href="#/tracker">${ic('chevLeft', 'sm')}Trader Tracker</a>${emptyState({ icon: 'target', title: 'Trader not available', body: 'The Trader Tracker follows Solana wallets only.', cta: '<a class="btn btn-primary sm" href="#/tracker">Find traders</a>' })}</div>`;
   if (!isSolId(id)) throw new Error('That isn’t a valid trader address. Use sol:<Solana wallet>.');
   let d = Traders.data[id]; if (!d || d.error) d = await Traders.load(id);
-  const t = Traders.entry(id); const name = Traders.name(id); const tab = UI.tracker.tab; const pm = false;
+  const t = Traders.entry(id); const name = Traders.name(id); const tab = UI.tracker.tab; 
   const head = `<a class="link" href="#/tracker">${ic('chevLeft', 'sm')}Trader Tracker</a>
     <div class="card profile-hero" style="margin-top:12px;padding:20px"><div class="row wrap" style="gap:16px">${trAvatar(id, 'lg')}<div style="min-width:0;flex:1"><h1 style="font-size:24px">@${esc(name)}</h1><div class="row wrap" style="gap:8px;margin-top:6px;font-size:12.5px">${trSrcTag(id)}<button class="link num" data-action="copyAddr" data-a="${esc(id.split(':')[1])}" style="display:inline-flex">${esc(shortW(id.split(':')[1]))} ${ic('copy', 'sm')}</button><a class="link" href="${trExt(id)}" target="_blank" rel="noopener" style="display:inline-flex">Solscan ${ic('ext', 'sm')}</a>${d && d.t ? `<span class="mut">Updated ${agoT(d.t)} · refreshes every 20s</span>` : ''}</div>${d && d.bio ? `<p class="dim" style="margin-top:8px;font-size:13px">${esc(d.bio)}</p>` : ''}</div>
       <div class="row wrap" style="gap:8px">${trackBtn(id, name)}${t ? `<button class="btn btn-ghost sm" data-action="trNotify" data-id="${esc(id)}">${ic(t.notify ? 'bell' : 'bellOff', 'sm')}Alerts ${t.notify ? 'on' : 'off'}</button>` : ''}<button class="btn ${Store.s.copy[id] && Store.s.copy[id].on ? 'btn-blue' : 'btn-ghost'} sm" data-action="copySettings" data-id="${esc(id)}">${ic('copy', 'sm')}${Store.s.copy[id] && Store.s.copy[id].on ? 'Copying' : 'Copy trades'}</button></div></div></div>`;
@@ -50,21 +50,24 @@ async function trackerDetail(id) {
   const s = d.stats || {};
   const stat = (k, v, sub = '') => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div>${sub ? `<div class="s mut">${sub}</div>` : ''}</div>`;
   const tabs = ['Positions', 'Activity', 'History'];
+  const empty = !d.positions.length && !(d.closed || []).length && !(d.trades || []).length;
+  // Only stats that can be computed for this wallet are shown.
+  const S = [
+    ['Portfolio value', usd(s.value || 0, 0), 'Open positions'],
+    s.unreal != null && ['Open P&amp;L', pnlCell(s.unreal), 'Unrealized'],
+    s.realized != null && ['Realized P&amp;L', pnlCell(s.realized), `${(d.closed || []).length} resolved`],
+    s.winRate != null && ['Win rate', s.winRate + '%', 'Resolved positions'],
+    s.roi != null && ['ROI', pctOrDash(s.roi), 'On positions with known cost'],
+    s.trades != null && ['Trades', fmtNum(s.trades, 0), 'Recent buys'],
+    s.volume != null && ['Volume', kusd(s.volume), 'Recent buys'],
+    ['Active markets', fmtNum(s.active || 0, 0), s.claimable ? `${s.claimable} claimable` : ''],
+  ].filter(Boolean);
   return `<div class="page">${head}
-    <div class="stats-strip tracker-stats" style="margin-top:16px">
-      ${stat('Portfolio value', s.value != null ? usd(s.value, 0) : '—', pm ? 'Open positions' : 'At Panta prices')}
-      ${stat('Open P&amp;L', s.unreal != null ? pnlCell(s.unreal) : '—', pm ? 'Unrealized' : 'Entry not published')}
-      ${stat('Realized P&amp;L', s.realized != null ? pnlCell(s.realized) : '—', pm ? `${s.closedN || 0} closed` : '')}
-      ${stat('Win rate', s.winRate != null ? s.winRate + '%' : '—', pm ? 'Closed positions' : '')}
-      ${stat('ROI', s.roi != null ? pctOrDash(s.roi) : '—')}
-      ${stat('Trades', s.trades != null ? fmtNum(s.trades, 0) : '—', pm ? 'Markets traded' : '')}
-      ${stat('Recent volume', s.volume != null ? kusd(s.volume) : '—', pm ? 'Last 100 activities' : '')}
-      ${stat('Active markets', s.active ?? '—', s.claimable ? `${s.claimable} claimable` : '')}
-    </div>
+    ${empty ? `<div class="card" style="margin-top:16px">${emptyState({ icon: 'target', title: 'No trades yet', body: `@${esc(name)} has no open positions or recent trades on Nexis markets. ${Traders.isTracked(id) ? 'You’ll be notified when this wallet trades.' : 'Track this wallet to be notified when it trades.'}` })}</div>` : `
+    <div class="stats-strip tracker-stats" style="margin-top:16px">${S.map(x => stat(...x)).join('')}</div>
     ${d.perf && d.perf.length >= 2 ? `<div class="card" style="margin-top:16px"><div class="card-head"><h3>Cumulative P&amp;L</h3><span class="mut" style="font-size:12px">Closed positions + current open P&amp;L</span></div><div class="chart-box" style="height:220px;margin:0 12px 12px" data-chart="trader" data-id="${esc(id)}"></div></div>` : ''}
-    ${!pm ? infoNote('Panta publishes this wallet’s current positions but not its entry prices, so P&amp;L and win rate can’t be computed. Position changes are detected every 20 seconds.') : ''}
     <div class="tabs" style="margin-top:18px">${tabs.map(k => `<button class="tab ${k === tab ? 'on' : ''}" data-action="trTab" data-t="${k}">${k}${k === 'Positions' ? ` <span class="mut num">${d.positions.length}</span>` : ''}</button>`).join('')}</div>
-    <div style="margin-top:14px">${tab === 'Positions' ? trPositions(d) : tab === 'Activity' ? trActivity(d) : trHistory(d)}</div></div>`;
+    <div style="margin-top:14px">${tab === 'Positions' ? trPositions(d) : tab === 'Activity' ? trActivity(d) : trHistory(d)}</div>`}</div>`;
 }
 function trPositions(d) {
   if (!d.positions.length) return `<div class="card">${emptyState({ icon: 'brief', title: 'No open positions', body: 'New positions appear here within 20 seconds.' })}</div>`;
@@ -73,12 +76,12 @@ function trPositions(d) {
     return `<tr ${p.mId ? `class="click" data-href="${href}"` : ''}><td class="q" style="max-width:380px;white-space:normal">${p.mId || !href ? esc(p.title) : `<a href="${href}" target="_blank" rel="noopener">${esc(p.title)}</a>`}${p.outcome && !/^(yes|no)$/i.test(p.outcome) ? `<div class="mut" style="font-size:11.5px">${esc(p.outcome)}</div>` : ''}${p.claimable && !p.claimed ? ' <span class="tag green">Claimable</span>' : ''}</td><td><span class="tag ${p.side === 'YES' ? 'green' : 'red'}">${p.side}</span></td><td class="r num">${p.entry != null ? cents(p.entry) : '—'}</td><td class="r num" ${p.mId ? `data-p${p.side === 'YES' ? 'y' : 'n'}="${p.mId}"` : ''}>${p.cur != null ? cents(p.cur) : '—'}</td><td class="r num">${fmtNum(p.shares, 2)}</td><td class="r num">${p.value != null ? usd(p.value) : '—'}</td><td class="r">${p.pnl != null ? pnlCell(p.pnl) + (p.pnlPct ? ` <span class="mut num" style="font-size:11.5px">${pct(p.pnlPct, 0)}</span>` : '') : '<span class="mut">—</span>'}</td></tr>`; }).join('')}</tbody></table></div>`;
 }
 function trActivity(d) {
-  const L = (d.activity || []).slice(0, 60);
-  return L.length ? `<div class="card">${L.map(trLogRow).join('')}</div>` : `<div class="card">${emptyState({ icon: 'clock', title: 'No changes detected yet', body: Traders.isTracked(d.id) ? 'Nexis compares this wallet’s Panta positions every 20 seconds and logs every change here.' : 'Track this wallet so Nexis can detect and log its position changes.' })}</div>`;
+  const seen = new Set(); const L = [...(d.activity || []), ...(d.trades || [])].filter(x => !seen.has(x.id) && seen.add(x.id)).sort((a, b) => (b.t || 0) - (a.t || 0)).slice(0, 60);
+  return L.length ? `<div class="card">${L.map(trLogRow).join('')}</div>` : `<div class="card">${emptyState({ icon: 'clock', title: 'No activity yet', body: Traders.isTracked(d.id) ? 'New trades and position changes appear here within 20 seconds.' : 'Track this wallet to log its trades and position changes.' })}</div>`;
 }
 function trHistory(d) {
   const L = d.closed || [];
-  if (!L.length) return `<div class="card">${emptyState({ icon: 'flag', title: 'No closed positions', body: 'Resolved Panta positions appear here.' })}</div>`;
+  if (!L.length) return `<div class="card">${emptyState({ icon: 'flag', title: 'No closed positions', body: 'Resolved positions appear here.' })}</div>`;
   return `<div class="card table-wrap"><table class="t"><thead><tr><th>Closed</th><th>Market</th><th>Side</th><th class="r">Entry</th><th class="r">Shares</th><th class="r">Realized P&amp;L</th></tr></thead><tbody>${L.slice(0, 80).map(p => `<tr><td class="mut">${p.t ? fmtDate(p.t) : '—'}</td><td class="q" style="max-width:380px;white-space:normal">${esc(p.title)}</td><td><span class="tag ${p.side === 'YES' ? 'green' : 'red'}">${esc(p.outcome || p.side)}</span>${p.result ? ` <span class="mut" style="font-size:11.5px">resolved ${esc(p.result)}</span>` : ''}</td><td class="r num">${p.entry != null ? cents(p.entry) : '—'}</td><td class="r num">${fmtNum(p.shares, 2)}</td><td class="r">${pnlCell(p.pnl ?? null)}</td></tr>`).join('')}</tbody></table></div>`;
 }
 ChartKinds.trader = (el) => { const d = Traders.data[el.dataset.id]; if (!d || !d.perf || d.perf.length < 2) return; lineChart(el, { values: d.perf.map(x => x[1]), times: d.perf.map(x => x[0]), fmt: (v) => (v < 0 ? '−$' : '$') + kfmt(Math.abs(v)), color: d.perf[d.perf.length - 1][1] >= 0 ? 'var(--green)' : 'var(--red)', zero: 0 }); };
@@ -88,10 +91,10 @@ function openCopyModal(id) {
   if (!Auth.user) return requireAuth(() => {}, 'Log in to copy traders');
   const name = Traders.name(id);
   const cp = Store.s.copy[id] || { on: false, max: 10 };
-  openModal(`${modalHead('Copy @' + esc(name), 'Panta trader · Solana')}<div class="modal-body">
+  openModal(`${modalHead('Copy @' + esc(name), 'Trader · Solana wallet')}<div class="modal-body">
     <label class="row" style="justify-content:space-between;gap:12px"><span><b>Copy new positions</b><div class="mut" style="font-size:12.5px">When @${esc(name)} opens or adds to a position, Nexis prepares the same side on the same market for you.</div></span><input type="checkbox" class="toggle" id="cp-on" ${cp.on ? 'checked' : ''}></label>
     <label class="field"><span>Maximum per copied trade (USDC)</span><input class="input" id="cp-max" inputmode="decimal" value="${esc(cp.max)}"></label>
-    ${infoNote('Nothing is executed automatically. Each copy opens a Panta quote that you confirm and sign in your own wallet, so you always see the price and fee first. Copying also turns on tracking.')}
+    ${infoNote('Nothing is executed automatically. Each copy opens a quote that you confirm and sign in your own wallet, so you always see the price and fee first. Copying also turns on tracking.')}
     ${!primaryWallet() ? `<p class="mut" style="font-size:12.5px">You’ll need a linked Solana wallet to sign copied trades.</p>` : ''}</div>
     <div class="modal-foot"><button class="btn btn-ghost" data-action="closeModal">Cancel</button><button class="btn btn-primary" data-action="saveCopy" data-id="${esc(id)}">Save</button></div>`);
 }

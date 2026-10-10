@@ -4,8 +4,8 @@
                        GG/NG), games by day with odds columns, bet slip
                        (Scores & results tab: the ESPN views in sports.js)
    #/book/<game id>    every bet for one game
-   Bets are placed on Panta from the user's Solana wallet. A bet type with no
-   Panta market yet is created on Panta by the first bettor (they pay
+   Bets are placed from the user's Solana wallet. A bet type with no
+   market yet is created by the first bettor (they pay
    Panta's creation fee), registered in /api/book, then bet on.
    ===================================================================== */
 UI.book = UI.book || { sport: 'all', league: '', tab: 'all', when: 'all', q: '', limit: 80, bt: '3way' };
@@ -23,7 +23,7 @@ function bkLiveClock(g, inline) {
 }
 setInterval(() => { if (document.hidden) return; $$('[data-tick]').forEach(el => { const s = +el.dataset.tick + Math.min(180, Math.max(0, (now() - +el.dataset.at) / 1000)); const v = bkHms(s); if (el.textContent !== v) el.textContent = v; }); }, 1000);
 const bkScore = (g) => g.home.score != null && g.away.score != null ? `${g.home.score} – ${g.away.score}` : '';
-/** One odds button: a side of a prop. Estimated odds (no Panta market yet) are marked with an asterisk.
+/** One odds button: a side of a prop. Estimated odds (no market yet) are marked with an asterisk.
     col: { h: column label, prop, side, sub?: line shown in the button (e.g. "−4.5") } — or null for an empty cell. */
 function bkOdd(g, col, opts = {}) {
   if (!col) return `<span class="odd na" aria-hidden="true">—</span>`;
@@ -31,7 +31,7 @@ function bkOdd(g, col, opts = {}) {
   const key = `${g.id}|${prop}|${side}`; const q = Book.quote(g, prop, side); const on = Book.inSlip(key);
   const txt = q.p != null ? Book.odds(q.p, UI.book.fmt) : '—';
   const market = opts.market || Book.marketName(g, prop); const full = opts.full || bkFull(g, h, sub);
-  const title = `${market} · ${full}${q.src === 'est' ? ' · estimated odds; Panta’s price is quoted before you sign' : ' · Panta price'}`;
+  const title = `${market} · ${full}${q.src === 'est' ? ' · estimated odds; the price is quoted before you sign' : ' · Price'}`;
   const showLab = opts.showLabel || sub;
   return `<button class="odd ${on ? 'on' : ''} ${q.src === 'est' ? 'odd-est' : ''}" ${q.open ? '' : 'disabled'} data-action="bkPick" data-k="${esc(key)}" data-g="${esc(g.id)}" data-l="${esc(full)}" data-mk="${esc(market)}" aria-pressed="${on}" title="${esc(title)}">
     <span class="odd-l ${showLab ? '' : 'mob'}">${esc(sub && !opts.showLabel ? sub : label)}</span><b class="num" data-bko="${esc(key)}">${q.open || g.state === 'pre' ? esc(txt) : ic('lock', 'sm')}${q.src === 'est' && q.p != null && q.open ? '<sup>*</sup>' : ''}</b></button>`;
@@ -101,7 +101,7 @@ Views.sports = async (params, arg) => {
   if (params.get('league') || params.get('view') === 'scores') UI.sports.mode = 'scores';
   if (UI.sports.mode === 'scores' || UI.sports.league) return Views.sportsScores(params, arg);
   const st = UI.book; await bkLoad();
-  const head = `<div class="page-head"><div><h1>Sports</h1><p>Upcoming, live and finished games from every league with a market. Bets are placed on Panta from your Solana wallet.</p></div><div class="row" style="gap:8px">${bkModeTabs('book')}</div></div>`;
+  const head = `<div class="page-head"><div><h1>Sports</h1><p>Upcoming, live and finished games from every league with a market. Bets are placed from your Solana wallet.</p></div><div class="row" style="gap:8px">${bkModeTabs('book')}</div></div>`;
   const all = Book.games();
   if (!all.length) {
     const body = Poly.gamesState === 'offline' ? unavailable('Sportsbook unavailable', 'Nexis couldn’t load the game list. It retries automatically.', '<button class="btn btn-ghost sm" data-action="retry">Retry now</button>') : Poly.gamesState === 'idle' ? skeletonCards(6) : `<div class="card">${emptyState({ icon: 'soccer', title: 'No games right now', body: 'Check back soon, or see Scores & results.' })}</div>`;
@@ -141,7 +141,7 @@ Views.sports = async (params, arg) => {
         ${days.size ? [...days.entries()].map(section).join('')
           + (list.length > shown.length ? `<div style="text-align:center;margin-top:16px"><button class="btn btn-ghost" data-action="bkMore">Show more · ${list.length - shown.length} left</button></div>` : '')
           : `<div class="card" style="margin-top:14px">${emptyState({ icon: 'soccer', title: st.q ? `Nothing matches “${esc(st.q)}”` : st.tab === 'live' ? 'Nothing live right now' : st.tab === 'results' ? 'No results yet' : st.league ? `No ${esc((FOOTBALL_PINNED.find(p => p.key === st.league) || {}).name || 'games')} games listed right now` : 'No games here', body: st.tab === 'live' ? 'Live games appear here once they kick off.' : st.tab === 'results' ? 'Games that finished in the last 3 days appear here.' : 'Try another sport, league or time.' })}</div>`}
-        ${anyEst && st.tab !== 'results' ? `<p class="mut" style="font-size:12px;margin-top:12px">* Estimated odds, from Polymarket, for bets that don’t have a Panta market yet. You see Panta’s actual price before you sign.</p>` : ''}
+        ${anyEst && st.tab !== 'results' ? `<p class="mut" style="font-size:12px;margin-top:12px">* Estimated odds for bets that don’t have a market yet. You see the actual price before you sign.</p>` : ''}
       </div>
       <aside class="bk-slip-col"><div id="bk-slip">${bkSlip()}</div></aside>
     </div>
@@ -178,7 +178,7 @@ Views.book = async (params, id) => {
     sections.push({ id: 'corners', title: 'Corners', cards: [...BOOK_CORNER_LINES.map(l => ou(`Total Corners O/U ${l}`, 'cor_o' + lineKey(l), l)), ou(`${H} Corners O/U 4.5`, 'corh_o45', 4.5), ou(`${A} Corners O/U 4.5`, 'cora_o45', 4.5),
       card('Corner Handicap', [C('CH 1', 'corhc_h1', 'YES', `${H} −1.5`), C('CH 2', 'corhc_h1', 'NO', `${A} +1.5`)]), card('Corner Handicap', [C('CH 1', 'corhc_a1', 'NO', `${H} +1.5`), C('CH 2', 'corhc_a1', 'YES', `${A} −1.5`)])],
       note: LI.live ? (Book.liveCounts(g).corners ? `Corners so far: ${H} ${Book.liveCounts(g).corners[0]}, ${A} ${Book.liveCounts(g).corners[1]}.` : 'Live corner stats aren’t available for this match, so corner bets are closed until full time.') : '' });
-    sections.push({ id: 'cards', title: 'Cards', cards: [...BOOK_CARD_LINES.map(l => ou(`Total Cards O/U ${l}`, 'crd_o' + lineKey(l), l)), ou(`${H} Cards O/U 1.5`, 'crdh_o15', 1.5), ou(`${A} Cards O/U 1.5`, 'crda_o15', 1.5)], note: [LI.live && Book.liveCounts(g).cards ? `Cards so far: ${H} ${Book.liveCounts(g).cards[0]}, ${A} ${Book.liveCounts(g).cards[1]}.` : '', 'Player cards appear under More when Polymarket lists them for this match.'].filter(Boolean).join(' ') });
+    sections.push({ id: 'cards', title: 'Cards', cards: [...BOOK_CARD_LINES.map(l => ou(`Total Cards O/U ${l}`, 'crd_o' + lineKey(l), l)), ou(`${H} Cards O/U 1.5`, 'crdh_o15', 1.5), ou(`${A} Cards O/U 1.5`, 'crda_o15', 1.5)], note: [LI.live && Book.liveCounts(g).cards ? `Cards so far: ${H} ${Book.liveCounts(g).cards[0]}, ${A} ${Book.liveCounts(g).cards[1]}.` : '', 'Player cards appear under More when they’re listed for this match.'].filter(Boolean).join(' ') });
     sections.push({ id: 'hcp', title: 'Handicap', cards: [1, 2].flatMap(n => [
       card(`Handicap ${n}.5`, [C(`1 −${n}.5`, 'hc_h' + n, 'YES', `${H} −${n}.5`), C(`2 +${n}.5`, 'hc_h' + n, 'NO', `${A} +${n}.5`)]),
       card(`Handicap ${n}.5`, [C(`1 +${n}.5`, 'hc_a' + n, 'NO', `${H} +${n}.5`), C(`2 −${n}.5`, 'hc_a' + n, 'YES', `${A} −${n}.5`)])]) });
@@ -197,14 +197,14 @@ Views.book = async (params, id) => {
       <div class="bk-vs"><div class="bk-side">${g.home.logo ? `<img src="${esc(g.home.logo)}" alt="" width="44" height="44" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}<b>${esc(g.home.name)}</b></div>${score}<div class="bk-side">${g.away.logo ? `<img src="${esc(g.away.logo)}" alt="" width="44" height="44" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}<b>${esc(g.away.name)}</b></div></div>
       <div class="row" style="gap:10px;justify-content:center;font-size:12.5px">${statsLink}</div>
     </div>
-    ${g.espn ? `<div class="card bk-stats" id="bk-stats" style="margin-top:12px">${bkStatsHtml(g)}</div>` : g.state !== 'pre' ? `<p class="mut" style="font-size:12.5px;margin-top:10px" id="bk-nostats">${bkEspnTried.has(g.leagueKey) || !/^[a-z-]+\/[a-z0-9._-]+$/.test(g.leagueKey) || g.leagueKey.startsWith('pm/') ? `ESPN hasn’t published this ${esc(g.league)} match yet, so its stats aren’t available. The score and clock still update live.` : 'Looking for this match on ESPN…'}</p>` : ''}
+    ${g.espn ? `<div class="card bk-stats" id="bk-stats" style="margin-top:12px">${bkStatsHtml(g)}</div>` : g.state !== 'pre' ? `<p class="mut" style="font-size:12.5px;margin-top:10px" id="bk-nostats">${bkEspnTried.has(g.leagueKey) || !/^[a-z-]+\/[a-z0-9._-]+$/.test(g.leagueKey) || g.leagueKey.startsWith('pm/') ? `Stats for this ${esc(g.league)} match aren’t available yet. The score and clock still update live.` : 'Loading match details…'}</p>` : ''}
     <div class="bk-game">
       <div style="min-width:0">
-        ${g.state === 'post' ? `<div class="card" style="margin-top:16px">${emptyState({ icon: 'check', title: 'Full time', body: 'Betting has closed. Panta’s Resolution Agent settles each market from the result; winning bets can be claimed in Portfolio.' })}</div>`
+        ${g.state === 'post' ? `<div class="card" style="margin-top:16px">${emptyState({ icon: 'check', title: 'Full time', body: 'Betting has closed. the resolution agent settles each market from the result; winning bets can be claimed in Portfolio.' })}</div>`
           : `${g.state === 'in' ? `<div class="sim-note" style="margin-top:16px">${ic('info', 'sm')}<span><b>In play.</b> Odds follow the score, the clock and the live corner and card counts. Bets close at the 90th minute; half-time bets close at the break, and after a goal First Team to Score becomes Next Team to Score.</span></div>` : ''}
         <div class="bk-bt" role="tablist" aria-label="Bet type" style="margin-top:16px">${[{ id: 'all', title: 'All' }, ...sections].map(x => `<button role="tab" aria-selected="${gc === x.id}" class="${gc === x.id ? 'on' : ''}" data-action="bkGcat" data-v="${x.id}">${esc(x.title)}</button>`).join('')}</div>
         ${visible.map(x => `<h2 class="bk-cat">${esc(x.title)}</h2><div class="bk-mkts">${x.cards.join('')}</div>${x.note ? `<p class="mut" style="font-size:12px;margin-top:6px">${esc(x.note)}</p>` : ''}`).join('')}
-        <p class="mut" style="font-size:12px;margin-top:12px">* Estimated odds, from Polymarket, for bets that don’t have a Panta market yet. Each bet is a YES/NO position on a Panta market, settled by Panta’s Resolution Agent from the result.</p>`}
+        <p class="mut" style="font-size:12px;margin-top:12px">* Estimated odds for bets that don’t have a market yet. Each bet is a YES/NO position on a market, settled by the resolution agent from the result.</p>`}
       </div>
       <aside class="bk-slip-col"><div id="bk-slip">${bkSlip()}</div></aside>
     </div>
@@ -243,7 +243,7 @@ function paintBookStats(id) { const el = $('#bk-stats'); const g = Book.get(id);
 
 /* ---------- bet slip ----------
    Singles: each selection is its own bet with its own stake.
-   Accumulator: one stake on all selections together (combined odds = the odds multiplied); placed as one Panta market. */
+   Accumulator: one stake on all selections together (combined odds = the odds multiplied); placed as one market. */
 function bkSlip() {
   const items = Book.resolved(); const fmt = UI.book.fmt;
   if (!items.length) return `<div class="card bk-slip"><div class="card-head"><h3>Bet slip</h3></div><p class="mut" style="padding:16px 18px;font-size:13px">Tap any odds to add a selection.</p></div>`;
@@ -259,7 +259,7 @@ function bkSlip() {
         <b class="num" data-bko="${esc(s.key)}">${ok ? oddTxt(s) : '—'}</b><button class="iconbtn" data-action="bkRemove" data-k="${esc(s.key)}" aria-label="Remove selection" style="width:26px;height:26px">${ic('x', 'sm')}</button></div>
       ${!ok ? `<div class="mut" style="font-size:12px;margin-top:6px">${s.g && s.g.state === 'post' ? 'Game finished' : s.g && s.g.state === 'in' ? 'Closed for this stage of the game' : 'No longer available'}</div>`
         : acc ? '' : `<div class="row" style="gap:8px;margin-top:8px"><label class="bk-stake"><span class="mut">$</span><input inputmode="decimal" data-bk-stake="${esc(s.key)}" value="${esc(Book.stakes[s.key] || '')}" aria-label="Stake in USDC"></label><span class="mut" style="font-size:12px;margin-left:auto">Potential winnings <b class="num" data-bk-ret="${esc(s.key)}" style="color:var(--text)">${p ? usd(s.stake / p) : '—'}</b></span></div>
-        ${s.q.market ? '' : `<div class="mut" style="font-size:11.5px;margin-top:6px">${ic('plus', 'sm')} First bet on this option: you’ll create its Panta market (fee shown before you sign).</div>`}`}
+        ${s.q.market ? '' : `<div class="mut" style="font-size:11.5px;margin-top:6px">${ic('plus', 'sm')} First bet on this option: you’ll create its market (fee shown before you sign).</div>`}`}
     </div>`;
   }).join('');
   const modeSeg = items.length >= 2 ? `<div class="seg text bk-mode" role="tablist" aria-label="Bet type"><button class="${acc ? '' : 'on'}" data-action="bkSlipMode" data-v="single">Singles</button><button class="${acc ? 'on' : ''}" data-action="bkSlipMode" data-v="acc">Accumulator</button></div>` : '';
@@ -278,7 +278,7 @@ function bkSlip() {
   const cta = !Auth.user ? `<button class="btn btn-primary block" data-action="bkPlace">Log in to bet</button>` : !w ? `<button class="btn btn-primary block" data-action="bkPlace">${ic('wallet', 'sm')}Connect a Solana wallet</button>` : `<button class="btn btn-primary block" data-action="bkPlace">${acc ? 'Place accumulator' : `Place ${items.length === 1 ? 'bet' : items.length + ' bets'}`}</button>`;
   return `<div class="card bk-slip"><div class="card-head"><h3>Bet slip · ${items.length}</h3><button class="link" data-action="bkClear">Clear</button></div>${modeSeg ? `<div style="padding:10px 16px 0">${modeSeg}</div>` : ''}${rows}
     <div class="bk-slip-f">${foot}${cta}
-      <p class="mut" style="font-size:11.5px;margin-top:8px">Placed on Panta in USDC from your Solana wallet (minimum $${BK_MIN}; $${Panta.FIRST_BET_MIN} for the first bet on an option, or for an accumulator, because it opens a new Panta market). ${acc ? 'An accumulator is one Panta market that pays only if every selection wins.' : 'Each selection is its own bet.'} You see Panta’s odds and fees before signing. * estimated odds.</p></div></div>`;
+      <p class="mut" style="font-size:11.5px;margin-top:8px">Placed in USDC from your Solana wallet (minimum $${BK_MIN}; $${Panta.FIRST_BET_MIN} for the first bet on an option, or for an accumulator, because it opens a new market). ${acc ? 'An accumulator is one market that pays only if every selection wins.' : 'Each selection is its own bet.'} You see the odds and fees before signing. * estimated odds.</p></div></div>`;
 }
 function bkSlipBar() { const n = Book.slip.length; return `<button class="bk-slipbar ${n ? '' : 'hide'}" data-action="bkSlipOpen" id="bk-slipbar">${ic('list', 'sm')}Bet slip<span class="bk-n num">${n}</span></button>`; }
 function bkRepaintSlip() { $$('#bk-slip').forEach(el => { el.innerHTML = bkSlip(); hydrate(el); }); const b = $('#bk-slipbar'); if (b) b.outerHTML = bkSlipBar(); const m = $('.overlay .modal #bk-slip-modal'); if (m) { m.innerHTML = bkSlip(); hydrate(m); } bkBindSlip(); }
@@ -301,19 +301,19 @@ function bindBook() {
   bkBindSlip();
 }
 
-/* ---------- placing bets on Panta ---------- */
+/* ---------- placing bets ---------- */
 /** Waits until Panta's API knows a just-created market (it indexes new markets within seconds). */
 async function bkAwaitMarket(id) { for (let i = 0; i < 10; i++) { try { const m = await Panta.detail(id); if (m) return m; } catch (e) { /* not indexed yet */ } await delay(2000); } return null; }
 /** Asks the bettor a yes/no question inside the placing dialog. */
 let bkAskFn = null;
 function bkAsk(title, body, yes) { return new Promise(res => { bkAskFn = res; setModal(`${modalHead(title)}<div class="modal-body">${body}</div><div class="modal-foot"><button class="btn btn-ghost" data-action="bkAskNo">Don’t place</button><button class="btn btn-primary" data-action="bkAskYes" autofocus>${esc(yes)}</button></div>`); }); }
 function bkAnswer(v) { const f = bkAskFn; bkAskFn = null; if (f) f(v); }
-/** Creates a Panta market (the bettor signs and pays Panta's fee). With `register`, records it in /api/book for everyone. */
+/** Creates a market (the bettor signs and pays Panta's fee). With `register`, records it in /api/book for everyone. */
 async function bkCreateMarket(body, wallet, onStep, { quote, register } = {}) {
-  onStep('Getting Panta’s creation quote');
+  onStep('Getting the creation quote');
   const q = quote && now() - quote.at < 4 * 60e3 ? quote.q : await Panta.quoteCreate({ ...body, wallet: wallet.address });
   onStep('Building the market');
-  const built = await Panta.buildCreateSafe(q, wallet.address); const b = built.b; const qq = built.q; if (!b.transaction) throw new Error(b.disclaimer || 'Panta returned no transaction to sign.');
+  const built = await Panta.buildCreateSafe(q, wallet.address); const b = built.b; const qq = built.q; if (!b.transaction) throw new Error(b.disclaimer || 'The exchange returned no transaction to sign.');
   const prov = await Wallets.provider(wallet); const tx = await Chain.txFromBase64(b.transaction);
   onStep('Sign the new market in your wallet');
   const marketId = b.expectedEventPda || qq.expectedEventPda;
@@ -324,30 +324,30 @@ async function bkCreateMarket(body, wallet, onStep, { quote, register } = {}) {
   let use = { marketId, question: body.question };
   if (register) { try { const r = await Net.api('book', { method: 'POST', body: { action: 'register', game: register.g.id, prop: register.prop, marketId, signature: rec.sig, question: body.question } }); if (r.market) use = r.market; } catch (e) { /* the bet still works on this market */ } const R = register.reg || Book; R.reg.set(register.g.id + ':' + register.prop, use); R.regIds.add(use.marketId); }
   Panta.rememberTitle(use.marketId, body.title && body.title !== body.question ? body.title : use.question);
-  onStep('Waiting for Panta to open the market');
-  const m = await bkAwaitMarket(use.marketId); if (!m) throw new Error('The market was created but Panta hasn’t listed it yet. Try again in a minute; it won’t be created twice.');
+  onStep('Waiting for the market to open');
+  const m = await bkAwaitMarket(use.marketId); if (!m) throw new Error('The market was created but The exchange hasn’t listed it yet. Try again in a minute; it won’t be created twice.');
   return m;
 }
-/** A new market opens at Panta's own price, which can differ from the estimate: show it and ask before buying. */
+/** A new market opens's own price, which can differ from the estimate: show it and ask before buying. */
 async function bkConfirmPrice(label, marketId, side, stake, estP, wallet) {
   const q = await Panta.quoteBuy({ wallet: wallet.address, marketId, side, amountUsdc: stake.toFixed(2) });
   const odds = q.avgPrice ? 1 / nz(q.avgPrice) : null;
   return bkAsk('Market created — confirm your odds', `<p style="font-size:14px"><b>${esc(label)}</b></p>
-    <div class="order-sum"><div><span>Panta odds</span><span class="num">${odds ? Book.odds(1 / odds, UI.book.fmt) : '—'}</span></div>${estP ? `<div><span>Estimated odds shown before</span><span class="num">${Book.odds(estP, UI.book.fmt)}</span></div>` : ''}<div><span>Stake</span><span class="num">${usd(stake)}</span></div><div><span>Potential winnings</span><span class="num">~${usd(nz(q.shares))}</span></div>${q.feeUsdc ? `<div><span>Panta fee</span><span class="num">${fmtNum(nz(q.feeUsdc), 2)} USDC</span></div>` : ''}</div>
-    <p class="mut" style="font-size:12.5px">The market now exists on Panta for everyone. If you don’t place the bet, nothing else is charged.</p>`, `Place bet at ${odds ? Book.odds(1 / odds, UI.book.fmt) : 'Panta odds'}`);
+    <div class="order-sum"><div><span>Odds</span><span class="num">${odds ? Book.odds(1 / odds, UI.book.fmt) : '—'}</span></div>${estP ? `<div><span>Estimated odds shown before</span><span class="num">${Book.odds(estP, UI.book.fmt)}</span></div>` : ''}<div><span>Stake</span><span class="num">${usd(stake)}</span></div><div><span>Potential winnings</span><span class="num">~${usd(nz(q.shares))}</span></div>${q.feeUsdc ? `<div><span>Fee</span><span class="num">${fmtNum(nz(q.feeUsdc), 2)} USDC</span></div>` : ''}</div>
+    <p class="mut" style="font-size:12.5px">The market now exists for everyone. If you don’t place the bet, nothing else is charged.</p>`, `Place bet at ${odds ? Book.odds(1 / odds, UI.book.fmt) : 'Odds'}`);
 }
-/** Buys one side of a Panta market (the same steps as a market page order). */
+/** Buys one side of a market (the same steps as a market page order). */
 async function bkBuy({ label, desc, side, stake }, marketId, wallet, onStep) {
-  onStep('Getting Panta’s price');
+  onStep('Getting the price');
   const q = await Panta.quoteBuy({ wallet: wallet.address, marketId, side, amountUsdc: stake.toFixed(2) });
   onStep('Building the bet');
   const b = await Panta.buildBuy({ quoteId: q.quoteId, wallet: wallet.address, maxSlippageBps: 100 });
-  if (!b.instructions || !b.instructions.length) throw new Error(b.disclaimer || 'Panta returned nothing to sign.');
+  if (!b.instructions || !b.instructions.length) throw new Error(b.disclaimer || 'The exchange returned nothing to sign.');
   const prov = await Wallets.provider(wallet); const tx = await Chain.txFromInstructions(b, wallet.address);
   onStep(`Sign the bet in ${wallet.label}`);
   const rec = await Tx.run({ kind: 'Bet ' + side, desc: desc || label, marketId, amount: -stake, prov, tx, lastValidBlockHeight: b.lastValidBlockHeight });
   if (!Tx.ok(rec)) throw new Error('The bet didn’t confirm on Solana.');
-  onStep('Recording with Panta');
+  onStep('Recording');
   await Promise.allSettled([Panta.submitBuy({ orderId: b.orderId, signature: rec.sig, wallet: wallet.address }), Panta.report({ signature: rec.sig, wallet: wallet.address, marketId })]);
   const k = marketId + ':' + side; const e = Store.s.entries[k] || { usdc: 0, shares: 0 }; e.usdc += stake; e.shares += nz(b.expectedShares || q.shares); Store.s.entries[k] = e; Store.save();
   return { sig: rec.sig, shares: nz(b.expectedShares || q.shares), price: nz(q.avgPrice, null) };
@@ -355,7 +355,7 @@ async function bkBuy({ label, desc, side, stake }, marketId, wallet, onStep) {
 function bkPreflight() {
   if (!Auth.user) { requireAuth(() => {}, 'Log in to bet'); return null; }
   const w = primaryWallet(); if (!w) { openWalletFlow({ mode: 'link' }); return null; }
-  if (Panta.mode === 'test') { toast({ title: 'Panta is in test mode', body: 'The server uses a pk_test_ key, so bets can’t be signed.', kind: 'warn' }); return null; }
+  if (Panta.mode === 'test') { toast({ title: 'The exchange is in test mode', body: 'The server uses a pk_test_ key, so bets can’t be signed.', kind: 'warn' }); return null; }
   return w;
 }
 async function bkPlace() {
@@ -367,23 +367,23 @@ async function bkPlace() {
   const total = bets.reduce((n, s) => n + s.stake, 0);
   if (Balances.v && Balances.v.usdc != null && Balances.v.usdc + 1e-9 < total) return toast({ title: 'Not enough USDC', body: `Your wallet holds ${fmtNum(Balances.v.usdc, 2)} USDC; these bets need ${usd(total)}.`, kind: 'warn' });
   // Review: Panta's price for bets whose market exists; the creation fee for the rest.
-  openModal(`${modalHead('Review bets')}<div class="modal-body"><div class="pipe">${pipeStep('Getting quotes from Panta', 'run')}</div></div>`, { label: 'Review bets' });
+  openModal(`${modalHead('Review bets')}<div class="modal-body"><div class="pipe">${pipeStep('Getting quotes', 'run')}</div></div>`, { label: 'Review bets' });
   await Book.loadReg(bets.map(b => b.g), { extra: true }).catch(() => {});
   let fees = 0;
   for (const s of bets) {
     const reg = Book.reg.get(s.g.id + ':' + s.prop); s.marketId = reg && reg.marketId;
-    if (!s.marketId && s.stake < Panta.FIRST_BET_MIN) { s.err = `This is the first bet on this option, which opens its Panta market: the minimum first bet is $${Panta.FIRST_BET_MIN}.`; continue; }
+    if (!s.marketId && s.stake < Panta.FIRST_BET_MIN) { s.err = `This is the first bet on this option, which opens its market: the minimum first bet is $${Panta.FIRST_BET_MIN}.`; continue; }
     try {
       if (s.marketId) { const q = await Panta.quoteBuy({ wallet: w.address, marketId: s.marketId, side: s.side, amountUsdc: s.stake.toFixed(2) }); s.preview = { price: nz(q.avgPrice, null), shares: nz(q.shares), fee: nz(q.feeUsdc) }; }
       else { const body = Book.createBody(s.g, s.prop); const q = await Panta.quoteCreate({ ...body, wallet: w.address }); s.createQuote = { at: now(), q }; s.fee = nz(q.paymentUsdc) / 1e6; fees += s.fee; }
     } catch (e) { s.err = e.message; }
   }
   const line = (s) => `<div class="bk-rev"><div style="flex:1;min-width:0"><b>${esc(s.label)}</b><div class="mut" style="font-size:11.5px">${esc(s.market || '')} · ${esc(s.g.home.short)} vs ${esc(s.g.away.short)}</div>
-    <div style="font-size:12px;margin-top:3px">${s.err ? `<span class="down">${esc(s.err)}</span>` : s.preview ? `Panta odds <b class="num">${s.preview.price ? Book.odds(s.preview.price, UI.book.fmt) : '—'}</b> · potential winnings ~${usd(s.preview.shares)}${s.preview.fee ? ` · fee ${fmtNum(s.preview.fee, 2)} USDC` : ''}` : `<span class="amber">New Panta market</span> · creation fee <b class="num">${fmtNum(s.fee, 2)} USDC</b> · you confirm Panta’s odds after it opens`}</div></div><b class="num">${usd(s.stake)}</b></div>`;
+    <div style="font-size:12px;margin-top:3px">${s.err ? `<span class="down">${esc(s.err)}</span>` : s.preview ? `Odds <b class="num">${s.preview.price ? Book.odds(s.preview.price, UI.book.fmt) : '—'}</b> · potential winnings ~${usd(s.preview.shares)}${s.preview.fee ? ` · fee ${fmtNum(s.preview.fee, 2)} USDC` : ''}` : `<span class="amber">New market</span> · creation fee <b class="num">${fmtNum(s.fee, 2)} USDC</b> · you confirm the odds after it opens`}</div></div><b class="num">${usd(s.stake)}</b></div>`;
   const ok = bets.filter(s => !s.err);
   setModal(`${modalHead('Review bets')}<div class="modal-body">${bets.map(line).join('')}
     <div class="order-sum" style="margin-top:10px"><div><span>Total stake</span><span>${usd(ok.reduce((n, s) => n + s.stake, 0))}</span></div>${fees ? `<div><span>Market creation fees</span><span>${fmtNum(fees, 2)} USDC</span></div>` : ''}</div>
-    ${fees ? infoNote('The first bet on an option creates its Panta market (one extra signature). Panta’s Resolution Agent settles it from the result, and everyone after you bets on the same market.') : ''}
+    ${fees ? infoNote('The first bet on an option creates its market (one extra signature). the resolution agent settles it from the result, and everyone after you bets on the same market.') : ''}
     <p class="mut" style="font-size:12px">Prices can move before you sign; each bet uses a 1% slippage limit. If a bet loses, that stake is lost.</p></div>
     <div class="modal-foot"><button class="btn btn-ghost" data-action="closeModal">Cancel</button><button class="btn btn-primary" data-action="bkConfirm" ${ok.length ? 'autofocus' : 'disabled'}>Place ${ok.length === 1 ? 'bet' : ok.length + ' bets'}</button></div>`);
   UI.book.pending = { bets: ok, wallet: w };
@@ -400,7 +400,7 @@ async function bkConfirm() {
       if (!marketId) {
         const m = await bkCreateMarket(Book.createBody(s.g, s.prop), wallet, step, { quote: s.createQuote, register: { g: s.g, prop: s.prop } }); marketId = m.id;
         const go = await bkConfirmPrice(`${s.label} · ${s.market}`, marketId, s.side, s.stake, s.q.p, wallet);
-        if (!go) { done.push({ ok: false, skipped: true, html: '<span class="tag">Not placed</span>' }); s.err = 'You chose not to bet at Panta’s opening odds. The market now exists; its odds show on the slip.'; continue; }
+        if (!go) { done.push({ ok: false, skipped: true, html: '<span class="tag">Not placed</span>' }); s.err = 'You chose not to bet at the opening odds. The market now exists; its odds show on the slip.'; continue; }
       }
       const r = await bkBuy({ label: s.label, desc: `${s.label} · ${s.g.home.short} vs ${s.g.away.short}`, side: s.side, stake: s.stake }, marketId, wallet, step);
       done.push({ ok: true, html: `<a class="tag green" href="${explorerTx(r.sig)}" target="_blank" rel="noopener">Placed</a>` }); Book.remove(s.key);
@@ -420,15 +420,15 @@ async function bkPlaceAcc() {
   const legs = Book.resolved(); const probs = Book.accProblems(legs);
   if (probs.length) return toast({ title: 'Can’t place this accumulator', body: esc(probs.join(' ')), kind: 'warn' });
   const stake = nz(String(Book.accStake).replace(/[^0-9.]/g, ''), 0);
-  if (!(stake >= Panta.FIRST_BET_MIN)) return toast({ title: `Minimum accumulator stake is $${Panta.FIRST_BET_MIN}`, body: 'Each accumulator opens its own Panta market.', kind: 'warn' });
+  if (!(stake >= Panta.FIRST_BET_MIN)) return toast({ title: `Minimum accumulator stake is $${Panta.FIRST_BET_MIN}`, body: 'Each accumulator opens its own market.', kind: 'warn' });
   if (Balances.v && Balances.v.usdc != null && Balances.v.usdc + 1e-9 < stake) return toast({ title: 'Not enough USDC', body: `Your wallet holds ${fmtNum(Balances.v.usdc, 2)} USDC.`, kind: 'warn' });
   const body = Book.accBody(legs); if (body.error) return toast({ title: 'Can’t place this accumulator', body: esc(body.error), kind: 'warn' });
-  openModal(`${modalHead('Review accumulator')}<div class="modal-body"><div class="pipe">${pipeStep('Getting Panta’s quote', 'run')}</div></div>`, { label: 'Review accumulator' });
-  let q; try { q = await Panta.quoteCreate({ ...body, wallet: w.address }); } catch (e) { return setModal(`${modalHead('Couldn’t get a quote')}<div class="modal-body">${emptyState({ icon: 'alert', title: 'Panta rejected the accumulator', body: esc(e.message) })}</div><div class="modal-foot"><button class="btn btn-ghost" data-action="closeModal">Close</button></div>`); }
+  openModal(`${modalHead('Review accumulator')}<div class="modal-body"><div class="pipe">${pipeStep('Getting the quote', 'run')}</div></div>`, { label: 'Review accumulator' });
+  let q; try { q = await Panta.quoteCreate({ ...body, wallet: w.address }); } catch (e) { return setModal(`${modalHead('Couldn’t get a quote')}<div class="modal-body">${emptyState({ icon: 'alert', title: 'The exchange rejected the accumulator', body: esc(e.message) })}</div><div class="modal-foot"><button class="btn btn-ghost" data-action="closeModal">Close</button></div>`); }
   const odds = Book.accOdds(legs); const fee = nz(q.paymentUsdc) / 1e6;
   setModal(`${modalHead('Review accumulator')}<div class="modal-body">${legs.map((l, i) => `<div class="bk-rev"><span class="mut num">${i + 1}</span><div style="flex:1;min-width:0"><b>${esc(l.label)}</b><div class="mut" style="font-size:11.5px">${esc(l.market)} · ${esc(l.g.home.short)} vs ${esc(l.g.away.short)}</div></div><b class="num">${l.q.p ? Book.odds(l.q.p, UI.book.fmt) : '—'}</b></div>`).join('')}
     <div class="order-sum" style="margin-top:10px"><div><span>Combined odds</span><span class="num">${odds ? Book.odds(1 / odds, UI.book.fmt) : '—'}</span></div><div><span>Stake</span><span class="num">${usd(stake)}</span></div><div><span>Potential winnings</span><span class="num">${odds ? usd(stake * odds) : '—'}</span></div><div><span>Market creation fee</span><span class="num">${fmtNum(fee, 2)} USDC</span></div></div>
-    ${infoNote('Panta has no multi-bets, so your accumulator becomes its own Panta market that pays only if every selection wins. You create it (one signature, fee above), then confirm Panta’s actual odds before your stake is placed (second signature).')}</div>
+    ${infoNote('The exchange has no multi-bets, so your accumulator becomes its own market that pays only if every selection wins. You create it (one signature, fee above), then confirm the actual odds before your stake is placed (second signature).')}</div>
     <div class="modal-foot"><button class="btn btn-ghost" data-action="closeModal">Cancel</button><button class="btn btn-primary" data-action="bkConfirm" autofocus>Create &amp; continue</button></div>`);
   UI.book.pending = { acc: true, legs, body, quote: { at: now(), q }, stake, odds, wallet: w };
 }
@@ -438,7 +438,7 @@ async function bkConfirmAcc(P) {
   try {
     const m = await bkCreateMarket(body, wallet, step, { quote });
     const go = await bkConfirmPrice(label, m.id, 'YES', stake, odds ? 1 / odds : null, wallet);
-    if (!go) return bkSummary([{ label, sub: usd(stake), ok: false, skipped: true, html: '<span class="tag">Not placed</span>', err: 'You chose not to bet at Panta’s opening odds.' }]);
+    if (!go) return bkSummary([{ label, sub: usd(stake), ok: false, skipped: true, html: '<span class="tag">Not placed</span>', err: 'You chose not to bet at the opening odds.' }]);
     const r = await bkBuy({ label, desc: label + ': ' + legs.map(l => l.label).join(', '), side: 'YES', stake }, m.id, wallet, step);
     legs.forEach(l => Book.remove(l.key));
     Notify.push({ kind: 'tx', icon: 'check', text: `Accumulator placed: <b>${legs.length} selections</b> · ${usd(stake)}`, href: '#/portfolio' });

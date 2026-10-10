@@ -2,8 +2,8 @@
    SPORTSBOOK MODEL
    Every game Polymarket lists (upcoming, live and recent results), laid
    out like a sportsbook: sport → league → game → bet types. Bets are
-   placed on Panta (see "BETS = PANTA MARKETS" below); Polymarket only
-   supplies the games and the estimated odds shown before a Panta market
+   placed (see "BETS = PANTA MARKETS" below); Polymarket only
+   supplies the games and the estimated odds shown before a market
    exists. ESPN supplies scores, clocks and crests when it has the game.
    Decimal odds = 1 / price, so a $10 stake at 2.50 returns $25 if it wins.
    ===================================================================== */
@@ -33,16 +33,16 @@ const bookRank = (name) => { const i = BOOK_TOP.indexOf(name); return i < 0 ? 99
 
 /* ---------------------------------------------------------------------
    BETS = PANTA MARKETS
-   Every bet is YES or NO on a Panta market. Each game has a fixed set of
-   propositions ("props"), each one Panta market:
+   Every bet is YES or NO on a market. Each game has a fixed set of
+   propositions ("props"), each one market:
      football:  home (home win) · draw · away (away win) · ou25 (3+ goals) · btts
      others:    winner (home beats away, incl. overtime)
      any sport: pm:<Polymarket market id> — mirrors one Polymarket market
    Bet types map onto props: 1 = home YES, X = draw YES, 2 = away YES,
    1X = away NO, 12 = draw NO, X2 = home NO, Over 2.5 = ou25 YES,
    Under 2.5 = ou25 NO, GG = btts YES, NG = btts NO.
-   Which Panta market holds each prop is kept in /api/book. If none exists
-   yet, the first bettor creates it on Panta. Odds are the Panta price once the
+   Which market holds each prop is kept in /api/book. If none exists
+   yet, the first bettor creates it on Panta. Odds are the market price once the
    market exists, otherwise an estimate from Polymarket (marked "est.").
    --------------------------------------------------------------------- */
 /* Football list tabs (column header, prop, side). Other sports get per-game columns from Book.tabs(). */
@@ -172,7 +172,7 @@ const Book = {
     ];
   },
 
-  /* ---------- props: question, rules and sources for each Panta market ---------- */
+  /* ---------- props: question, rules and sources for each market ---------- */
   dateText(g) { return new Date(g.start).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }); },
   /** Human name of a prop's bet type (slip + game page). */
   marketName(g, prop) {
@@ -239,7 +239,7 @@ const Book = {
     return { question: q, title: q, description: `${g.league}: ${g.home.name} vs ${g.away.name}. Created from Nexis Sports.`, resolutionRule: this.rule(g, prop), sourcesOfTruth: this.sources(g), category: 'sports', marketType: 'breaking', startTime: t, endTime: end, resolutionTime: settle, imageUrl: image, region: g.region || 'Global' };
   },
 
-  /* ---------- registry (/api/book) and Panta markets ---------- */
+  /* ---------- registry (/api/book) and markets ---------- */
   reg: new Map(), regAt: new Map(), regOk: true,
   regIds: new Set(), ownsMarket(id) { return this.regIds.has(id); },
   /** Props shown in the list (all tabs) — looked up in the registry for the visible games. */
@@ -253,7 +253,7 @@ const Book = {
       ...BOOK_SCORES.map(s => 'cs_' + s.replace('-', '_')), 'fts_home', 'fts_away', ...ng, ...BOOK_CORNER_LINES.map(l => 'cor_o' + lineKey(l)), 'corh_o45', 'cora_o45', 'corhc_h1', 'corhc_a1',
       ...BOOK_CARD_LINES.map(l => 'crd_o' + lineKey(l)), 'crdh_o15', 'crda_o15', 'hc_h1', 'hc_a1', 'hc_h2', 'hc_a2', ...(g.extra || []).map(m => 'pm:' + m.id.replace(/^pm-/, ''))])];
   },
-  /** Looks up the Panta markets registered for these games (cached 30s), then loads their Panta prices. */
+  /** Looks up the markets registered for these games (cached 30s), then loads their Panta prices. */
   async loadReg(games, { extra = false } = {}) {
     const keys = games.flatMap(g => (extra ? this.props(g) : this.listProps(g)).map(p => g.id + ':' + p)).filter(k => now() - (this.regAt.get(k) || 0) > 30e3);
     if (!keys.length) return;
@@ -360,7 +360,7 @@ const Book = {
     if (prop === 'btts') return sum((i, j) => i > 0 && j > 0);
     return null;
   },
-  /** Polymarket-based probability of YES for a prop (shown until a Panta market exists): Polymarket's own price
+  /** Polymarket-based probability of YES for a prop (shown until a market exists): Polymarket's own price
       where it lists the same bet, otherwise the goals model (football). */
   estimate(g, prop) {
     if (prop.startsWith('pm:')) { const m = Poly.markets.get('pm-' + prop.slice(3)); return m ? m.yes : null; }
@@ -500,7 +500,7 @@ const Book = {
   resolved() { return this.slip.map(s => { const [gid, prop, side] = s.key.split('|'); const g = this.get(gid); const q = g ? this.quote(g, prop, side) : { p: null, open: false }; return { ...s, g, prop, side, q, stake: nz(String(this.stakes[s.key] || '').replace(/[^0-9.]/g, ''), 0) }; }); },
 };
 /* ---------- accumulators ----------
-   Panta has no parlays, so an accumulator is its own Panta YES/NO market: YES only if every leg wins. Its question
+   The exchange has no parlays, so an accumulator is its own Panta YES/NO market: YES only if every leg wins. Its question
    lists the legs, its rule points to each leg's own question, and trading ends at the earliest kick-off. */
 Object.assign(Book, {
   ACC_MAX: 6,
@@ -519,12 +519,12 @@ Object.assign(Book, {
     const n = legs.length; const D = (g) => this.dateText(g);
     const desc = (l) => `${l.label} (${l.market}), ${l.g.home.pm} vs ${l.g.away.pm} on ${D(l.g)}`;
     const question = `Accumulator: will all ${n} of these bets win? ${legs.map((l, i) => `(${i + 1}) ${desc(l)}`).join('; ')}`;
-    if (question.length > 512) return { error: 'These selections are too long to fit one Panta market question (512 characters). Remove a selection.' };
+    if (question.length > 512) return { error: 'These selections are too long to fit one market question (512 characters). Remove a selection.' };
     const rule = (`This market resolves YES only if every one of the following ${n} bets wins, and NO if any of them loses. `
       + legs.map((l, i) => `Bet ${i + 1}: the question "${this.question(l.g, l.prop)}" must resolve ${l.side}.`).join(' ')
       + ' Each question is settled as it would be on its own: football results use the score after regular time (90 minutes plus stoppage time) unless the question is about half-time; corners and cards come from the official match statistics.'
       + ' If any of these matches is abandoned or not played within 48 hours of its scheduled start, this market is cancelled.');
-    if (rule.length > 2048) return { error: 'These selections are too long to fit one Panta market rule (2048 characters). Remove a selection.' };
+    if (rule.length > 2048) return { error: 'These selections are too long to fit one market rule (2048 characters). Remove a selection.' };
     // Trading closes when the first leg's game ends (legs can be in play); settles after the last one.
     const first = Math.min(...legs.map(l => l.g.start + (l.g.football ? 2 : 3.5) * 3600e3)), last = Math.max(...legs.map(l => l.g.start));
     const sources = [...new Set(legs.flatMap(l => this.sources(l.g)))].slice(0, 20);

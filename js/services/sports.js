@@ -4,7 +4,7 @@
      live, otherwise every 60s.
    - Game summary (box score, lineups/rosters, key events, plays, leaders):
      polled every 12s while a match page is open.
-   - Related prediction markets: Panta markets whose titles mention the
+   - Related prediction markets: Markets whose titles mention the
      teams, and the game's own Polymarket markets (tradable in Nexis via
      the sportsbook), matched by team names and kick-off time.
    ===================================================================== */

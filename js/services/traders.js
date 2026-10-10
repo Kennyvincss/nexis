@@ -1,8 +1,8 @@
 /* =====================================================================
    TRADER ACTIVITY SERVICE (Trader Tracker)
-   Traders are Panta traders (Solana wallets), id "sol:<address>": live
-   positions from Panta's positions endpoint (polled 20s). Panta doesn't
-   publish per-wallet entry prices, so P&L shows "—". (Polymarket accounts,
+   Traders are Solana wallets, id "sol:<address>": live
+   positions from the positions endpoint (polled 20s), plus the wallet's
+   trades from each market's trade history (entry, P&L, volume). (Polymarket accounts,
    "pm:0x…", are no longer tracked; old entries are dropped on start.)
    Changes between polls become activity + notifications. Tracking never
    trades. Copy trading (Panta traders only) turns each new position into a
@@ -25,13 +25,41 @@ const Traders = {
     this.loading[id] = run;
     try { return await run; } catch (e) { this.data[id] = { ...(this.data[id] || {}), id, error: e.message }; return this.data[id]; } finally { delete this.loading[id]; Bus.emit('trader', id); }
   },
+  /** A wallet's trades, read from the trade history of each market it holds or was seen trading (cached 60s per market). */
+  _tapes: {},
+  async walletTrades(w, mIds) {
+    const out = [];
+    for (const mId of mIds.slice(0, 15)) {
+      let c = this._tapes[mId];
+      if (!c || now() - c.at > 60e3) { try { c = this._tapes[mId] = { at: now(), list: await Panta.trades(mId, 200) }; } catch (e) { c = c || { at: now(), list: [] }; } }
+      c.list.forEach(t => { if (t.wallet === w) out.push({ ...t, mId }); });
+    }
+    return out.sort((a, b) => (b.t || 0) - (a.t || 0));
+  },
   async loadSol(id) {
     const w = id.slice(4); const pos = await Panta.positions(w);
-    const missing = pos.filter(p => !Panta.markets.has(p.marketId)).slice(0, 10); for (const p of missing) { try { await Panta.detail(p.marketId); } catch (e) {} }
-    const positions = pos.filter(p => p.shares > 0).map(p => { const m = Panta.markets.get(p.marketId); const cur = m ? (p.side === 'YES' ? m.yes : m.no) : null; return { key: p.marketId + ':' + p.side, mId: p.marketId, title: m ? m.title : shortW(p.marketId), outcome: p.side, side: p.side, entry: null, cur, shares: p.shares, value: cur != null ? cur * p.shares : null, pnl: null, phase: p.phase, claimable: p.claimable, claimed: p.claimed, result: p.outcome }; });
+    const seen = [...new Set(Object.entries(PantaTape.byMarket).filter(([, L]) => L.some(t => t.wallet === w)).map(([m]) => m))];
+    const mIds = [...new Set([...pos.map(p => p.marketId), ...seen])];
+    const missing = mIds.filter(m => !Panta.markets.has(m)).slice(0, 10); for (const m of missing) { try { await Panta.detail(m); } catch (e) {} }
+    const trades = await this.walletTrades(w, mIds);
+    const cost = {}; trades.forEach(t => { const k = t.mId + ':' + t.side; cost[k] = (cost[k] || 0) + t.amount; });
+    const title = (m) => { const x = Panta.markets.get(m); return x ? x.title : 'Market ' + shortW(m); };
+    const positions = pos.filter(p => p.shares > 0).map(p => {
+      const m = Panta.markets.get(p.marketId); const key = p.marketId + ':' + p.side; let c = cost[key] || null; if (c && !(c / p.shares > 0 && c / p.shares <= 1)) c = null; // trades found don't match the shares held (e.g. partly sold): cost unknown
+      const cur = p.outcome ? (p.outcome === p.side ? 1 : 0) : m ? (p.side === 'YES' ? m.yes : m.no) : null;
+      const value = cur != null ? cur * p.shares : null;
+      return { key, mId: p.marketId, title: title(p.marketId), outcome: p.side, side: p.side, entry: c ? c / p.shares : null, cost: c, cur, shares: p.shares, value, pnl: c != null && value != null ? value - c : null, phase: p.phase, claimable: p.claimable, claimed: p.claimed, result: p.outcome };
+    });
+    const open = positions.filter(p => !p.result), closed = positions.filter(p => p.result);
+    const sum = (L, f) => L.reduce((s, p) => s + (f(p) || 0), 0); const withCost = positions.filter(p => p.cost);
+    const unreal = open.some(p => p.pnl != null) ? sum(open, p => p.pnl) : null;
+    const realized = closed.some(p => p.pnl != null) ? sum(closed, p => p.pnl) : null;
+    const totalCost = sum(withCost, p => p.cost);
+    const tradeLog = trades.slice(0, 100).map(t => ({ id: t.sig || t.id, tid: id, t: t.t, kind: 'open', text: `Bought ${t.side} · ${usd(t.amount, 2)} · ${title(t.mId)}`, title: title(t.mId), side: t.side, outcome: t.side, usd: t.amount, mId: t.mId, fromTape: true }));
     const prevLog = (this.data[id] && this.data[id].activity) || (Store.s.trackerLog || []).filter(x => x.tid === id).map(x => ({ ...x }));
-    return { id, src: 'sol', name: this.names[id] || shortW(w), wallet: w, positions, closed: positions.filter(p => p.result), activity: prevLog, perf: [],
-      stats: { value: positions.reduce((s, p) => s + (p.value || 0), 0), unreal: null, realized: null, winRate: null, roi: null, trades: null, volume: null, active: new Set(positions.map(p => p.mId)).size, claimable: positions.filter(p => p.claimable && !p.claimed).length }, t: now() };
+    return { id, src: 'sol', name: this.names[id] || shortW(w), wallet: w, positions: open, closed, activity: prevLog, trades: tradeLog, perf: [],
+      stats: { value: sum(open, p => p.value), unreal, realized, winRate: closed.length ? Math.round(closed.filter(p => p.result === p.side).length / closed.length * 100) : null, roi: totalCost ? (sum(withCost, p => p.pnl)) / totalCost * 100 : null,
+        trades: trades.length || null, volume: trades.length ? sum(trades, t => t.amount) : null, active: new Set(open.map(p => p.mId)).size, claimable: positions.filter(p => p.claimable && !p.claimed).length }, t: now() };
   },
   diff(id, d) {
     const old = this.data[id]; if (!old || !old.positions || old.error) return;
@@ -59,8 +87,8 @@ const Traders = {
   pantaActive() { const by = {}; Object.values(PantaTape.byMarket).flat().forEach(t => { if (!t.wallet) return; const r = by[t.wallet] = by[t.wallet] || { id: 'sol:' + t.wallet, name: shortW(t.wallet), n: 0, amt: 0 }; r.n++; r.amt += t.amount; }); return Object.values(by).sort((a, b) => b.amt - a.amt).slice(0, 10); },
   async search(q) {
     q = q.trim(); if (q.length < 2) return []; const out = []; const add = (r) => { if (!out.some(x => x.id === r.id)) out.push(r); };
-    if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(q)) add({ id: 'sol:' + q, name: shortW(q), src: 'sol', sub: 'Solana wallet · Panta positions' });
-    this.pantaActive().filter(r => r.id.slice(4).toLowerCase().startsWith(q.toLowerCase())).forEach(r => add({ id: r.id, name: r.name, src: 'sol', sub: `Active on Panta · ${r.n} recent trade${r.n === 1 ? '' : 's'}` }));
+    if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(q)) add({ id: 'sol:' + q, name: shortW(q), src: 'sol', sub: 'Solana wallet' });
+    this.pantaActive().filter(r => r.id.slice(4).toLowerCase().startsWith(q.toLowerCase())).forEach(r => add({ id: r.id, name: r.name, src: 'sol', sub: `Active trader · ${r.n} recent trade${r.n === 1 ? '' : 's'}` }));
     out.forEach(r => this.names[r.id] = this.names[r.id] || r.name); return out.slice(0, 12);
   },
   async poll() { this.purgePm(); const ids = [...new Set([...this.list().map(t => t.id), ...(current.route === 'tracker' && current.arg ? [current.arg] : [])])]; for (const id of ids) { await this.load(id); await delay(250); } },
