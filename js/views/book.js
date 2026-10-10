@@ -97,6 +97,36 @@ async function bkLoad() {
   if (Panta.state === 'idle') Panta.loadCatalog().catch(() => {});
 }
 
+/* ---------- Sports dashboard (top of #/sports, default view): live matches, featured match, leagues, match days ---------- */
+const bkLogo = (t, size = 36) => t.logo ? `<img class="dash-logo" src="${esc(t.logo)}" alt="" width="${size}" height="${size}" referrerpolicy="no-referrer" onerror="this.outerHTML='<span class=\\'dash-ini\\' style=\\'width:${size}px;height:${size}px\\'>${esc((t.short || t.name || '?').slice(0, 1))}</span>'">` : `<span class="dash-ini" style="width:${size}px;height:${size}px">${esc((t.short || t.name || '?').slice(0, 1))}</span>`;
+function bkDash(all) {
+  const rank = (a, b) => bookRank(a.league) - bookRank(b.league) || a.start - b.start;
+  const live = all.filter(g => g.state === 'in').sort(rank), next = all.filter(g => g.state === 'pre').sort((a, b) => a.start - b.start);
+  const side = live.length ? live.slice(0, 4) : next.slice(0, 4);
+  const feat = live[0] || next.slice(0, 40).sort(rank)[0]; if (!feat) return '';
+  const mini = (g) => `<a class="dash-mini ${g.state === 'in' ? 'live' : ''}" href="#/book/${esc(g.id)}"><div class="dash-mini-h"><span>${esc(g.league)}</span>${g.state === 'in' ? `<span class="dash-live"><span class="live-dot red"></span>Live</span>` : `<span class="num">${bkTime(g)}</span>`}</div>
+    <div class="dash-mini-t">${bkLogo(g.home, 28)}<b>${esc(g.home.short)}</b><span class="num">${g.state === 'in' ? esc(g.home.score ?? '') : ''}</span></div>
+    <div class="dash-mini-t">${bkLogo(g.away, 28)}<b>${esc(g.away.short)}</b><span class="num">${g.state === 'in' ? esc(g.away.score ?? '') : ''}</span></div></a>`;
+  const cols = (feat.tabs && feat.tabs[0] && feat.tabs[0].cols) || [];
+  const featured = `<div class="dash-feat"><div class="dash-feat-h"><span class="dash-pill">${esc(feat.league)}</span>${feat.state === 'in' ? `<span class="dash-live big">${bkLiveClock(feat, true) || '<span class="live-dot red"></span>Live'}</span>` : `<span class="mut">${esc(bkDay(feat.start))} · <b class="num" style="color:var(--text)">${bkTime(feat)}</b></span>`}</div>
+    <a class="dash-vs" href="#/book/${esc(feat.id)}"><div class="dash-team">${bkLogo(feat.home, 72)}<b>${esc(feat.home.name || feat.home.short)}</b></div>
+      <div class="dash-score num">${feat.state === 'in' && bkScore(feat) ? `${esc(feat.home.score)}<i>:</i>${esc(feat.away.score)}` : '<span class="dash-vs-t">VS</span>'}</div>
+      <div class="dash-team">${bkLogo(feat.away, 72)}<b>${esc(feat.away.name || feat.away.short)}</b></div></a>
+    ${cols.length ? `<div class="dash-odds" style="--n:${cols.length}">${cols.map(c => bkOdd(feat, c, { showLabel: true })).join('')}</div>` : ''}
+    <a class="btn btn-primary dash-cta" href="#/book/${esc(feat.id)}">All markets ${ic('chevRight', 'sm')}</a></div>`;
+  const by = new Map(); all.filter(g => g.state !== 'post').forEach(g => { const r = by.get(g.leagueKey) || { key: g.leagueKey, name: g.league, sport: g.sport, logo: g.leagueLogo, live: 0, n: 0 }; r.n++; if (g.state === 'in') r.live++; by.set(g.leagueKey, r); });
+  const leagues = [...by.values()].sort((a, b) => bookRank(a.name) - bookRank(b.name) || b.n - a.n).slice(0, 7);
+  const days = new Map(); next.slice(0, 60).forEach(g => { const k = bkDay(g.start); if (!days.has(k)) days.set(k, []); days.get(k).push(g); });
+  const md = [...days.entries()].slice(0, 3);
+  return `<section class="dash">
+    <div class="dash-col"><div class="dash-card"><div class="dash-h"><h3>${live.length ? 'Live matches' : 'Starting soon'}</h3>${live.length ? `<button class="link" data-action="bkTab" data-v="live">See all</button>` : ''}</div><div class="dash-minis">${side.map(mini).join('')}</div></div></div>
+    <div class="dash-col dash-center">${featured}
+      <div class="dash-card"><div class="dash-h"><h3>Leagues</h3><span class="mut num" style="font-size:12px">${by.size}</span></div>
+        ${leagues.map(l => `<button class="dash-lg" data-action="bkLeague" data-v="${esc(l.key)}"><span class="dash-lg-ic">${ic(SPORT_IC[l.sport] || 'ball', 'sm')}</span><span class="dash-lg-n">${esc(l.name)}</span>${l.live ? `<span class="dash-live sm"><span class="live-dot red"></span>${l.live}</span>` : ''}<span class="dash-count num">${l.n} game${l.n === 1 ? '' : 's'}</span></button>`).join('')}</div></div>
+    <div class="dash-col"><div class="dash-card"><div class="dash-h"><h3>Match days</h3></div>
+      ${md.length ? md.map(([d, gs]) => `<div class="dash-day"><div class="dash-day-h">${esc(d)}<span class="mut num">${gs.length}</span></div>${gs.sort(rank).slice(0, 4).map(g => `<a class="dash-fx" href="#/book/${esc(g.id)}"><span class="dash-fx-t num">${bkTime(g)}</span><span class="dash-fx-m"><b>${esc(g.home.short)} <span class="mut">vs</span> ${esc(g.away.short)}</b><small>${esc(g.league)}</small></span>${ic('chevRight', 'sm')}</a>`).join('')}</div>`).join('') : '<p class="mut" style="padding:12px 0;font-size:13px">No upcoming games.</p>'}</div></div>
+  </section>`;
+}
 Views.sports = async (params, arg) => {
   if (params.get('league') || params.get('view') === 'scores') UI.sports.mode = 'scores';
   if (UI.sports.mode === 'scores' || UI.sports.league) return Views.sportsScores(params, arg);
@@ -122,7 +152,9 @@ Views.sports = async (params, arg) => {
   const sportsHere = [...new Set(['Football', ...all.filter(g => g.state !== 'post').map(g => g.sport)])].sort((a, b) => (BOOK_SPORTS.indexOf(a) + 1 || 99) - (BOOK_SPORTS.indexOf(b) + 1 || 99));
   const anyEst = shown.some(g => g.state === 'pre' && bkCols(g).some(c => c && Book.quote(g, c.prop, c.side).src === 'est'));
   const section = ([day, leagues]) => `<section class="bk-day"><h2 class="bk-dayh">${esc(day)}</h2>${[...leagues.values()].sort((a, b) => bookRank(a[0].league) - bookRank(b[0].league)).map(gs => { const slots = bkSlots(gs); const cols = slots.map(i => (gs.map(g => bkCols(g)[i]).find(Boolean))); return `<div class="card bk-league"><div class="bk-lhead"><span>${ic(SPORT_IC[gs[0].sport] || 'ball', 'sm')}<b>${esc(gs[0].league)}</b>${gs[0].region && gs[0].region !== 'World' ? `<span class="mut"> · ${esc(gs[0].region)}</span>` : ''}</span>${gs[0].state === 'post' ? '<span class="bk-cols" style="--n:1"><span>Result</span></span>' : `<span class="bk-cols" style="--n:${cols.length}">${cols.map((c, ci) => `<span>${esc(!c ? '' : c.sub && gs.every(g => (bkCols(g)[slots[ci]] || {}).sub === c.sub) ? (c.h === '1' || c.h === '2' ? c.h + ' ' + c.sub : c.sub) : c.h)}</span>`).join('')}</span>`}</div>${gs.map(g => bkRow(g, slots)).join('')}</div>`; }).join('')}</section>`;
+  const showDash = st.tab === 'all' && !st.q && !st.league && ['all', 'Football'].includes(st.sport);
   return `<div class="page bk">${head}
+    ${showDash ? bkDash(st.sport === 'Football' ? all.filter(g => g.football) : all) : ''}
     <div class="bk-layout">
       <div class="bk-main">
         <div class="bk-pick">
