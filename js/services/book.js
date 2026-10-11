@@ -64,7 +64,7 @@ const Book = {
   _v: '', _list: [], _model: new Map(),
   /** All sportsbook games — upcoming, live and recent results (recomputed when Polymarket or ESPN data changes). */
   games() {
-    const v = `${Poly.gamesAt}|${Sports.games.size}|${Sports.updatedAt || 0}|${Object.keys(Sports.ranges).length}`;
+    const v = `${Poly.gamesAt}|${Sports.games.size}|${Sports.updatedAt || 0}|${Object.keys(Sports.ranges).length}|${TeamLogos.ver}`;
     if (v !== this._v) { this._v = v; this._list = this.build(); }
     return this._list;
   },
@@ -113,6 +113,10 @@ const Book = {
       g.extra = this.extraMarkets(g); g.tabs = this.tabs(g);
       out.push(g);
     });
+    // Crests for teams without one (games not matched to an ESPN match): from the team-logo directory.
+    TeamLogos.harvest(); const need = [];
+    out.forEach(g => { [g.home, g.away].forEach(t => { if (!t.logo) { t.logo = TeamLogos.find(t.name) || TeamLogos.find(t.pm) || null; if (!t.logo && g.football) need.push(g.leagueKey); } }); });
+    if (need.length) setTimeout(() => TeamLogos.ensure(need), 0);
     return out.sort((a, b) => a.start - b.start);
   },
   /** The ESPN league for a game: its matched ESPN game, an ESPN key, the Polymarket code's ESPN league, or an ESPN

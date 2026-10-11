@@ -57,7 +57,7 @@ function bkRow(g, slots) {
     : `<div class="bk-odds" style="--n:${cols.length}">${cols.map(c => bkOdd(g, c)).join('')}</div>`;
   return `<div class="bk-row ${g.state === 'in' ? 'live' : ''}">
     <div class="bk-when">${g.state === 'in' ? bkLiveClock(g) : g.state === 'post' ? `<b class="bk-ft">Full time</b><span class="mut">${new Date(g.start).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })}</span>` : `<b class="num">${bkTime(g)}</b>`}<span class="mut">ID: ${esc(Book.shortId(g))}</span></div>
-    <a class="bk-teams" href="#/book/${esc(g.id)}"><span>${esc(g.home.short)}</span><span>${esc(g.away.short)}</span></a>
+    <a class="bk-teams" href="#/book/${esc(g.id)}"><span>${bkLogo(g.home, 18)}<span class="bk-tn">${esc(g.home.short)}</span></span><span>${bkLogo(g.away, 18)}<span class="bk-tn">${esc(g.away.short)}</span></span></a>
     ${g.state === 'in' && bkScore(g) ? `<b class="bk-sc num">${g.home.score}<br>${g.away.score}</b>` : ''}
     <a class="bk-stat" href="${statsHref}" aria-label="Stats for ${esc(g.home.short)} vs ${esc(g.away.short)}" title="Stats">${ic('trend', 'sm')}</a>
     ${right}
@@ -98,7 +98,7 @@ async function bkLoad() {
 }
 
 /* ---------- Sports dashboard (top of #/sports, default view): live matches, featured match, leagues, match days ---------- */
-const bkLogo = (t, size = 36) => t.logo ? `<img class="dash-logo" src="${esc(t.logo)}" alt="" width="${size}" height="${size}" referrerpolicy="no-referrer" onerror="this.outerHTML='<span class=\\'dash-ini\\' style=\\'width:${size}px;height:${size}px\\'>${esc((t.short || t.name || '?').slice(0, 1))}</span>'">` : `<span class="dash-ini" style="width:${size}px;height:${size}px">${esc((t.short || t.name || '?').slice(0, 1))}</span>`;
+const bkLogo = (t, size = 36) => { const logo = t.logo || TeamLogos.find(t.name); const badge = teamBadge(t.name || t.short, size); return logo ? `<img class="dash-logo" src="${esc(logo)}" alt="" width="${size}" height="${size}" referrerpolicy="no-referrer" onerror="this.outerHTML=this.dataset.b" data-b="${esc(badge)}">` : badge; };
 function bkDash(all) {
   const rank = (a, b) => bookRank(a.league) - bookRank(b.league) || a.start - b.start;
   const live = all.filter(g => g.state === 'in').sort(rank), next = all.filter(g => g.state === 'pre').sort((a, b) => a.start - b.start);
@@ -226,7 +226,7 @@ Views.book = async (params, id) => {
   return `<div class="page bk"><a class="link" href="#/sports">${ic('chevLeft', 'sm')}Sports</a>
     <div class="card bk-hero ${g.state === 'in' ? 'live' : ''}" style="margin-top:12px">
       <div class="row" style="gap:8px;font-size:12.5px;color:var(--text-2)">${ic(SPORT_IC[g.sport] || 'ball', 'sm')}<span>${esc(g.league)}${g.region && g.region !== 'World' ? ' · ' + esc(g.region) : ''} · ID ${esc(Book.shortId(g))}</span><span style="margin-left:auto">${status}</span></div>
-      <div class="bk-vs"><div class="bk-side">${g.home.logo ? `<img src="${esc(g.home.logo)}" alt="" width="44" height="44" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}<b>${esc(g.home.name)}</b></div>${score}<div class="bk-side">${g.away.logo ? `<img src="${esc(g.away.logo)}" alt="" width="44" height="44" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}<b>${esc(g.away.name)}</b></div></div>
+      <div class="bk-vs"><div class="bk-side">${bkLogo(g.home, 44)}<b>${esc(g.home.name)}</b></div>${score}<div class="bk-side">${bkLogo(g.away, 44)}<b>${esc(g.away.name)}</b></div></div>
       <div class="row" style="gap:10px;justify-content:center;font-size:12.5px">${statsLink}</div>
     </div>
     ${g.espn ? `<div class="card bk-stats" id="bk-stats" style="margin-top:12px">${bkStatsHtml(g)}</div>` : g.state !== 'pre' ? `<p class="mut" style="font-size:12.5px;margin-top:10px" id="bk-nostats">${bkEspnTried.has(g.leagueKey) || !/^[a-z-]+\/[a-z0-9._-]+$/.test(g.leagueKey) || g.leagueKey.startsWith('pm/') ? `Stats for this ${esc(g.league)} match aren’t available yet. The score and clock still update live.` : 'Loading match details…'}</p>` : ''}

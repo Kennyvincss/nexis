@@ -4,7 +4,8 @@
    markets whose titles mention the teams. No odds are invented.
    ===================================================================== */
 function crest(t, size = '') {
-  if (t.logo && /^https:\/\//.test(t.logo)) return `<span class="crest ${size}" style="background:var(--card-3);overflow:hidden"><img src="${esc(t.logo)}" alt="" style="width:78%;height:78%;object-fit:contain" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()"></span>`;
+  const logo = t.logo || TeamLogos.find(t.name);
+  if (logo && /^https:\/\//.test(logo)) return `<span class="crest ${size}" style="background:var(--card-3);overflow:hidden"><img src="${esc(logo)}" alt="" style="width:78%;height:78%;object-fit:contain" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()"></span>`;
   return `<span class="crest ${size}" style="background:${esc(t.color)};color:${t.ink}">${esc((t.abbr || t.short || '?').slice(0, 3))}</span>`;
 }
 const scoreText = (g) => g.kind === 'field' ? (g.leaders && g.leaders[0] ? g.leaders[0].name : '') : g.state === 'pre' || g.home.score == null ? 'vs' : `${g.home.score}–${g.away.score}`;
