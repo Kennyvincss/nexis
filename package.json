@@ -7,8 +7,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
-    "@netlify/blobs": "^8.2.0",
-    "@privy-io/server-auth": "^1.32.5"
+    "@netlify/blobs": "^8.2.0"
   },
   "devDependencies": {
     "@privy-io/js-sdk-core": "0.76.2",

@@ -109,21 +109,48 @@ async function setHandle(db, u, h) {
   await db.set('handle:' + l, u.id); u.handle = h;
 }
 function needCode(email, purpose, b) { const err = codes.check(email, purpose, b.code, b.token); if (err) throw fail(400, err.code, err.message); }
-/* Privy: the browser proves the email with Privy's one-time code; we verify Privy's signed token here. */
-let privyFactory = (appId, secret) => new (require('@privy-io/server-auth').PrivyClient)(appId, secret);
+/* Privy: the browser proves the email with Privy's one-time code; we verify Privy's signed tokens here with Node's
+   crypto (no SDK: the server SDK took seconds to load and could crash cold serverless starts).
+   - identity token (ES256 JWT): signature checked against Privy's published keys; its linked_accounts hold the email;
+   - otherwise the access token (ES256 JWT, sub = Privy user id), then the email from Privy's REST API. */
+const PRIVY_API = 'https://auth.privy.io/api/v1';
+const privyJwks = { at: 0, keys: null, app: '' };
+async function privyKeys(appId) {
+  if (privyJwks.keys && privyJwks.app === appId && Date.now() - privyJwks.at < 3600e3) return privyJwks.keys;
+  const r = await privyFetch(`${PRIVY_API}/apps/${encodeURIComponent(appId)}/jwks.json`).catch(() => null);
+  const j = r && r.ok ? await r.json().catch(() => null) : null; if (!j || !Array.isArray(j.keys) || !j.keys.length) throw fail(502, 'privy_unreachable', 'Couldn’t reach Privy to check the code. Try again.');
+  Object.assign(privyJwks, { at: Date.now(), keys: j.keys, app: appId }); return j.keys;
+}
+let privyFetch = (url, opts = {}) => fetch(url, { ...opts, signal: AbortSignal.timeout(8000) });
+const b64json = (x) => { try { return JSON.parse(Buffer.from(String(x), 'base64url').toString('utf8')); } catch (e) { return null; } };
+function privyJwt(token, keys, appId) {
+  const [h, p, sig] = String(token || '').split('.'); if (!h || !p || !sig) return null;
+  const head = b64json(h), claims = b64json(p); if (!head || !claims) return null;
+  const k = keys.find(x => !head.kid || x.kid === head.kid); if (!k) return null;
+  let ok = false;
+  try { const key = crypto.createPublicKey({ key: k, format: 'jwk' }); const data = Buffer.from(h + '.' + p);
+    ok = k.kty === 'EC' ? crypto.verify('sha256', data, { key, dsaEncoding: 'ieee-p1363' }, Buffer.from(sig, 'base64url')) : crypto.verify('sha256', data, key, Buffer.from(sig, 'base64url'));
+  } catch (e) { ok = false; }
+  if (!ok) return null;
+  const aud = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
+  if ((claims.exp && claims.exp * 1000 < Date.now() - 60e3) || (claims.aud && !aud.includes(appId)) || (claims.iss && claims.iss !== 'privy.io')) return null;
+  return claims;
+}
+const privyEmail = (accounts) => { let L = accounts; if (typeof L === 'string') { try { L = JSON.parse(L); } catch (e) { L = []; } } const a = (L || []).find(x => x && x.type === 'email' && x.address); return a ? a.address : null; };
 async function verifyPrivy(p = {}) {
   const appId = env('PRIVY_APP_ID'), sec = env('PRIVY_APP_SECRET');
   if (!appId || !sec) throw fail(503, 'PRIVY_NOT_CONFIGURED', 'Privy isn’t configured on this server (PRIVY_APP_ID, PRIVY_APP_SECRET).');
-  const c = privyFactory(appId, sec); let user = null;
-  if (p.idToken) { try { user = await c.getUser({ idToken: String(p.idToken) }); } catch (e) { user = null; } }
-  if (!user) {
-    let claims = null; try { claims = await c.verifyAuthToken(String(p.accessToken || '')); } catch (e) { claims = null; }
-    if (!claims || (claims.appId && claims.appId !== appId)) throw fail(401, 'bad_privy', 'The email code couldn’t be verified. Request a new code.');
-    try { user = await c.getUser(claims.userId); } catch (e) { throw fail(502, 'privy_unreachable', 'Couldn’t reach Privy. Try again.'); }
-  }
-  const email = user && user.email && user.email.address;
+  const keys = await privyKeys(appId);
+  const id = p.idToken && privyJwt(p.idToken, keys, appId);
+  if (id && id.sub) { const email = privyEmail(id.linked_accounts); if (email) return { privyId: id.sub, email: normEmail(email) }; }
+  const at = privyJwt(p.accessToken, keys, appId);
+  if (!at || !at.sub) throw fail(401, 'bad_privy', 'The email code couldn’t be verified. Request a new code.');
+  const r = await privyFetch(`${PRIVY_API}/users/${encodeURIComponent(at.sub)}`, { headers: { authorization: 'Basic ' + Buffer.from(`${appId}:${sec}`).toString('base64'), 'privy-app-id': appId } }).catch(() => null);
+  const user = r && r.ok ? await r.json().catch(() => null) : null;
+  if (!user) throw fail(502, 'privy_unreachable', 'Couldn’t reach Privy to check the code. Try again.');
+  const email = privyEmail(user.linked_accounts);
   if (!email) throw fail(400, 'no_email', 'Privy didn’t return a verified email for this code.');
-  return { privyId: user.id, email: normEmail(email) };
+  return { privyId: user.id || at.sub, email: normEmail(email) };
 }
 /** Accepts either a Privy proof ({ privy: { accessToken, idToken } }) or a Resend code ({ code, token }). */
 async function needEmailProof(email, purpose, b) {
@@ -276,5 +303,5 @@ const handler = async (req, res) => {
 module.exports = handler;
 // Shared with /api/xauth (same accounts and sessions).
 module.exports.helpers = { secret, readToken, getUser, saveUser, byIndex, fail, newUser, setHandle, rid };
-/* Test hook: swap the Privy client factory. */
-module.exports._setPrivyFactory = (f) => { privyFactory = f; };
+/* Test hook: swap the fetch used to reach Privy (keys and users). */
+module.exports._setPrivyFetch = (f) => { privyFetch = f; privyJwks.keys = null; };
