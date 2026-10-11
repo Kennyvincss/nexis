@@ -1035,3 +1035,10 @@ body{ background:
 #view:focus, #view:focus-visible{ outline:none; }
 .input:focus, .textarea:focus, .select:focus{ background:rgba(255,255,255,.09); }
 @media (max-width:720px){ .hero-stats{ display:grid; grid-template-columns:1fr 1fr; gap:14px; } }
+/* initials badge for teams with no known crest */
+.team-badge{ display:inline-grid; place-items:center; flex:none; border-radius:50%; font-weight:800; letter-spacing:.02em; color:#fff;
+  background:linear-gradient(145deg, hsl(var(--h) 55% 46%), hsl(calc(var(--h) + 30) 60% 30%)); box-shadow:inset 0 0 0 2px rgba(255,255,255,.16), 0 4px 12px -4px rgba(0,0,0,.5); }
+.bk-teams > span{ display:flex; align-items:center; gap:8px; min-width:0; }
+.bk-teams .bk-tn{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.bk-teams .dash-logo{ width:18px; height:18px; object-fit:contain; flex:none; }
+.bk-teams .team-badge{ box-shadow:none; }
