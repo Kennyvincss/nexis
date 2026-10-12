@@ -518,6 +518,9 @@ mark.pred{ background:rgba(255,210,63,.2); color:#fff; border-radius:3px; paddin
 .mrow-b .btn span{ border-radius:3px; }
 .mrow-v{ text-align:right; font-size:12px; }
 .mrow.res{ opacity:.8; }
+/* related-markets card: stack rows when the card sits in a narrow side column */
+.rel-markets{ container:relm / inline-size; }
+@container relm (max-width:560px){ .mrow{ grid-template-columns:minmax(0,1fr) auto; } .mrow-p{ grid-column:1; } .mrow-v{ display:none; } .mrow-b{ grid-column:2; grid-row:1 / span 2; flex-direction:column; } }
 .prog{ flex:1; max-width:90px; height:4px; background:var(--line-2); border-radius:2px; overflow:hidden; }
 .prog i{ display:block; height:100%; background:var(--blue); border-radius:2px; transition:width .5s; }
 .prog.done i{ background:var(--green); }
