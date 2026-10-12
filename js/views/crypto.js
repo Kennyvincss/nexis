@@ -33,7 +33,7 @@ function pantaRow(m) {
 function polyRow(m) { if (m.listed && !m.game) return `<div class="mrow"><a class="mrow-l" href="#/market/${m.id}"><b>${esc(m.q)}</b><span class="mut" style="font-size:11.5px">Trade</span></a><div class="mrow-p"><span class="num" data-lpct="${m.id}">${Math.round(m.yes * 100)}%</span></div><a class="btn btn-ghost sm" href="#/market/${m.id}">Trade</a><span class="mrow-v num mut">est.</span></div>`; return ''; }
 function relatedMarketsCard(rel, emptyText) {
   const blocked = pantaState('related markets');
-  return `<div class="card"><div class="card-head"><h3>Related prediction markets</h3>${srcBadge('panta', true)}</div>
+  return `<div class="card rel-markets"><div class="card-head"><h3>Related prediction markets</h3>${srcBadge('panta', true)}</div>
     ${rel.panta.length ? rel.panta.map(pantaRow).join('') : `<p class="mut" style="padding:14px 18px;font-size:13px">${blocked && !Panta.markets.size ? 'Trading isn’t available right now, so tradable markets can’t be listed.' : esc(emptyText)} <a class="link" style="display:inline" href="#/create">Create one</a></p>`}
     ${rel.pmEvent ? `<div class="card-head" style="border-top:1px solid var(--line)"><h3 style="font-size:13px">Bet on this game</h3></div><a class="row" href="#/book/${esc(rel.pmEvent.id)}" style="padding:12px 18px;gap:8px">${ic('soccer', 'sm')}<span>Open it in the sportsbook</span><span style="margin-left:auto">${ic('chevRight', 'sm')}</span></a>` : ''}${!rel.pmEvent && rel.poly.length ? `<div class="card-head" style="border-top:1px solid var(--line)"><h3 style="font-size:13px">More markets</h3></div>${rel.poly.map(polyRow).join('')}` : ''}</div>`;
 }
